@@ -137,13 +137,46 @@ fw-shipped-$(CONFIG_USB_VICAM) += vicam/firmware.fw
 fw-shipped-$(CONFIG_VIDEO_CPIA2) += cpia2/stv0672_vp4.bin
 fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
 fw-shipped-$(CONFIG_TOUCHSCREEN_SEC_TS) += tsp_sec/mc44_a7x.bin
+
+fw-shipped-$(CONFIG_EPEN_WACOM_W9019_GTANOTE) += epen/w9019_gtaxlnote.bin epen/w9019_gtaxlnote_rev00.bin 
+fw-shipped-$(CONFIG_EPEN_WACOM_W9019) += epen/w9019_gtactive2.bin
+
+fw-shipped-$(CONFIG_TOUCHSCREEN_MELFAS_MMS449) += tsp_melfas/mms449_s5neo.fw
 fw-shipped-$(CONFIG_TOUCHSCREEN_MELFAS_MMS449) += tsp_melfas/mms449_s5neo.fw tsp_melfas/mms449_a7y17.fw
-fw-shipped-$(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX) += tsp_zinitix/zt7538_a5y17.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_MELFAS_MMS438) += tsp_melfas/mms438_j7x.fw tsp_melfas/mms438_j7x_hd.fw tsp_melfas/mms438_a3xpre_init.fw tsp_melfas/mms438_a3xpre.fw \
+													tsp_melfas/mms438_j7y17.fw tsp_melfas/mms438_j7ve.fw
+
+fw-shipped-$(CONFIG_TOUCHSCREEN_ATMEL_MXT1664) += tsp_atmel/mxt1664t_matisse.fw
+
+TSPFIRMWARE_DIRECTORY = $(srctree)/firmware/tsp_stm
+ifeq ($(shell test -d $(TSPFIRMWARE_DIRECTORY) && echo yes),yes)
+fw-shipped-$(CONFIG_TOUCHSCREEN_FTS7) += tsp_stm/matisse.fw tsp_stm/stm_gtaxl.fw tsp_stm/fts1a096_gtaxl_rev03.fw \
+					tsp_stm/fts1a096_gtaxl_note.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_FTS) += tsp_stm/fts8cd56_gtactive2.fw
+else
+$(warning '$(TSPFIRMWARE_DIRECTORY)' directory dose not exist)
+endif
+TSPFIRMWARE_DIRECTORY = $(srctree)/firmware/tsp_zinitix
+ifeq ($(shell test -d $(TSPFIRMWARE_DIRECTORY) && echo yes),yes)
+fw-shipped-$(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX) += tsp_zinitix/zt7548_degas2.fw tsp_zinitix/zt7538_o7.fw
+else
+$(warning '$(TSPFIRMWARE_DIRECTORY)' directory dose not exist)
+endif
+fw-shipped-$(CONFIG_TOUCHSCREEN_ZINITIX_BT541C) += tsp_zinitix/bt541c_GPPIris.fw
 ifdef CONFIG_SOC_EXYNOS7880
 fw-shipped-$(CONFIG_TOUCHSCREEN_FTS) += tsp_stm/stm_v5583.fw
 fw-shipped-$(CONFIG_KEYBOARD_CYPRESS_TOUCH_MBR31X5) += cypress/cypress_zerof.fw \
 							cypress/cypress_vlte.fw cypress/cypress_noble.fw
 endif
+
+fw-shipped-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_DSX2) += tsp_synaptics/td4300_on7xelte.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_DSX2) += tsp_synaptics/td4300_on7xelte_recovery.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_TD4X00) += tsp_synaptics/td4100_j7pop.fw tsp_synaptics/td4100_j7pop_recovery.fw
+
+fw-shipped-$(CONFIG_TOUCHSCREEN_IST3032C) += tsp_imagis/ist3032c_a3x.fw tsp_imagis/ist3032c_a3x_cmcs.bin 
+fw-shipped-$(CONFIG_TOUCHSCREEN_IST3038H) += tsp_imagis/ist3038h_a3x.fw tsp_imagis/ist3038h_a3x_cmcs.bin \
+						tsp_imagis/ist3038h_j5y.fw tsp_imagis/ist3038h_j5y_cmcs.bin \
+						tsp_imagis/ist3038h_a3xpre.fw tsp_imagis/ist3038h_a3xpre_cmcs.bin
 
 fw-shipped-$(CONFIG_KEYBOARD_ABOV_TOUCH_T316) += abov/a96t316_a5y17.fw abov/a96t316_a7y17.fw
 
@@ -173,7 +206,7 @@ quiet_cmd_fwbin = MK_FW   $@
 		  echo "    .section .rodata"				>>$@;\
 		  echo "    .p2align $${ASM_ALIGN}"			>>$@;\
 		  echo "_fw_$${FWSTR}_bin:"				>>$@;\
-		  echo "    .incbin \"$(2)\""				>>$@;\
+		  echo "    .incbin \"$(srctree)/$(2)\""				>>$@;\
 		  echo "_fw_end:"					>>$@;\
 		  echo "   .section .rodata.str,\"aMS\",$${PROGBITS},1"	>>$@;\
 		  echo "    .p2align $${ASM_ALIGN}"			>>$@;\
