@@ -94,7 +94,11 @@
 #define SIOP_HV_12V_INPUT_LIMIT_CURRENT			535
 #define SIOP_HV_12V_CHARGING_LIMIT_CURRENT		1000
 
+#if defined(CONFIG_CCIC_NOTIFIER)
+#define BATT_MISC_EVENT_UNDEFINED_RANGE_TYPE	0x80000000
+#else
 #define BATT_MISC_EVENT_UNDEFINED_RANGE_TYPE	0x00000001
+#endif
 #define BATT_MISC_EVENT_WIRELESS_BACKPACK_TYPE	0x00000002
 #define BATT_MISC_EVENT_TIMEOUT_OPEN_TYPE	0x00000004
 #define BATT_MISC_EVENT_BATT_RESET_SOC		0x00000008
@@ -195,6 +199,8 @@ struct sec_battery_info {
 	unsigned int max_charge_power;		/* max charge power (mW) */
 	unsigned int pd_max_charge_power;		/* max charge power for pd (mW) */
 	unsigned int aicl_current;
+
+	unsigned int power_supply_type_size;
 
 	struct mutex adclock;
 	struct adc_sample_info	adc_sample[ADC_CH_COUNT];
@@ -388,8 +394,6 @@ struct sec_battery_info {
 	unsigned long prev_safety_time;
 	unsigned long expired_time;
 	unsigned long cal_safety_time;
-
-	bool block_water_event;
 };
 
 ssize_t sec_bat_show_attrs(struct device *dev,

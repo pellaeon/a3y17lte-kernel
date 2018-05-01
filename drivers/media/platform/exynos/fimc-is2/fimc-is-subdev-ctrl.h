@@ -15,6 +15,8 @@
 
 #include "fimc-is-video.h"
 
+#define SUBDEV_INTERNAL_BUF_MAX		(8)
+
 struct fimc_is_device_sensor;
 struct fimc_is_device_ischain;
 struct fimc_is_groupmgr;
@@ -29,7 +31,10 @@ enum fimc_is_subdev_state {
 	FIMC_IS_SUBDEV_OPEN,
 	FIMC_IS_SUBDEV_START,
 	FIMC_IS_SUBDEV_RUN,
-	FIMC_IS_SUBDEV_FORCE_SET
+	FIMC_IS_SUBDEV_FORCE_SET,
+	FIMC_IS_SUBDEV_INTERNAL_USE,
+	FIMC_IS_SUBDEV_PARAM_ERR,
+	FIMC_IS_SUBDEV_INTERNAL_S_FMT
 };
 
 struct fimc_is_subdev_path {
@@ -39,15 +44,13 @@ struct fimc_is_subdev_path {
 	struct fimc_is_crop			crop;
 };
 
-enum fimc_is_sensor_subdev_id {
+enum fimc_is_subdev_id {
+	ENTRY_SENSOR,
 	ENTRY_SSVC0,
 	ENTRY_SSVC1,
 	ENTRY_SSVC2,
 	ENTRY_SSVC3,
-	ENTRY_SEN_END
-};
-
-enum fimc_is_ischain_subdev_id {
+	ENTRY_BNS,
 	ENTRY_3AA,
 	ENTRY_3AC,
 	ENTRY_3AP,
@@ -67,11 +70,14 @@ enum fimc_is_ischain_subdev_id {
 	ENTRY_M3P,
 	ENTRY_M4P,
 	ENTRY_VRA,
-	ENTRY_ISCHAIN_END
+	ENTRY_END
 };
 
 struct fimc_is_subdev_ops {
-	int (*bypass)(void);
+	int (*bypass)(struct fimc_is_subdev *subdev,
+		void *device_data,
+		struct fimc_is_frame *frame,
+		bool bypass);
 	int (*cfg)(struct fimc_is_subdev *subdev,
 		void *device_data,
 		struct fimc_is_frame *frame,
@@ -104,6 +110,15 @@ struct fimc_is_subdev {
 
 	struct fimc_is_subdev_path		input;
 	struct fimc_is_subdev_path		output;
+
+	/* for internal use */
+	u32					pixelformat;
+	struct fimc_is_framemgr			internal_framemgr;
+	u32					buffer_num;
+	struct fimc_is_priv_buf			*pb_subdev[SUBDEV_INTERNAL_BUF_MAX];
+	dma_addr_t				dvaddr_subdev[SUBDEV_INTERNAL_BUF_MAX];
+	ulong					kvaddr_subdev[SUBDEV_INTERNAL_BUF_MAX];
+	char					data_type[15];
 
 	struct fimc_is_video_ctx		*vctx;
 	struct fimc_is_subdev			*leader;
@@ -167,8 +182,22 @@ int fimc_is_sensor_subdev_reqbuf(void *qdevice,
 struct fimc_is_subdev * video2subdev(enum fimc_is_subdev_device_type device_type,
 	void *device, u32 vid);
 
+/* internal subdev use */
+int fimc_is_subdev_internal_open(void *device, enum fimc_is_device_type type);
+int fimc_is_subdev_internal_close(void *device, enum fimc_is_device_type type);
+int fimc_is_subdev_internal_s_format(void *device, enum fimc_is_device_type type);
+int fimc_is_subdev_internal_start(void *device, enum fimc_is_device_type type);
+int fimc_is_subdev_internal_stop(void *device, enum fimc_is_device_type type);
+
 #define GET_SUBDEV_FRAMEMGR(subdev) \
-	(((subdev) && (subdev)->vctx) ? (&(subdev)->vctx->queue.framemgr) : NULL)
+	({ struct fimc_is_framemgr *framemgr;						\
+	if ((subdev) && test_bit(FIMC_IS_SUBDEV_INTERNAL_USE, &((subdev)->state)))	\
+		framemgr = &(subdev)->internal_framemgr;				\
+	else if ((subdev) && (subdev)->vctx)						\
+		framemgr = &(subdev)->vctx->queue.framemgr;				\
+	else										\
+		framemgr = NULL;							\
+	framemgr;})
 #define GET_SUBDEV_QUEUE(subdev) \
 	(((subdev) && (subdev)->vctx) ? (&(subdev)->vctx->queue) : NULL)
 #define CALL_SOPS(s, op, args...)	(((s) && (s)->ops && (s)->ops->op) ? ((s)->ops->op(s, args)) : 0)

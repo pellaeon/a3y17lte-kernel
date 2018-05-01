@@ -276,7 +276,11 @@ p_err:
 	return ret;
 }
 
+#if defined(CONFIG_COMPANION_C2_USE) && defined(CONFIG_COMPANION_C2_DIRECT_USE) /* FixMe : Temporary code */
 int fimc_is_comp_i2c_read(struct i2c_client *client, u16 addr, u16 *data)
+#else
+static int fimc_is_comp_i2c_read(struct i2c_client *client, u16 addr, u16 *data)
+#endif
 {
 	int err;
 	u8 rxbuf[2], txbuf[2] = {0, 0};
@@ -305,7 +309,11 @@ int fimc_is_comp_i2c_read(struct i2c_client *client, u16 addr, u16 *data)
 	return 0;
 }
 
+#if defined(CONFIG_COMPANION_C2_USE) && defined(CONFIG_COMPANION_C2_DIRECT_USE) /* FixMe : Temporary code */
 int fimc_is_comp_i2c_write(struct i2c_client *client ,u16 addr, u16 data)
+#else
+static int fimc_is_comp_i2c_write(struct i2c_client *client ,u16 addr, u16 data)
+#endif
 {
         int retries = I2C_RETRY_COUNT;
         int ret = 0, err = 0;
@@ -2062,6 +2070,7 @@ p_err:
 
 void fimc_is_s_int_comb_isp(void *core_data, bool on, u32 ch)
 {
+#ifdef ENABLE_IS_CORE
 	struct fimc_is_core *core = core_data;
 	u32 cfg = ~0x0;
 
@@ -2072,6 +2081,7 @@ void fimc_is_s_int_comb_isp(void *core_data, bool on, u32 ch)
 		cfg = 0xFFFFFFFF;
 		writel(cfg, core->regs + INTMR2);
 	}
+#endif
 }
 
 #ifndef CONFIG_COMPANION_DCDC_USE
@@ -2082,7 +2092,7 @@ int fimc_is_comp_set_voltage(char *volt_name, int uV)
 	static u32 cnt_fail = 0;
 	int ret;
 
-	regulator = regulator_get(NULL, volt_name);
+	regulator = regulator_get_optional(NULL, volt_name);
 	if (IS_ERR_OR_NULL(regulator)) {
 		err("regulator_get fail\n");
 		regulator_put(regulator);

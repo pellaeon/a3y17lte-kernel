@@ -91,6 +91,7 @@
 #define META_MARK_BASE_UPPER 500
 // ------------- END of KNOX_VPN -------------------//
 
+
 #include <asm/uaccess.h>
 
 /* Uncomment to enable debugging */
@@ -1410,7 +1411,7 @@ static ssize_t tun_put_user(struct tun_struct *tun,
 // ------------- START of KNOX_VPN ------------------//
 	if (knoxvpn_process_uidpid(tun, skb, iv, &len, &total) < 0) {
 		return -EINVAL;
-	}
+        }
 // ------------- END of KNOX_VPN ------------------//
 
 	copied = total;

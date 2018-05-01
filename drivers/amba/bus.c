@@ -52,7 +52,7 @@ static void adma_hw_reset(struct device *dev)
 		return;
 	}
 
-	dma_reset_mask = BIT(dma_reset_bit);
+	dma_reset_mask = (unsigned int)BIT(dma_reset_bit);
 
 	/*
 	 * Audio DMA block needs to be reset after system boot up, before we can

@@ -153,13 +153,16 @@ void exynos_cpu_sequencer_ctrl(unsigned int cluster, int enable)
 	regmap_update_bits(pmureg, PMU_CPUSEQ_OPTION_BASE + offset, 1, enable);
 }
 
+extern void cluster1_reset_control(int en);
 static void exynos_cluster_up(unsigned int cluster)
 {
 	exynos_cpu_sequencer_ctrl(cluster, false);
+	cluster1_reset_control(1);
 }
 
 static void exynos_cluster_down(unsigned int cluster)
 {
+	cluster1_reset_control(0);
 	exynos_cpu_sequencer_ctrl(cluster, true);
 }
 

@@ -178,7 +178,6 @@
 #define DSIM_FIFOCTRL_NUMBER_OF_PH_SFR(_x)	(((_x) & 0x3f) << 16)
 #define DSIM_FIFOCTRL_EMPTY_RX			(1 << 12)
 #define DSIM_FIFOCTRL_FULL_PH_SFR		(1 << 11)
-#define DSIM_FIFOCTRL_EMPTY_PH_SFR		(1 << 10)
 #define DSIM_FIFOCTRL_FULL_PL_SFR		(1 << 9)
 #define DSIM_FIFOCTRL_INIT_RX			(1 << 2)
 #define DSIM_FIFOCTRL_INIT_SFR			(1 << 1)
@@ -214,7 +213,7 @@
 #define DSIM_CMD_CONFIG_PKT_SEND_CNT_MASK	(0xfff << 8)
 #define DSIM_CMD_CONFIG_MULTI_CMD_PKT_EN	(1 << 7)
 #define DSIM_CMD_CONFIG_MULTI_PKT_CNT(_x)	((_x) << 0)
-#define DSIM_CMD_CONFIG_MULTI_PKT_CNT_MASK	(0x7f << 0)
+#define DSIM_CMD_CONFIG_MULTI_PKT_CNT_MASK	(0xffff << 0)
 
 /* TE based command register*/
 #define DSIM_CMD_TE_CTRL0			(0x7C)

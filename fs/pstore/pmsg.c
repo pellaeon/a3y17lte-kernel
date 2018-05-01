@@ -51,9 +51,6 @@ static ssize_t write_pmsg(struct file *file, const char __user *buf,
 			mutex_unlock(&pmsg_lock);
 			return -EFAULT;
 		}
-
-		buffer[c - 1] = '\0';
-
 		psinfo->write_buf(PSTORE_TYPE_PMSG, 0, &id, 0, buffer, 0, c,
 				  psinfo);
 

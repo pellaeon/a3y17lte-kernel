@@ -92,6 +92,7 @@ enum gsc_ioctl_for_sync {
 enum vpp_sd_ioctl {
 	VPP_WIN_CONFIG,
 	VPP_STOP,
+	VPP_TUI_PROTECT,
 	VPP_GET_BTS_VAL,
 	VPP_SET_BW,
 	VPP_SET_ROT_MIF,
@@ -99,6 +100,7 @@ enum vpp_sd_ioctl {
 	VPP_DUMP,
 	VPP_WAIT_IDLE,
 	VPP_WAIT_FOR_FRAMEDONE,
+	VPP_CFW_CONFIG,
 };
 
 enum mdev_node {

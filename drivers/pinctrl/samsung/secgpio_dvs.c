@@ -142,13 +142,15 @@ static ssize_t secgpio_checked_sleepgpio_read(
 
 void gpio_dvs_check_initgpio(void)
 {
-	if (gdvs_info && gdvs_info->check_gpio_status)
+	if (gdvs_info && gdvs_info->check_gpio_status) {
 		gdvs_info->check_gpio_status(PHONE_INIT);
+	}
 }
 
 void gpio_dvs_check_sleepgpio(void)
 {
 	if (unlikely(!gdvs_info->check_sleep) && gdvs_info) { 
+//	if (gdvs_info && gdvs_info->check_gpio_status) {
 		gdvs_info->check_gpio_status(PHONE_SLEEP);
 		gdvs_info->check_sleep = true;
 	}
@@ -156,8 +158,8 @@ void gpio_dvs_check_sleepgpio(void)
 
 #ifdef CONFIG_OF
 static const struct of_device_id secgpio_dvs_dt_match[] = {
-	{ .compatible = "samsung,exynos7870-secgpio-dvs",
-		.data = (void *)&exynos7870_secgpio_dvs },
+	{ .compatible = "samsung,exynos7880-secgpio-dvs",
+		.data = (void *)&exynos7880_secgpio_dvs },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, secgpio_dvs_dt_match);

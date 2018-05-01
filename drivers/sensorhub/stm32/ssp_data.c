@@ -32,6 +32,7 @@ static void get_timestamp(struct ssp_data *data, char *dataframe,
 	memcpy(&ts_delta_us, dataframe + *ptr_data, 4);
 
 	ts_delta_ns = (((u64) ts_delta_us) * U64_US2NS);
+
 	if(data->info[type].report_mode == REPORT_MODE_CONTINUOUS)
 	{	
 
@@ -44,7 +45,7 @@ static void get_timestamp(struct ssp_data *data, char *dataframe,
 			data->latest_timestamp[type] += ts_delta_ns;
 			if(data->latest_timestamp[type] > current_timestamp)
 			{
-				//ssp_infof("future timestamp T^T last = %lld, cur = %lld",data->latest_timestamp[type],current_timestamp);
+				//ssp_infof("future timestamp : last = %lld, cur = %lld",data->latest_timestamp[type],current_timestamp);
 				data->latest_timestamp[type] = current_timestamp;
 			}
 		}

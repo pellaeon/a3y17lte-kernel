@@ -1,8 +1,6 @@
 /*
- * Copyright (c) 2014 Samsung Electronics Co., Ltd.
+ * Copyright (c) 2016 Samsung Electronics Co., Ltd.
  *      http://www.samsung.com
- *
- * Samsung TN debugging code
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -17,70 +15,38 @@
 #include <linux/module.h>
 #include <linux/uaccess.h>
 #include <linux/proc_fs.h>
-#ifdef CONFIG_NO_BOOTMEM
 #include <linux/memblock.h>
-#endif
 #include <linux/sec_debug.h>
 
-#ifdef CONFIG_KNOX_KAP
-extern int boot_mode_security;
-#endif
-
-/*
- * Example usage: sec_log=256K@0x45000000
- * In above case, log_buf size is 256KB and its base address is
- * 0x45000000 physically. Actually, *(int *)(base - 8) is log_magic and
- * *(int *)(base - 4) is log_ptr. So we reserve (size + 8) bytes from
- * (base - 8).
- */
 #define LOG_MAGIC 0x4d474f4c	/* "LOGM" */
-
 
 #ifdef CONFIG_SEC_AVC_LOG
 static unsigned *sec_avc_log_ptr;
 static char *sec_avc_log_buf;
 static unsigned sec_avc_log_size;
-#if 0 /* ZERO WARNING */
-static struct map_desc avc_log_buf_iodesc[] __initdata = {
-	{
-		.virtual = (unsigned long)S3C_VA_AUXLOG_BUF,
-		.type = MT_DEVICE
-	}
-};
-#endif
 
 static int __init sec_avc_log_setup(char *str)
 {
 	unsigned size = memparse(str, &str);
 	unsigned long base = 0;
 	unsigned *sec_avc_log_mag;
+
 	/* If we encounter any problem parsing str ... */
 	if (!size || size != roundup_pow_of_two(size) || *str != '@'
 		|| kstrtoul(str + 1, 0, &base))
 			goto out;
 
-#ifdef CONFIG_NO_BOOTMEM
-	if (memblock_is_region_reserved(base - 8, size + 8) ||
-			memblock_reserve(base - 8, size + 8)) {
-#else
-	if (reserve_bootmem(base - 8 , size + 8, BOOTMEM_EXCLUSIVE)) {
-#endif
-			pr_err("%s: failed reserving size %d " \
-						"at base 0x%lx\n", __func__, size, base);
-			goto out;
+	if (memblock_is_region_reserved(base, size) ||
+			memblock_reserve(base, size)) {
+		pr_err("%s: failed reserving size %d " \
+					"at base 0x%lx\n", __func__, size, base);
+		goto out;
 	}
-	/* TODO: remap noncached area.
-	avc_log_buf_iodesc[0].pfn = __phys_to_pfn((unsigned long)base);
-	avc_log_buf_iodesc[0].length = (unsigned long)(size);
-	iotable_init(avc_log_buf_iodesc, ARRAY_SIZE(avc_log_buf_iodesc));
-	sec_avc_log_mag = S3C_VA_KLOG_BUF - 8;
-	sec_avc_log_ptr = S3C_VA_AUXLOG_BUF - 4;
-	sec_avc_log_buf = S3C_VA_AUXLOG_BUF;
-	*/
-	sec_avc_log_mag = phys_to_virt(base) - 8;
-	sec_avc_log_ptr = phys_to_virt(base) - 4;
-	sec_avc_log_buf = phys_to_virt(base);
-	sec_avc_log_size = size;
+
+	sec_avc_log_buf = (char *)__phys_to_virt(base);
+	sec_avc_log_size = size - (unsigned)(sizeof(*sec_avc_log_ptr) + sizeof(*sec_avc_log_mag));
+	sec_avc_log_ptr = (unsigned int *)(sec_avc_log_buf + sec_avc_log_size);
+	sec_avc_log_mag = (unsigned int *)(sec_avc_log_buf + sec_avc_log_size + sizeof(*sec_avc_log_ptr));
 
 	pr_info("%s: *sec_avc_log_ptr:%x " \
 		"sec_avc_log_buf:%p sec_log_size:0x%x\n",
@@ -158,7 +124,7 @@ static ssize_t sec_avc_log_write(struct file *file,
 		pr_info("%s\n", page);
 		/* print avc_log to sec_avc_log_buf */
 		sec_debug_avc_log("%s", page);
-	} 
+	}
 	ret = count;
 out:
 	free_page((unsigned long)page);
@@ -197,7 +163,7 @@ static int __init sec_avc_log_late_init(void)
 	if (sec_avc_log_buf == NULL)
 		return 0;
 
-	entry = proc_create("avc_msg", S_IFREG | S_IRUGO, NULL, 
+	entry = proc_create("avc_msg", S_IFREG | S_IRUGO, NULL,
 			&avc_msg_file_ops);
 	if (!entry) {
 		pr_err("%s: failed to create proc entry\n", __func__);
@@ -207,11 +173,8 @@ static int __init sec_avc_log_late_init(void)
 	proc_set_size(entry, sec_avc_log_size);
 	return 0;
 }
-
 late_initcall(sec_avc_log_late_init);
-
 #endif /* CONFIG_SEC_AVC_LOG */
-
 
 #ifdef CONFIG_SEC_DEBUG_TSP_LOG
 static unsigned *sec_tsp_log_ptr;
@@ -223,26 +186,23 @@ static int __init sec_tsp_log_setup(char *str)
 	unsigned size = memparse(str, &str);
 	unsigned long base = 0;
 	unsigned *sec_tsp_log_mag;
+
 	/* If we encounter any problem parsing str ... */
 	if (!size || size != roundup_pow_of_two(size) || *str != '@'
 		|| kstrtoul(str + 1, 0, &base))
 			goto out;
 
-#ifdef CONFIG_NO_BOOTMEM
-	if (memblock_is_region_reserved(base - 8, size + 8) ||
-			memblock_reserve(base - 8, size + 8)) {
-#else
-	if (reserve_bootmem(base - 8 , size + 8, BOOTMEM_EXCLUSIVE)) {
-#endif
-			pr_err("%s: failed reserving size %d " \
-						"at base 0x%lx\n", __func__, size, base);
-			goto out;
+	if (memblock_is_region_reserved(base, size) ||
+			memblock_reserve(base, size)) {
+		pr_err("%s: failed reserving size %d " \
+					"at base 0x%lx\n", __func__, size, base);
+		goto out;
 	}
 
-	sec_tsp_log_mag = phys_to_virt(base) - 8;
-	sec_tsp_log_ptr = phys_to_virt(base) - 4;
-	sec_tsp_log_buf = phys_to_virt(base);
-	sec_tsp_log_size = size;
+	sec_tsp_log_buf = (char *)__phys_to_virt(base);
+	sec_tsp_log_size = size - (unsigned)(sizeof(*sec_tsp_log_ptr) + sizeof(*sec_tsp_log_mag));
+	sec_tsp_log_ptr = (unsigned int *)(sec_tsp_log_buf + sec_tsp_log_size);
+	sec_tsp_log_mag = (unsigned int *)(sec_tsp_log_buf + sec_tsp_log_size + sizeof(*sec_tsp_log_ptr));
 
 	pr_info("%s: *sec_tsp_log_ptr:%x " \
 		"sec_tsp_log_buf:%p sec_tsp_log_size:0x%x\n",
@@ -260,7 +220,7 @@ out:
 }
 __setup("sec_tsp_log=", sec_tsp_log_setup);
 
-static int sec_tsp_log_timestamp(unsigned long idx)
+static int sec_tsp_log_timestamp(unsigned int idx)
 {
 	/* Add the current time stamp */
 	char tbuf[50];
@@ -293,8 +253,8 @@ void sec_debug_tsp_log(char *fmt, ...)
 	va_list args;
 	char buf[TSP_BUF_SIZE];
 	int len = 0;
-	unsigned long idx;
-	unsigned long size;
+	unsigned int idx;
+	size_t size;
 
 	/* In case of sec_tsp_log_setup is failed */
 	if (!sec_tsp_log_size)
@@ -311,10 +271,10 @@ void sec_debug_tsp_log(char *fmt, ...)
 	/* Overflow buffer size */
 	if (idx + size > sec_tsp_log_size - 1) {
 		len = scnprintf(&sec_tsp_log_buf[0],
-						size + 1, "%s\n", buf);
+						size + 1, "%s", buf);
 		*sec_tsp_log_ptr = len;
 	} else {
-		len = scnprintf(&sec_tsp_log_buf[idx], size + 1, "%s\n", buf);
+		len = scnprintf(&sec_tsp_log_buf[idx], size + 1, "%s", buf);
 		*sec_tsp_log_ptr += len;
 	}
 }
@@ -326,8 +286,8 @@ void sec_debug_tsp_log_msg(char *msg, char *fmt, ...)
 	char buf[TSP_BUF_SIZE];
 	int len = 0;
 	unsigned int idx;
-	unsigned int size;
-	unsigned int size_dev_name;
+	size_t size;
+	size_t size_dev_name;
 
 	/* In case of sec_tsp_log_setup is failed */
 	if (!sec_tsp_log_size)
@@ -382,14 +342,13 @@ static ssize_t sec_tsp_log_write(struct file *file,
 	if (sscanf(page, "%u", &new_value) != 1) {
 		pr_info("%s\n", page);
 		/* print tsp_log to sec_tsp_log_buf */
-		sec_debug_tsp_log("%s", page);
+		sec_debug_tsp_log(page);
 	}
 	ret = count;
 out:
 	free_page((unsigned long)page);
 	return ret;
 }
-
 
 static ssize_t sec_tsp_log_read(struct file *file, char __user *buf,
 								size_t len, loff_t *offset)
@@ -434,39 +393,6 @@ static int __init sec_tsp_log_late_init(void)
 
 	return 0;
 }
-
 late_initcall(sec_tsp_log_late_init);
 #endif /* CONFIG_SEC_DEBUG_TSP_LOG */
 
-#ifdef CONFIG_SEC_DEBUG_TIMA_LOG
-
-static int __init sec_tima_log_setup(char *str)
-{
-	unsigned size = memparse(str, &str);
-	unsigned long base = 0;
-	/* If we encounter any problem parsing str ... */
-	if (!size || size != roundup_pow_of_two(size) || *str != '@'
-		|| kstrtoul(str + 1, 0, &base))
-			goto out;
-
-#ifdef CONFIG_NO_BOOTMEM
-	if (memblock_is_region_reserved(base, size) ||
-		memblock_reserve(base, size)) {
-#else
-	if (reserve_bootmem(base , size, BOOTMEM_EXCLUSIVE)) {
-#endif
-			pr_err("%s: failed reserving size %d " \
-						"at base 0x%lx\n", __func__, size, base);
-			goto out;
-	}
-	pr_info("tima :%s, base:%lx, size:%x \n", __func__,base, size);
-#ifdef CONFIG_KNOX_KAP
-	if (!boot_mode_security) goto out;
-#endif
-
-	return 1;
-out:
-	return 0;
-}
-__setup("sec_tima_log=", sec_tima_log_setup);
-#endif /* CONFIG_SEC_DEBUG_TIMA_LOG */

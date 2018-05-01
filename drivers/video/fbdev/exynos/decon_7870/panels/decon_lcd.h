@@ -67,7 +67,6 @@ struct decon_lcd {
 	unsigned int dsc_slice;
 	enum mic_ver mic_ver;
 	enum type_of_ddi ddi_type;
-	unsigned int clklane_onoff;
 };
 
 #endif

@@ -48,7 +48,13 @@ extern struct fimc_is_ois_info ois_pinfo;
 extern struct fimc_is_ois_info ois_uinfo;
 extern struct fimc_is_ois_exif ois_exif_data;
 
-static char ois_buf[FIMC_IS_MAX_OIS_SIZE];
+#if defined(CONFIG_CAMERA_EEPROM_SUPPORT_OIS)
+#define MAX_OIS_SIZE FIMC_IS_MAX_OIS_SIZE
+#else
+#define MAX_OIS_SIZE 12288 /* (12 * 1024) */
+#endif
+
+static char ois_buf[MAX_OIS_SIZE];
 static int ois_fw_base_addr;
 static u32 checksum_fw_backup;
 #if defined(CONFIG_SEC_FACTORY)
@@ -59,6 +65,34 @@ bool is_factory_mode = false;
 
 static int OIS_Shift_X[512] = {0,};
 static int OIS_Shift_Y[512] = {0,};
+
+int fimc_is_ois_reset(struct i2c_client *client)
+{
+	struct fimc_is_device_ois *ois_device;
+	struct fimc_is_ois_gpio *gpio;
+	int gpio_pin;
+
+	info("%s : E\n", __func__);
+
+	if (!client) {
+		pr_info("%s: client is null\n", __func__);
+		return -ENODEV;
+	}
+
+	ois_device = i2c_get_clientdata(client);
+	gpio = &ois_device->gpio;
+	gpio_pin = gpio->reset;
+
+	gpio_direction_output(gpio_pin, 0);
+	msleep(2);
+	gpio_direction_output(gpio_pin, 1);
+	msleep(2);
+
+	gpio_free(gpio_pin);
+	pr_info("%s : gpio free\n", __func__);
+
+	return 0;
+}
 
 int fimc_is_ois_gpio_on_impl(struct fimc_is_core *core)
 {
@@ -97,7 +131,7 @@ int fimc_is_ois_gpio_on_impl(struct fimc_is_core *core)
 		goto p_err;
 	}
 
-	ret = module_pdata->gpio_cfg(module->dev, SENSOR_SCENARIO_OIS_FACTORY, GPIO_SCENARIO_ON);
+	ret = module_pdata->gpio_cfg(module, SENSOR_SCENARIO_OIS_FACTORY, GPIO_SCENARIO_ON);
 	if (ret) {
 		err("gpio_cfg is fail(%d)", ret);
 		goto p_err;
@@ -147,7 +181,7 @@ int fimc_is_ois_gpio_off_impl(struct fimc_is_core *core)
 		goto p_err;
 	}
 
-	ret = module_pdata->gpio_cfg(module->dev, SENSOR_SCENARIO_OIS_FACTORY, GPIO_SCENARIO_OFF);
+	ret = module_pdata->gpio_cfg(module, SENSOR_SCENARIO_OIS_FACTORY, GPIO_SCENARIO_OFF);
 	if (ret) {
 		err("gpio_cfg is fail(%d)", ret);
 		goto p_err;
@@ -155,17 +189,6 @@ int fimc_is_ois_gpio_off_impl(struct fimc_is_core *core)
 
 p_err:
 	return ret;
-}
-
-int fimc_is_ois_sine_mode_impl(struct fimc_is_core *core, int mode)
-{
-/* sine test will be implemented by ISP firmware  */
-	return 0;
-}
-
-void fimc_is_ois_version(struct fimc_is_core *core)
-{
-/* Do Nothing */
 }
 
 void fimc_is_ois_offset_test_impl(struct fimc_is_core *core, long *raw_data_x, long *raw_data_y)
@@ -561,7 +584,7 @@ int fimc_is_ois_cal_revision(char *cal_ver)
 	return revision;
 }
 
-bool fimc_is_ois_version_compare(struct fimc_is_ois_info *m_info, struct fimc_is_ois_info *p_info)
+bool fimc_is_ois_ver_compare(struct fimc_is_ois_info *m_info, struct fimc_is_ois_info *p_info)
 {
 	int m_fw_ver, p_fw_ver;
 	int m_cal_ver, p_cal_ver;
@@ -600,12 +623,17 @@ int fimc_is_ois_open_fw(struct fimc_is_core *core, char *name)
 	long fsize = 0;
 	u8 *read_buf = NULL;
 	u8 *temp_buf = NULL;
+	struct fimc_is_vender_specific *specific;
 
 	static char fw_name[100];
 	struct file *fp = NULL;
 	mm_segment_t old_fs;
 	long nread;
 	int fw_requested = 1;
+
+	specific = core->vender.private_data;
+	if (!specific)
+		return -EINVAL;
 
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
@@ -632,7 +660,7 @@ request_fw:
 	fsize = fp->f_path.dentry->d_inode->i_size;
 	info("start, file path %s, size %ld Bytes\n", fw_name, fsize);
 
-	if (fsize > FIMC_IS_MAX_OIS_SIZE) {
+	if (fsize > MAX_OIS_SIZE) {
 		info("OIS FW size is larger than FW buffer. Use vmalloc.\n");
 		read_buf = vmalloc(fsize);
 		if (!read_buf) {
@@ -642,7 +670,7 @@ request_fw:
 		}
 		temp_buf = read_buf;
 	} else {
-		memset(ois_buf, 0x0, FIMC_IS_MAX_OIS_SIZE);
+		memset(ois_buf, 0x0, MAX_OIS_SIZE);
 		temp_buf = ois_buf;
 	}
 
@@ -661,7 +689,7 @@ request_fw:
 		FIMC_IS_OIS_CAL_VER_SIZE);
 	ois_pinfo.cal_ver[FIMC_IS_OIS_CAL_VER_SIZE] = '\0';
 
-	core->ois_ver_read = true;
+	specific->ois_ver_read = true;
 
 	info("OIS firmware is loaded from Phone binary.\n");
 
@@ -711,7 +739,7 @@ bool fimc_is_ois_check_fw_impl(struct fimc_is_core *core)
 		err("fimc_is_ois_open_fw failed(%d)\n", ret);
 	}
 
-	fimc_is_ois_version_compare(&ois_minfo, &ois_pinfo);
+	fimc_is_ois_ver_compare(&ois_minfo, &ois_pinfo);
 
 	fimc_is_ois_fw_status(core);
 
@@ -740,7 +768,7 @@ bool fimc_is_ois_check_fw_impl(struct fimc_is_core *core)
 	return true;
 }
 
-int fimc_is_ois_read_status(struct fimc_is_core *core)
+int fimc_is_ois_read_status_impl(struct fimc_is_core *core)
 {
 	int ret = 0;
 	u8 status = 0;
@@ -949,12 +977,25 @@ p_err:
 int fimc_is_ois_set_mode_impl(struct fimc_is_core *core, int mode)
 {
 	int ret = 0;
+#if defined(FORCE_OPTICAL_STABILIZATION_MODE_CENTERING)
+#else
 	u8 mode_value = 0;
 	u8 angle_data = 0;
 	bool factory_test_mode = false;
+#endif
 
 	info("OIS Change Mode = %d", mode);
 
+#if defined(FORCE_OPTICAL_STABILIZATION_MODE_CENTERING)
+	info("OIS : FORCE_OPTICAL_STABILIZATION_MODE_CENTERING\n");
+	/* OIS Servo On / OIS Off */
+	ret = fimc_is_ois_i2c_write(core->client1, 0x6020, 0x01);
+	ret |= fimc_is_ois_read_status_impl(core);
+	if (ret) {
+		err("i2c write fail\n");
+		goto p_err;
+	}
+#else
 	switch(mode) {
 	case OPTICAL_STABILIZATION_MODE_STILL:
 		mode_value = 0x7B;
@@ -995,21 +1036,22 @@ int fimc_is_ois_set_mode_impl(struct fimc_is_core *core, int mode)
 	} else if (angle_data) {
 		/* OIS Servo On / OIS Off */
 		ret = fimc_is_ois_i2c_write(core->client1, 0x6020, 0x01);
-		ret |= fimc_is_ois_read_status(core);
+		ret |= fimc_is_ois_read_status_impl(core);
 		if (ret) {
 			err("i2c write fail\n");
 			goto p_err;
 		}
 		/* OIS Mode */
 		ret |= fimc_is_ois_i2c_write(core->client1, 0x6021, mode_value);
-		ret |= fimc_is_ois_read_status(core);
+		ret |= fimc_is_ois_read_status_impl(core);
 		/* Compensation angle */
 		ret |= fimc_is_ois_i2c_write(core->client1, 0x6025, angle_data);
-		ret |= fimc_is_ois_read_status(core);
+		ret |= fimc_is_ois_read_status_impl(core);
 		/* OIS On */
 		ret |= fimc_is_ois_i2c_write(core->client1, 0x6020, 0x02);
-		ret |= fimc_is_ois_read_status(core);
+		ret |= fimc_is_ois_read_status_impl(core);
 	}
+#endif
 
 	if (ret) {
 		err("i2c write fail\n");
@@ -1328,14 +1370,22 @@ int fimc_is_ois_init_impl(struct fimc_is_core *core)
 	}
 	/* OIS Init : Still Shot */
 	/* OIS Servo On, OIS Off, Gyro On */
-	ret = fimc_is_ois_read_status(core);
+	ret = fimc_is_ois_read_status_impl(core);
 	ret |= fimc_is_ois_i2c_write(core->client1, 0x6020, 0x01);
 	ret |= fimc_is_ois_i2c_write(core->client1, 0x6023, 0x00);
-	ret |= fimc_is_ois_read_status(core);
+	ret |= fimc_is_ois_read_status_impl(core);
 
 	if (ret) {
 		err("OIS Start fail\n");
 	}
+
+	return ret;
+}
+
+bool fimc_is_ois_auto_test_impl(struct fimc_is_core *core,
+		            int threshold, bool *x_result, bool *y_result, int *sin_x, int *sin_y)
+{
+	int ret = 0;
 
 	return ret;
 }

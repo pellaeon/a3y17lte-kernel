@@ -35,7 +35,7 @@ static int blkpwr_enable(struct cal_pd *pd)
 		}
 	}
 
-	if (pd->post)
+	if (pd->post && !ret)
 		pd->post(1);
 
 out:
@@ -76,7 +76,7 @@ static int blkpwr_disable(struct cal_pd *pd)
 		}
 	}
 
-	if (pd->post)
+	if (pd->post && !ret)
 		pd->post(0);
 
 out:

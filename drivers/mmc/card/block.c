@@ -57,19 +57,6 @@
 #endif
 
 MODULE_ALIAS("mmc:block");
-
-#if defined(CONFIG_MMC_CPRM)
-#include "cprmdrv_samsung.h"
-#include <linux/ioctl.h>
-#define MMC_IOCTL_BASE		0xB3 /* Same as MMC block device major number */
-#define MMC_IOCTL_GET_SECTOR_COUNT	_IOR(MMC_IOCTL_BASE, 100, int)
-#define MMC_IOCTL_GET_SECTOR_SIZE		_IOR(MMC_IOCTL_BASE, 101, int)
-#define MMC_IOCTL_GET_BLOCK_SIZE		_IOR(MMC_IOCTL_BASE, 102, int)
-#define MMC_IOCTL_SET_RETRY_AKE_PROCESS		_IOR(MMC_IOCTL_BASE, 104, int)
-
-static int cprm_ake_retry_flag;
-#endif
-
 #ifdef MODULE_PARAM_PREFIX
 #undef MODULE_PARAM_PREFIX
 #endif
@@ -400,6 +387,45 @@ out:
 	return ERR_PTR(err);
 }
 
+static struct mmc_blk_ioc_data *mmc_blk_ioctl_copy_from_kernel(
+	struct mmc_ioc_cmd *icmd)
+{
+	struct mmc_blk_ioc_data *idata;
+	int err;
+
+	idata = kzalloc(sizeof(*idata), GFP_KERNEL);
+	if (!idata) {
+		err = -ENOMEM;
+		goto out;
+	}
+
+	memcpy(&idata->ic, icmd, sizeof(idata->ic));
+
+	idata->buf_bytes = (u64) idata->ic.blksz * idata->ic.blocks;
+	if (idata->buf_bytes > MMC_IOC_MAX_BYTES) {
+		err = -EOVERFLOW;
+		goto idata_err;
+	}
+
+	if (!idata->buf_bytes)
+		return idata;
+
+	idata->buf = kzalloc(idata->buf_bytes, GFP_KERNEL);
+	if (!idata->buf) {
+		err = -ENOMEM;
+		goto idata_err;
+	}
+
+	memcpy(idata->buf, (void *)idata->ic.data_ptr, idata->buf_bytes);
+
+	return idata;
+
+idata_err:
+	kfree(idata);
+out:
+	return ERR_PTR(err);
+}
+
 static int ioctl_rpmb_card_status_poll(struct mmc_card *card, u32 *status,
 				       u32 retries_max)
 {
@@ -501,7 +527,7 @@ struct scatterlist *mmc_blk_get_sg(struct mmc_card *card,
 }
 
 static int mmc_blk_ioctl_cmd(struct block_device *bdev,
-	struct mmc_ioc_cmd __user *ic_ptr)
+	struct mmc_ioc_cmd __user *ic_ptr, struct mmc_ioc_cmd *icmd)
 {
 	struct mmc_blk_ioc_data *idata;
 	struct mmc_blk_data *md;
@@ -513,6 +539,7 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 	int err = 0;
 	int is_rpmb = false;
 	u32 status = 0;
+	int srpmb = false;
 
 	/*
 	 * The caller must have CAP_SYS_RAWIO, and must be calling this on the
@@ -522,7 +549,13 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 	if ((!capable(CAP_SYS_RAWIO)) || (bdev != bdev->bd_contains))
 		return -EPERM;
 
-	idata = mmc_blk_ioctl_copy_from_user(ic_ptr);
+	if (!ic_ptr && icmd)
+		srpmb = true;
+
+	if (!srpmb)
+		idata = mmc_blk_ioctl_copy_from_user(ic_ptr);
+	else
+		idata = mmc_blk_ioctl_copy_from_kernel(icmd);
 	if (IS_ERR(idata))
 		return PTR_ERR(idata);
 
@@ -636,17 +669,24 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 	if (idata->ic.postsleep_min_us)
 		usleep_range(idata->ic.postsleep_min_us, idata->ic.postsleep_max_us);
 
-	if (copy_to_user(&(ic_ptr->response), cmd.resp, sizeof(cmd.resp))) {
-		err = -EFAULT;
-		goto cmd_rel_host;
-	}
-
-	if (!idata->ic.write_flag) {
-		if (copy_to_user((void __user *)(unsigned long) idata->ic.data_ptr,
-						idata->buf, idata->buf_bytes)) {
+	if (!srpmb) {
+		if (copy_to_user(&(ic_ptr->response), cmd.resp, sizeof(cmd.resp))) {
 			err = -EFAULT;
 			goto cmd_rel_host;
 		}
+
+		if (!idata->ic.write_flag) {
+			if (copy_to_user((void __user *)(unsigned long) idata->ic.data_ptr,
+							idata->buf, idata->buf_bytes)) {
+				err = -EFAULT;
+				goto cmd_rel_host;
+			}
+		}
+	} else {
+		memcpy(icmd->response, cmd.resp, sizeof(cmd.resp));
+
+		if (!idata->ic.write_flag)
+			memcpy((void *)icmd->data_ptr, idata->buf, idata->buf_bytes);
 	}
 
 	if (is_rpmb) {
@@ -680,85 +720,8 @@ static int mmc_blk_ioctl(struct block_device *bdev, fmode_t mode,
 	struct mmc_blk_data *md = bdev->bd_disk->private_data;
 	struct mmc_card *card = md->queue.card;
 	int ret = -EINVAL;
-	#if defined(CONFIG_MMC_CPRM)
-	printk(KERN_DEBUG " %s ], %x ", __func__, cmd);
-
-	switch (cmd) {
-	case MMC_IOCTL_SET_RETRY_AKE_PROCESS:
-		cprm_ake_retry_flag = 1;
-		ret = 0;
-		break;
-
-	case MMC_IOCTL_GET_SECTOR_COUNT: {
-		int size = 0;
-
-		size = (int)get_capacity(md->disk) << 9;
-		printk(KERN_DEBUG "[%s]:MMC_IOCTL_GET_SECTOR_COUNT size = %d\n",
-				__func__, size);
-
-		return copy_to_user((void *)arg, &size, sizeof(u64));
-		}
-		break;
-	case ACMD13:
-	case ACMD18:
-	case ACMD25:
-	case ACMD43:
-	case ACMD44:
-	case ACMD45:
-	case ACMD46:
-	case ACMD47:
-	case ACMD48: {
-		struct cprm_request *req = (struct cprm_request *)arg;
-		static int i;
-		static u32 temp_arg[16] = {0};
-		
-		printk(KERN_DEBUG "%s:cmd [%x]\n",
-				__func__, cmd);
-
-		if (cmd == ACMD43) {
-			printk(KERN_DEBUG"storing acmd43 arg[%d] = %ul\n",
-					i, (unsigned int)req->arg);
-			temp_arg[i] = req->arg;
-			i++;
-			if (i >= 16) {
-				printk(KERN_DEBUG"reset acmd43 i = %d\n", i);
-				i = 0;
-			}
-		}
-		if (cmd == ACMD45 && cprm_ake_retry_flag == 1) {
-			cprm_ake_retry_flag = 0;
-			printk(KERN_DEBUG"ACMD45.. I'll call ACMD43 and ACMD44 first\n");
-
-			for (i = 0; i < 16; i++) {
-				printk(KERN_DEBUG"calling ACMD43 with arg[%d] = %ul\n",
-						i, (unsigned int)temp_arg[i]);
-				if (stub_sendcmd(card, ACMD43, temp_arg[i],
-							512, NULL) < 0) {
-					printk(KERN_DEBUG"error ACMD43 %d\n",
-							i);
-					return -EINVAL;
-				}
-			}
-			printk(KERN_DEBUG"calling ACMD44\n");
-			if (stub_sendcmd(card, ACMD44, 0, 8, NULL) < 0) {
-
-				printk(KERN_DEBUG"error in ACMD44 %d\n",
-						i);
-				return -EINVAL;
-			}
-
-		}
-		return stub_sendcmd(card, req->cmd,
-				req->arg, req->len, req->buff);
-		}
-		break;
-	default:
-		printk(KERN_DEBUG"%s: Invalid ioctl command\n", __func__);
-		break;
-	}
-    #endif
 	if (cmd == MMC_IOC_CMD)
-		ret = mmc_blk_ioctl_cmd(bdev, (struct mmc_ioc_cmd __user *)arg);
+		ret = mmc_blk_ioctl_cmd(bdev, (struct mmc_ioc_cmd __user *)arg, NULL);
 	else if(cmd == MMC_IOC_CLOCK)
 	{
 		unsigned int clock = (unsigned int)arg;
@@ -777,6 +740,15 @@ static int mmc_blk_ioctl(struct block_device *bdev, fmode_t mode,
 	return ret;
 }
 
+#ifdef CONFIG_MMC_SRPMB
+static int mmc_blk_srpmb_access(struct block_device *bdev, struct mmc_ioc_cmd *icmd)
+{
+	int ret = -EINVAL;
+	ret = mmc_blk_ioctl_cmd(bdev, NULL, icmd);
+	return ret;
+}
+#endif
+
 #ifdef CONFIG_COMPAT
 static int mmc_blk_compat_ioctl(struct block_device *bdev, fmode_t mode,
 	unsigned int cmd, unsigned long arg)
@@ -793,6 +765,9 @@ static const struct block_device_operations mmc_bdops = {
 	.ioctl			= mmc_blk_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl		= mmc_blk_compat_ioctl,
+#endif
+#ifdef CONFIG_MMC_SRPMB
+	.srpmb_access		= mmc_blk_srpmb_access,
 #endif
 };
 
@@ -907,15 +882,6 @@ static int send_stop_raw(struct mmc_card *card, u32 *status)
 	return err;
 }
 
-
-#define CMD_ERRORS							\
-	(R1_OUT_OF_RANGE |	/* Command argument out of range */	\
-	 R1_ADDRESS_ERROR |	/* Misaligned address */		\
-	 R1_BLOCK_LEN_ERROR |	/* Transferred block length incorrect */\
-	 R1_WP_VIOLATION |	/* Tried to write to protected block */	\
-	 R1_CC_ERROR |		/* Card controller error */		\
-	 R1_ERROR)		/* General/unknown error */
-
 static void mmc_error_count_log(struct mmc_card *card, int index, int error, u32 status)
 {
 	struct mmc_card_error_log *err_log;
@@ -947,23 +913,25 @@ static void mmc_card_error_logging(struct mmc_card *card, struct mmc_blk_request
 {
 	struct mmc_card_error_log *err_log;
 	int index = 0;
-
+	int error = 0;
 	err_log = card->err_log;
 
-	if (status & STATUS_MASK || brq->stop.resp[0] & STATUS_MASK) 
-	{ 
-		if(status & R1_ERROR || brq->stop.resp[0] & R1_ERROR) 
-			err_log[index].ge_cnt++; 
-		if(status & R1_CC_ERROR || brq->stop.resp[0] & R1_CC_ERROR) 
-			err_log[index].cc_cnt++; 
-		if(status & R1_CARD_ECC_FAILED || brq->stop.resp[0] & R1_CARD_ECC_FAILED) 
-			err_log[index].ecc_cnt++; 
-		if(status & R1_WP_VIOLATION || brq->stop.resp[0] & R1_WP_VIOLATION) 
-			err_log[index].wp_cnt++; 
-		if(status & R1_OUT_OF_RANGE || brq->stop.resp[0] & R1_OUT_OF_RANGE) 
-			err_log[index].oor_cnt++;
-	} 	
+	if (status & STATUS_MASK || brq->stop.resp[0] & STATUS_MASK)
+	{
+		if(status & R1_ERROR || brq->stop.resp[0] & R1_ERROR)
+			err_log[index].ge_cnt++;
+		if(status & R1_CC_ERROR || brq->stop.resp[0] & R1_CC_ERROR)
+			err_log[index].cc_cnt++;
+		if(status & R1_CARD_ECC_FAILED || brq->stop.resp[0] & R1_CARD_ECC_FAILED)
+			err_log[index].ecc_cnt++;
+		if(status & R1_WP_VIOLATION || brq->stop.resp[0] & R1_WP_VIOLATION)
+			err_log[index].wp_cnt++;
+		if(status & R1_OUT_OF_RANGE || brq->stop.resp[0] & R1_OUT_OF_RANGE)
+			err_log[index].oor_cnt++;	
+	}
 
+	if(!brq)
+		return;
 	if (brq->sbc.error)
 		mmc_error_count_log(card, index, brq->sbc.error, status);
 	if (brq->cmd.error) {
@@ -977,6 +945,12 @@ static void mmc_card_error_logging(struct mmc_card *card, struct mmc_blk_request
 	if (brq->stop.error) {
 		index = 6;
 		mmc_error_count_log(card, index, brq->stop.error, status);
+	}
+	if (!(status & R1_READY_FOR_DATA) ||
+			(R1_CURRENT_STATE(status) == R1_STATE_PRG)) {
+		index = 8;
+		error = -ETIMEDOUT;	// card stuck in prg state
+		mmc_error_count_log(card, index, error, status);
 	}
 
 	return;
@@ -1007,9 +981,9 @@ static ssize_t error_count_show(struct device *dev,
 	err_log = card->err_log;
 
 	total_len += snprintf(buf, PAGE_SIZE,
-			"type: err    status: first_issue_time:  last_issue_time:      count\n");
+				"type: err    status: first_issue_time:  last_issue_time:      count\n");
 
-	for (i = 0; i < 8; i++) {
+	for (i = 0; i < 10; i++) {
 		total_len += snprintf(buf + (sizeof(char)*68*(i+1)), PAGE_SIZE,
 				"%4s:%4d 0x%08x %16llu, %16llu, %10d\n",
 				err_log[i].type, err_log[i].err_type,
@@ -1019,7 +993,7 @@ static ssize_t error_count_show(struct device *dev,
 				err_log[i].count);
 	}
 
-out:
+ out:
 	return total_len;
 }
 
@@ -1044,7 +1018,7 @@ static ssize_t error_count_store(struct device *dev,
 	if (kstrtoint(buf, 0, &value))
 		goto out;
 
-out:
+ out:
 	return len;
 }
 
@@ -1084,7 +1058,20 @@ static void mmc_card_debug_log_sysfs_init(struct mmc_card *card)
 	snprintf(card->err_log[7].type, sizeof(char)*4, "stop");
 	card->err_log[6].err_type = -EILSEQ;
 	card->err_log[7].err_type = -ETIMEDOUT;
+
+	snprintf(card->err_log[8].type, sizeof(char)*4, "busy");
+	snprintf(card->err_log[9].type, sizeof(char)*4, "busy");
+	card->err_log[8].err_type = -EILSEQ;
+	card->err_log[9].err_type = -ETIMEDOUT;
 }
+
+#define CMD_ERRORS							\
+	(R1_OUT_OF_RANGE |	/* Command argument out of range */	\
+	 R1_ADDRESS_ERROR |	/* Misaligned address */		\
+	 R1_BLOCK_LEN_ERROR |	/* Transferred block length incorrect */\
+	 R1_WP_VIOLATION |	/* Tried to write to protected block */	\
+	 R1_CC_ERROR |		/* Card controller error */		\
+	 R1_ERROR)		/* General/unknown error */
 
 static int card_busy_detect(struct mmc_card *card, unsigned int timeout_ms,
 		bool hw_busy_detect, struct request *req, unsigned int *gen_err)
@@ -1092,6 +1079,14 @@ static int card_busy_detect(struct mmc_card *card, unsigned int timeout_ms,
 	unsigned long timeout = jiffies + msecs_to_jiffies(timeout_ms);
 	int err = 0;
 	u32 status;
+	struct mmc_queue_req *mq_mrq;
+	struct mmc_blk_request *brq;
+
+	if (card->host->areq) {
+		mq_mrq = container_of(card->host->areq, struct mmc_queue_req,
+				mmc_active);
+		brq = &mq_mrq->brq;
+	}
 
 	do {
 		err = get_card_status(card, &status, 5);
@@ -1127,6 +1122,7 @@ static int card_busy_detect(struct mmc_card *card, unsigned int timeout_ms,
 			pr_err("%s: Card stuck in programming state! %s %s\n",
 				mmc_hostname(card->host),
 				req->rq_disk->disk_name, __func__);
+			mmc_card_error_logging(card, brq, status);
 			return -ETIMEDOUT;
 		}
 
@@ -2370,6 +2366,7 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 	if (req && !mq->mqrq_prev->req) {
 		/* claim host only for the first request */
 		mmc_get_card(card);
+
 #ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
 		if (mmc_bus_needs_resume(card->host))
 			mmc_resume_bus(card->host);

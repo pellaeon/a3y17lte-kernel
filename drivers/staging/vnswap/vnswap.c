@@ -352,7 +352,7 @@ int vnswap_find_free_area_in_backing_storage(int *nand_offset)
 	}
 
 	for (i = backing_storage_bitmap_last_allocated_index + 1;
-		i < vnswap_device->bs_size; i++)
+		i < (int)vnswap_device->bs_size; i++)
 		if (!test_bit(i, backing_storage_bitmap)) {
 			found = 1;
 			break;
@@ -966,10 +966,7 @@ int vnswap_ioctl(struct block_device *bdev, fmode_t mode,
 
 void vnswap_slot_free_notify(struct block_device *bdev, unsigned long index)
 {
-	struct vnswap *vnswap;
 	int nand_offset = 0;
-
-	vnswap = bdev->bd_disk->private_data;
 
 	spin_lock_irq(&vnswap_table_lock);
 	nand_offset = vnswap_table ? vnswap_table[index] : -1;

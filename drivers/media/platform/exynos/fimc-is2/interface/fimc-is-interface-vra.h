@@ -14,10 +14,9 @@
 #include "fimc-is-interface-library.h"
 #include "fimc-is-metadata.h"
 #include "fimc-is-param.h"
-#include "fimc-is-config.h"
 #if defined(CONFIG_FIMC_IS_V4_0_0)
 #include "fimc-is-lib-vra_v1_1.h"
-#elif defined(CONFIG_FIMC_IS_V3_11_0) || defined(CONFIG_FIMC_IS_V5_10_0)
+#elif defined(CONFIG_FIMC_IS_V3_11_0) || defined(CONFIG_FIMC_IS_V3_20_0) || defined(CONFIG_FIMC_IS_V5_10_0) || defined(CONFIG_FIMC_IS_V4_3_0)
 #include "fimc-is-lib-vra_v1_10.h"
 #endif
 
@@ -58,7 +57,7 @@ struct lib_vra_fr_work_info {
 struct fimc_is_lib_vra_os_system_funcs {
 	void (*control_task_set_event)(u32 event_type);
 	void (*fw_algs_task_set_event)(u32 event_type);
-	int  (*set_dram_adr_from_core_to_vdma)(ulong src_adr, u32 *target_adr);
+	int  (*set_dram_adr_from_core_to_vdma)(ulong src_adr, dma_addr_t *target_adr);
 	void (*clean_cache_region)(ulong start_addr, u32 size);
 	void (*invalidate_cache_region)(ulong start_addr, u32 size);
 	void (*data_write_back_cache_region)(ulong start_adr, u32 size);
@@ -102,8 +101,8 @@ struct fimc_is_lib_vra_interface_funcs {
 			enum api_vra_orientation *orientation);
 	enum api_vra_type (*on_new_frame)(void *sen_obj_ptr,
 			vra_uint32 unique_index,
-			vra_uint32 diff_prev_fr_100_micro,
-			unsigned char *base_adrress);
+			unsigned char *base_adrress_kva,
+			unsigned char *base_adrress_dva);
 	enum api_vra_type (*on_control_task_event)(void *fr_obj_ptr);
 	enum api_vra_type (*on_fw_algs_task_event)(void *fr_obj_ptr);
 	enum api_vra_type (*on_interrupt)(void *fr_obj_ptr, unsigned int index);
@@ -204,7 +203,7 @@ int fimc_is_lib_vra_apply_tune(struct fimc_is_lib_vra *lib_vra,
 int fimc_is_lib_vra_set_orientation(struct fimc_is_lib_vra *lib_vra,
 	u32 orientation, u32 instance);
 int fimc_is_lib_vra_new_frame(struct fimc_is_lib_vra *lib_vra,
-	unsigned char *buffer, u32 instance);
+	unsigned char *buffer_kva, unsigned char *buffer_dva, u32 instance);
 int fimc_is_lib_vra_handle_interrupt(struct fimc_is_lib_vra *lib_vra, u32 id);
 int fimc_is_lib_vra_get_meta(struct fimc_is_lib_vra *lib_vra,
 	struct camera2_shot *shot);
@@ -216,21 +215,4 @@ int fimc_is_lib_vra_test_image_load(struct fimc_is_lib_vra *lib_vra);
 #else
 #define lib_vra_check_size(desc, param, fcount)
 #endif
-
-#ifdef ENABLE_FPSIMD_FOR_USER
-#define CALL_VRAOP(lib, op, args...)					\
-	({								\
-		int ret_call_libop;					\
-									\
-		fpsimd_get();						\
-		ret_call_libop = ((lib)->itf_func.op ?			\
-				(lib)->itf_func.op(args) : -EINVAL);	\
-		fpsimd_put();						\
-									\
-	ret_call_libop;})
-#else
-#define CALL_VRAOP(lib, op, args...)					\
-	((lib)->itf_func.op ? (lib)->itf_func.op(args) : -EINVAL)
-#endif
-
 #endif

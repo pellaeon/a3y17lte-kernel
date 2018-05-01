@@ -197,11 +197,7 @@ static int sdio_read_cccr(struct mmc_card *card, u32 ocr)
 		if (!card->sw_caps.sd3_bus_mode) {
 			if (speed & SDIO_SPEED_SHS) {
 				card->cccr.high_speed = 1;
-#ifndef CONFIG_MMC_SEC_QUIRK_CLOCK_SETTING
 				card->sw_caps.hs_max_dtr = 50000000;
-#else
-				card->sw_caps.hs_max_dtr = 51000000;
-#endif
 			} else {
 				card->cccr.high_speed = 0;
 				card->sw_caps.hs_max_dtr = 25000000;
@@ -383,11 +379,7 @@ static unsigned mmc_sdio_get_max_clock(struct mmc_card *card)
 		 * high-speed, but it seems that 50 MHz is
 		 * mandatory.
 		 */
-#ifndef CONFIG_MMC_SEC_QUIRK_CLOCK_SETTING
 		max_dtr = 50000000;
-#else
-		max_dtr = 51000000;
-#endif
 	} else {
 		max_dtr = card->cis.max_dtr;
 	}
@@ -1277,14 +1269,6 @@ int mmc_attach_sdio(struct mmc_host *host)
 			goto remove_added;
 	}
 
-	#if defined(CONFIG_BCM4343) || defined(CONFIG_BCM43454) || defined(CONFIG_BCM43455)
-		if(!strcmp("mmc1", mmc_hostname(host))) {
-		printk("%s, Set Nonremovable flag\n",mmc_hostname(host));
-		host->caps |= MMC_CAP_NONREMOVABLE;
-		}
-	#endif /* CONFIG_BCM4343 || CONFIG_BCM43454 || CONFIG_BCM43455 */
-
-
 	mmc_claim_host(host);
 	return 0;
 
@@ -1310,50 +1294,6 @@ err:
 
 int sdio_reset_comm(struct mmc_card *card)
 {
-#if defined(CONFIG_BCM4343) || defined(CONFIG_BCM43454) || defined(CONFIG_BCM43455)
-	struct mmc_host *host = card->host;
-	u32 ocr;
-	u32 rocr;
-	int err;
-
-	printk("%s():\n", __func__);
-	mmc_claim_host(host);
-	
-	mmc_set_timing(host, MMC_TIMING_LEGACY);
-	mmc_set_clock(host, host->f_init);
-
-	sdio_reset(host);
-	mmc_go_idle(host);
-
-	mmc_send_if_cond(host, host->ocr_avail);
-	
-	err = mmc_send_io_op_cond(host, 0, &ocr);
-	if (err)
-		goto err;
-	
-	if (host->ocr_avail_sdio)
-		host->ocr_avail = host->ocr_avail_sdio;
-
-
-	rocr = mmc_select_voltage(host, ocr & ~0x7F);
-	if (!rocr) {
-		err = -EINVAL;
-		printk("%s(): voltage err\n", __func__);
-		goto err;
-	}
-	
-	err = mmc_sdio_init_card(host, rocr, card, 0);
-	if (err)
-		goto err;
-
-	mmc_release_host(host);
-	return 0;
-err:
-	printk("%s: Error resetting SDIO communications (%d)\n",
-	       mmc_hostname(host), err);
-	mmc_release_host(host);
-	return err;
-#else
 	struct mmc_host *host = card->host;
 	u32 ocr;
 	u32 rocr;
@@ -1387,6 +1327,5 @@ err:
 	       mmc_hostname(host), err);
 	mmc_release_host(host);
 	return err;
-#endif /* CONFIG_BCM4343 || CONFIG_BCM43454 || CONFIG_BCM43455 */
 }
 EXPORT_SYMBOL(sdio_reset_comm);

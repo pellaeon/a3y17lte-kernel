@@ -248,7 +248,7 @@ SUBARCH := $(shell uname -m | sed -e s/i.86/x86/ -e s/x86_64/x86/ \
 # "make" in the configured kernel build directory always uses that.
 # Default value for CROSS_COMPILE is not to prefix executables
 # Note: Some architectures assign CROSS_COMPILE in their arch/*/Makefile
-
+export KBUILD_BUILDHOST := $(SUBARCH)
 ARCH		?=arm64
 CROSS_COMPILE	?=../PLATFORM/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
 
@@ -802,12 +802,17 @@ ifeq ($(shell $(CONFIG_SHELL) $(srctree)/scripts/gcc-goto.sh $(CC)), y)
 	KBUILD_CFLAGS += -DCC_HAVE_ASM_GOTO
 endif
 
+#ICCC
+ifeq ($(CONFIG_TZ_ICCC),y)
+    KBUILD_CFLAGS += -Idrivers/gud/gud-exynos7880/MobiCoreDriver/mci/
+endif
+
 include $(srctree)/scripts/Makefile.extrawarn
 
 #Disable the whole of the following block to disable LKM AUTH
 ifeq ($(CONFIG_TIMA_LKMAUTH),y)
 ifeq ($(CONFIG_TIMA),y)
-    KBUILD_CFLAGS += -DTIMA_LKM_AUTH_ENABLED -Idrivers/gud/gud-exynos7870/MobiCoreDriver/mci/
+    KBUILD_CFLAGS += -DTIMA_LKM_AUTH_ENABLED -Idrivers/gud/gud-exynos7880/MobiCoreDriver/mci/
     KBUILD_AFLAGS += -DTIMA_LKM_AUTH_ENABLED
 endif
 endif

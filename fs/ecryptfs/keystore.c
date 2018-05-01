@@ -34,7 +34,6 @@
 #include <linux/slab.h>
 #include "ecryptfs_kernel.h"
 
-
 #ifdef CONFIG_SDP
 #include "ecryptfs_dek.h"
 #endif

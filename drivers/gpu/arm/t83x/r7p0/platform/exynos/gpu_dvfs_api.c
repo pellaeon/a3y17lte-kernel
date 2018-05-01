@@ -16,7 +16,7 @@
  */
 
 #include <mali_kbase.h>
-#if defined (CONFIG_SOC_EXYNOS7870)
+#if defined (CONFIG_SOC_EXYNOS7870) && defined(CONFIG_PWRCAL)
 #include <linux/apm-exynos.h>
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 17, 0)
 #include <mach/pm_domains-cal.h>
@@ -25,6 +25,17 @@
 #else
 #include <soc/samsung/pm_domains-cal.h>
 #include <../drivers/soc/samsung/pwrcal/S5E7870/S5E7870-vclk.h>
+#include <soc/samsung/asv-exynos.h>
+#endif
+#elif defined (CONFIG_SOC_EXYNOS7880) && defined(CONFIG_PWRCAL)
+#include <linux/apm-exynos.h>
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 17, 0)
+#include <mach/pm_domains-cal.h>
+#include <../pwrcal/S5E7880/S5E7880-vclk.h>
+#include <mach/asv-exynos.h>
+#else
+#include <soc/samsung/pm_domains-cal.h>
+#include <../drivers/soc/samsung/pwrcal/S5E7880/S5E7880-vclk.h>
 #include <soc/samsung/asv-exynos.h>
 #endif
 #else
@@ -41,17 +52,17 @@
 #include <mach/asv-exynos_cal.h>
 #endif
 
-#if defined (CONFIG_SOC_EXYNOS7870)
+#if defined (CONFIG_SOC_EXYNOS7870) || defined (CONFIG_SOC_EXYNOS7880)
 #define GPU_SET_CLK_VOL(kbdev, prev_clk, clk, vol)			\
 ({			\
 	if (prev_clk < clk) {			\
-		gpu_control_set_pmqos(kbdev);			\
 		gpu_control_set_voltage(kbdev, vol);			\
+		cal_dfs_set_ema(dvfs_g3d, vol);				\
 		gpu_control_set_clock(kbdev, clk);			\
 	} else {			\
 		gpu_control_set_clock(kbdev, clk);			\
+		cal_dfs_set_ema(dvfs_g3d, vol);				\
 		gpu_control_set_voltage(kbdev, vol);			\
-		gpu_control_set_pmqos(kbdev);			\
 	}			\
 })
 #else
@@ -569,6 +580,24 @@ int gpu_dvfs_get_level(int clock)
 	return -1;
 }
 
+int gpu_dvfs_get_level_clock(int clock)
+{
+	struct kbase_device *kbdev = pkbdev;
+	struct exynos_context *platform = (struct exynos_context *) kbdev->platform_context;
+	int i, min, max;
+
+	DVFS_ASSERT(platform);
+
+	min = gpu_dvfs_get_level(platform->gpu_min_clock);
+	max = gpu_dvfs_get_level(platform->gpu_max_clock);
+
+	for (i = max; i <= min; i++)
+		if (clock - (int)(platform->table[i].clock) >= 0)
+			return platform->table[i].clock;
+
+	return -1;
+}
+
 int gpu_dvfs_get_max_freq(void)
 {
 #if defined(CONFIG_MALI_DVFS)
@@ -595,24 +624,6 @@ int gpu_dvfs_get_min_freq(void)
 #else
 	return -1;
 #endif
-}
-
-int gpu_dvfs_get_level_clock(int clock)
-{
-	struct kbase_device *kbdev = pkbdev;
-	struct exynos_context *platform = (struct exynos_context *) kbdev->platform_context;
-	int i, min, max;
-
-	DVFS_ASSERT(platform);
-
-	min = gpu_dvfs_get_level(platform->gpu_min_clock);
-	max = gpu_dvfs_get_level(platform->gpu_max_clock);
-
-	for (i = max; i <= min; i++)
-		if (clock - (int)(platform->table[i].clock) >= 0)
-			return platform->table[i].clock;
-
-	return -1;
 }
 
 int gpu_dvfs_get_voltage(int clock)

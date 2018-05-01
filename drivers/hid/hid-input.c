@@ -1256,6 +1256,7 @@ static void hidinput_led_worker(struct work_struct *work)
 		kfree(buf);
 		return;
 	}
+
 	hid_output_report(report, buf);
 	/* synchronous output report */
 	ret = hid_hw_output_report(hid, buf, len);

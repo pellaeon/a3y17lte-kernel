@@ -639,14 +639,6 @@ config MMC_DW_EXYNOS
 	  Synopsys DesignWare Memory Card Interface driver. Select this option
 	  for platforms based on Exynos4 and Exynos5 SoC's.
 
-config MMC_DW_EXYNOS_EMMC_SHUTDOWN_POWERCTRL
-	tristate "Exynos specific extensions for Synopsys DWMCI needed eMMC shutdown power off"
-	depends on MMC_DW_EXYNOS
-	select MMC_DW_PLTFM
-	help
-	  This selects support for Samsung Exynos SoC specific extensions to the
-	  Synopsys DesignWare Memory Card Interface driver.
-
 config MMC_DW_DEBUG
 	bool "Samsung DWMCI debug feature"
 	depends on MMC_DW
@@ -793,3 +785,9 @@ config MMC_SUNXI
 	help
 	  This selects support for the SD/MMC Host Controller on
 	  Allwinner sunxi SoCs.
+
+config MMC_SRPMB
+	bool "MMC Secure RPMB Support"
+	depends on MMC_DW
+	help
+	  This option activates mmc secure rpmb.

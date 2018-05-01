@@ -24,28 +24,6 @@ config SENSORS_SSP_STM32
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
 
-config SENSORS_SSP_2017A3
-	tristate "Sensors ssp 2017a3"
-	default n
-	depends on SPI
-	help
-	  ssp driver for sensor hub.
-          If you say yes here you get ssp support for
-	  sensor hub.
-	  To compile this driver as a module, choose M here: the
-	  module will be called ssp.
-
-config SENSORS_SSP_A3XPREMIUM
-	tristate "Sensors ssp a3xpremium"
-	default n
-	depends on SPI
-	help
-	  ssp driver for sensor hub.
-          If you say yes here you get ssp support for
-	  sensor hub.
-	  To compile this driver as a module, choose M here: the
-	  module will be called ssp.
-
 config SSP_REGISTER_RW
 	tristate "SensorHub support Register RW"
 	default n

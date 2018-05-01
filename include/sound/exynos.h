@@ -62,8 +62,10 @@ extern void lpass_put_cpu_hotplug(void);
 
 #ifdef CONFIG_SND_SAMSUNG_AUDSS
 extern int exynos_check_aud_pwr(void);
+void exynos_aud_alpa_notifier(bool on);
 #else
 static inline int exynos_check_aud_pwr(void) { return -1; }
+static void exynos_aud_alpa_notifier(bool on) { return; }
 #endif
 
 
@@ -83,5 +85,7 @@ extern void lpass_reset_toggle(int ip);
 
 extern void lpass_set_ip_idle(bool value);
 extern void lpass_set_fm_bt_mux(int is_fm);
+
+
 
 #endif /* __SOUND_EXYNOS_H */

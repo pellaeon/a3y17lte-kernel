@@ -10,6 +10,7 @@ obj-$(CONFIG_SOC_EXYNOS5410)	+= clk-exynos5410.o
 obj-$(CONFIG_SOC_EXYNOS5420)	+= clk-exynos5420.o
 obj-$(CONFIG_SOC_EXYNOS5440)	+= clk-exynos5440.o
 obj-$(CONFIG_SOC_EXYNOS7870)	+= clk-exynos7870.o
+obj-$(CONFIG_SOC_EXYNOS7880)	+= clk-exynos7880.o
 ifeq ($(CONFIG_SOC_EXYNOS8890), y)
 ifeq ($(CONFIG_SOC_EXYNOS8890_EVT1), y)
 	obj-y				+= clk-exynos8890.o

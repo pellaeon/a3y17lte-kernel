@@ -30,7 +30,7 @@
 
 #if defined(CONFIG_SOC_EXYNOS8890)
 #define GPIO_ALIVE_PA_ADDR             0x10580000
-#elif defined(CONFIG_SOC_EXYNOS7870)
+#elif defined(CONFIG_SOC_EXYNOS7870) || defined(CONFIG_SOC_EXYNOS7880)
 #define GPIO_ALIVE_PA_ADDR             0x139F0000
 #endif
 #define WAKEUP_STAT_EINT                (1 << 0)
@@ -99,7 +99,8 @@ static void exynos_show_wakeup_reason_eint(void)
 		ext_int_pend =
 			__raw_readl(EXYNOS_EINT_PEND(exynos_eint_base, i));
 
-		for_each_set_bit(bit, &ext_int_pend, size) {
+		for_each_set_bit(bit, (const unsigned long *)&ext_int_pend,
+					size) {
 			u32 gpio;
 			int irq;
 
@@ -111,6 +112,7 @@ static void exynos_show_wakeup_reason_eint(void)
 
 #ifdef CONFIG_SUSPEND
 			log_wakeup_reason(irq);
+			printk(KERN_INFO "IRQ %3d <-- GPIO[%2d]\n", irq, gpio);
 			update_wakeup_reason_stats(irq, i + bit);
 #endif
 			found = 1;
@@ -307,11 +309,20 @@ static int exynos_pm_syscore_suspend(void)
 	is_cp_call = is_cp_aud_enabled();
 	if (is_cp_call) {
 		psci_index = PSCI_SYSTEM_CP_CALL;
+#if defined(CONFIG_SOC_EXYNOS7880)
+		exynos_prepare_sys_powerdown(SYS_LPD);
+#else
 		exynos_prepare_cp_call();
+#endif
 		pr_info("%s: Enter CP Call mode for voice call\n",__func__);
 	} else {
+#if defined(CONFIG_SOC_EXYNOS7880)
+		psci_index = PSCI_CLUSTER_SLEEP;
+		exynos_prepare_sys_powerdown(SYS_DSTOP);
+#else
 		psci_index = PSCI_SYSTEM_SLEEP;
 		exynos_prepare_sys_powerdown(SYS_SLEEP);
+#endif
 		pr_info("%s: Enter sleep mode\n",__func__);
 	}
 
@@ -322,10 +333,20 @@ static void exynos_pm_syscore_resume(void)
 {
 	pr_info("========== wake up ==========\n");
 	if (is_cp_call)
+#if defined(CONFIG_SOC_EXYNOS7880)
+		exynos_wakeup_sys_powerdown(SYS_LPD,
+					(bool)early_wakeup);
+#else
 		exynos_wakeup_cp_call(early_wakeup);
+#endif
 	else
+#if defined(CONFIG_SOC_EXYNOS7880)
+		exynos_wakeup_sys_powerdown(SYS_DSTOP,
+					(bool)early_wakeup);
+#else
 		exynos_wakeup_sys_powerdown(SYS_SLEEP,
 					(bool)early_wakeup);
+#endif
 
 	exynos_show_wakeup_reason((bool)early_wakeup);
 
@@ -419,8 +440,42 @@ static const struct attribute_group *exynos_info_sysfs_groups[] = {
 	NULL,
 };
 
+#if defined(CONFIG_SEC_FACTORY)
+enum ids_info
+{
+	table_ver,
+	cpu_asv,
+	g3d_asv,
+	mif_asv
+};
+
+extern int asv_ids_information(enum ids_info id);
+
+static ssize_t show_asv_info(struct device *dev,
+					struct device_attribute *attr,
+					char *buf)
+{
+	int count = 0;
+
+	/* Set asv group info to buf */
+	count += sprintf(&buf[count], "%d ", asv_ids_information(table_ver));
+	count += sprintf(&buf[count], "%03x ", asv_ids_information(cpu_asv));
+	count += sprintf(&buf[count], "%03x ", asv_ids_information(g3d_asv));
+	count += sprintf(&buf[count], "\n");
+
+	return count;
+}
+
+static DEVICE_ATTR(asv_info, 0664, show_asv_info, NULL);
+
+#endif /* CONFIG_SEC_FACTORY */
+
 static __init int exynos_pm_drvinit(void)
 {
+#if defined(CONFIG_SEC_FACTORY)
+	int ret;
+#endif
+
 	if (subsys_system_register(&exynos_info_subsys,
 					exynos_info_sysfs_groups))
 		pr_err("fail to register exynos_info subsys\n");
@@ -435,6 +490,15 @@ static __init int exynos_pm_drvinit(void)
 				__func__);
 		BUG();
 	}
+
+#if defined(CONFIG_SEC_FACTORY)
+	/* create sysfs group */
+	ret = sysfs_create_file(power_kobj, &dev_attr_asv_info.attr);
+	if (ret) {
+		pr_err("%s: failed to create exynos8890 asv attribute file\n",
+				__func__);
+	}
+#endif
 
 	return 0;
 }

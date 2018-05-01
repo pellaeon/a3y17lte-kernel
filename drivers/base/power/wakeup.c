@@ -15,11 +15,10 @@
 #include <linux/seq_file.h>
 #include <linux/debugfs.h>
 #include <linux/types.h>
+#include <trace/events/power.h>
 #ifdef CONFIG_SEC_PM_DEBUG
 #include <linux/fb.h>
 #endif
-#include <trace/events/power.h>
-
 #include "power.h"
 
 /*
@@ -1019,7 +1018,6 @@ static int print_wakeup_source_stats(struct seq_file *m,
 static int wakeup_sources_stats_show(struct seq_file *m, void *unused)
 {
 	struct wakeup_source *ws;
-
 #ifdef CONFIG_SEC_PM_DEBUG
 	seq_puts(m, "name\t\tactive_count\tevent_count\twakeup_count\t"
 		"expire_count\tactive_since\ttotal_time\tmax_time\t"
@@ -1029,7 +1027,6 @@ static int wakeup_sources_stats_show(struct seq_file *m, void *unused)
 		"expire_count\tactive_since\ttotal_time\tmax_time\t"
 		"last_change\tprevent_suspend_time\n");
 #endif
-
 	rcu_read_lock();
 	list_for_each_entry_rcu(ws, &wakeup_sources, entry)
 		print_wakeup_source_stats(m, ws);

@@ -33,14 +33,26 @@
 static int kbasep_mem_profile_seq_show(struct seq_file *sfile, void *data)
 {
 	struct kbase_context *kctx = sfile->private;
-
 	struct kbase_device *kbdev = gpu_get_device_structure();
 	/* MALI_SEC_INTEGRATION - Destroyed context */
 	mutex_lock(&kbdev->kctx_list_lock);
 	{
-		if ((kctx == NULL) || (kctx->destroying_context)) {
+		if (kctx == NULL) {
 			mutex_unlock(&kbdev->kctx_list_lock);
 			return 0;
+		}
+		else {
+			if(kbdev->vendor_callbacks->mem_profile_check_kctx) {
+				if (!kbdev->vendor_callbacks->mem_profile_check_kctx(kctx)) {
+					mutex_unlock(&kbdev->kctx_list_lock);
+					return 0;
+				}
+			}
+
+			if(kctx->destroying_context == true) {
+				mutex_unlock(&kbdev->kctx_list_lock);
+				return 0;
+			}
 		}
 		atomic_inc(&kctx->mem_profile_showing_state);
 	}

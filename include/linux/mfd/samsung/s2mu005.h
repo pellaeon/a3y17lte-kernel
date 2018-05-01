@@ -62,11 +62,14 @@ typedef struct s2mu005_charger_platform_data {
 	sec_charging_current_t *charging_current;
 	int chg_float_voltage;
 	char *charger_name;
+	char *fuelgauge_name;
+	char *wireless_charger_name;
 	bool chg_eoc_dualpath;
 	uint32_t is_1MHz_switching:1;
 	bool always_enable;
+	int wpc_det;
 	/* 2nd full check */
-	 sec_battery_full_charged_t full_check_type_2nd;
+	sec_battery_full_charged_t full_check_type_2nd;
 } s2mu005_charger_platform_data_t;
 
 struct s2mu005_platform_data {

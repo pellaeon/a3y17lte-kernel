@@ -353,10 +353,8 @@ static void bluetooth_power_rfkill_remove(struct platform_device *pdev)
 
 	rfkill = platform_get_drvdata(pdev);
 	if (rfkill)
-	{
 		rfkill_unregister(rfkill);
-		rfkill_destroy(rfkill);
-	}
+	rfkill_destroy(rfkill);
 	platform_set_drvdata(pdev, NULL);
 }
 

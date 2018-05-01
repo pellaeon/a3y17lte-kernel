@@ -26,9 +26,7 @@
 #include <linux/mfd/samsung/core.h>
 #include <linux/mfd/samsung/s2mpu05.h>
 #include <linux/io.h>
-#ifdef CONFIG_SEC_DEBUG
-#include <linux/sec_debug.h>
-#endif
+#include <trace/events/exynos.h>
 
 static struct s2mpu05_info *static_info;
 
@@ -129,6 +127,7 @@ static int s2m_set_mode(struct regulator_dev *rdev,
 static int s2m_enable(struct regulator_dev *rdev)
 {
 	struct s2mpu05_info *s2mpu05 = rdev_get_drvdata(rdev);
+
 	int ret;
 
 	ret = sec_reg_update(s2mpu05->iodev, rdev->desc->enable_reg,
@@ -205,6 +204,7 @@ static int s2m_set_ramp_delay(struct regulator_dev *rdev, int ramp_delay)
 	switch (reg_id) {
 	case S2MPU05_BUCK1:
 	case S2MPU05_BUCK2:
+	case S2MPU05_BUCK2_OUT2:
 		ramp_shift = 6;
 		break;
 	case S2MPU05_BUCK3:
@@ -248,6 +248,7 @@ static int s2m_set_voltage_sel_regmap(struct regulator_dev *rdev, unsigned sel)
 	snprintf(name, sizeof(name), "LDO%d", (reg_id - S2MPU05_LDO1) + 1);
 	voltage = ((sel & rdev->desc->vsel_mask) * S2MPU05_LDO_STEP2) + S2MPU05_LDO_MIN1;
 	exynos_ss_regulator(name, rdev->desc->vsel_reg, voltage, ESS_FLAG_IN);
+	trace_exynos_regulator_in(name, rdev, voltage);
 
 	ret = sec_reg_update(s2mpu05->iodev, rdev->desc->vsel_reg,
 				  sel, rdev->desc->vsel_mask);
@@ -260,11 +261,13 @@ static int s2m_set_voltage_sel_regmap(struct regulator_dev *rdev, unsigned sel)
 					 rdev->desc->apply_bit);
 
 	exynos_ss_regulator(name, rdev->desc->vsel_reg, voltage, ESS_FLAG_OUT);
+	trace_exynos_regulator_out(name, rdev, voltage);
 
 	return ret;
 out:
 	pr_warn("%s: failed to set voltage_sel_regmap\n", rdev->desc->name);
 	exynos_ss_regulator(name, rdev->desc->vsel_reg, voltage, ESS_FLAG_ON);
+	trace_exynos_regulator_on(name, rdev, voltage);
 	return ret;
 }
 
@@ -281,6 +284,7 @@ static int s2m_set_voltage_sel_regmap_buck(struct regulator_dev *rdev,
 	snprintf(name, sizeof(name), "BUCK%d", (reg_id - S2MPU05_BUCK1) + 1);
 	voltage = (sel * S2MPU05_BUCK_STEP1) + S2MPU05_BUCK_MIN1;
 	exynos_ss_regulator(name, rdev->desc->vsel_reg, voltage, ESS_FLAG_IN);
+	trace_exynos_regulator_in(name, rdev, voltage);
 
 	ret = sec_reg_write(s2mpu05->iodev, rdev->desc->vsel_reg, sel);
 	if (ret < 0)
@@ -292,11 +296,13 @@ static int s2m_set_voltage_sel_regmap_buck(struct regulator_dev *rdev,
 					 rdev->desc->apply_bit);
 
 	exynos_ss_regulator(name, rdev->desc->vsel_reg, voltage, ESS_FLAG_OUT);
+	trace_exynos_regulator_out(name, rdev, voltage);
 
 	return ret;
 out:
 	pr_warn("%s: failed to set voltage_sel_regmap\n", rdev->desc->name);
 	exynos_ss_regulator(name, rdev->desc->vsel_reg, voltage, ESS_FLAG_ON);
+	trace_exynos_regulator_on(name, rdev, voltage);
 	return ret;
 }
 
@@ -326,6 +332,8 @@ static int s2m_set_voltage_time_sel(struct regulator_dev *rdev,
 
 	if (old_selector < new_selector)
 		return DIV_ROUND_UP(new_volt - old_volt, ramp_delay);
+	else if (new_selector < old_selector)
+		return DIV_ROUND_UP(old_volt - new_volt, ramp_delay);
 
 	return 0;
 }
@@ -521,6 +529,8 @@ static struct regulator_desc regulators[S2MPU05_REGULATOR_MAX] = {
 			_REG(_L9CTRL1), _REG(_L9CTRL1), _TIME(_LDO)),
 	LDO_DESC("LDO10", _LDO(10), &_ldo_ops(), _LDO(_MIN3), _LDO(_STEP2),
 			_REG(_L10CTRL), _REG(_L10CTRL), _TIME(_LDO)),
+	LDO_DESC("LDO24", _LDO(24), &_ldo_ops(), _LDO(_MIN3), _LDO(_STEP2),
+			_REG(_L24CTRL), _REG(_L24CTRL), _TIME(_LDO)),
 	LDO_DESC("LDO25", _LDO(25), &_ldo_ops(), _LDO(_MIN1), _LDO(_STEP2),
 			_REG(_L25CTRL), _REG(_L25CTRL), _TIME(_LDO)),
 	LDO_DESC("LDO26", _LDO(26), &_ldo_ops(), _LDO(_MIN2), _LDO(_STEP2),
@@ -546,6 +556,8 @@ static struct regulator_desc regulators[S2MPU05_REGULATOR_MAX] = {
 	BUCK_DESC("BUCK1", _BUCK(1), &_buck_ops(), _BUCK(_MIN1), _BUCK(_STEP1),
 			_REG(_B1CTRL2), _REG(_B1CTRL1), _TIME(_BUCK1)),
 	BUCK_DESC("BUCK2", _BUCK(2), &_buck_ops(), _BUCK(_MIN1), _BUCK(_STEP1),
+			_REG(_B2CTRL3), _REG(_B2CTRL1), _TIME(_BUCK2)),
+	BUCK_DESC("BUCK2_OUT2", _BUCK(2_OUT2), &_buck_ops(), _BUCK(_MIN1), _BUCK(_STEP1),
 			_REG(_B2CTRL2), _REG(_B2CTRL1), _TIME(_BUCK2)),
 	BUCK_DESC("BUCK3", _BUCK(3), &_buck_ops(), _BUCK(_MIN1), _BUCK(_STEP1),
 			_REG(_B3CTRL2), _REG(_B3CTRL1), _TIME(_BUCK3)),
@@ -627,66 +639,6 @@ static int s2mpu05_pmic_dt_parse_pdata(struct sec_pmic_dev *iodev,
 }
 #endif /* CONFIG_OF */
 
-#ifdef CONFIG_SEC_DEBUG
-int pmic_reset_enabled(int reset_enabled)
-{
-	struct s2mpu05_info *s2mpu05 = static_info;
-	int ret = 0;
-	unsigned int tmp;
-
-	if (reset_enabled) {
-		/* 1 key hard reset */
-		pr_info("PM: Set device 1-key hard reset.\n");
-
-		/* Disable warm reset */
-		sec_reg_read(s2mpu05->iodev, S2MPU05_REG_CTRL3, &tmp);
-		tmp &= ~(0x70);
-		tmp |= (0 << 6) | (1 << 5) | (0 << 4);	/* set MRSEL bit to 1 */
-		sec_reg_write(s2mpu05->iodev, S2MPU05_REG_CTRL3, tmp);
-
-		/* Enable manual reset */
-		sec_reg_read(s2mpu05->iodev, S2MPU05_REG_CTRL1, &tmp);
-		tmp &= ~(0x10);
-		tmp |= (1 << 4);	/* MRSTB_EN */
-		sec_reg_write(s2mpu05->iodev, S2MPU05_REG_CTRL1, tmp);
-	} else {
-		int debug_level = sec_debug_get_debug_level();
-		/* 2 key hard reset */
-		pr_info("PM: Set device 2-key reset. (debug_level = %d)\n", debug_level);
-
-		if (debug_level >= 1) {
-			/* MID, HIGH: warm reset */
-			/* Disable manual reset */
-			sec_reg_read(s2mpu05->iodev, S2MPU05_REG_CTRL1, &tmp);
-			tmp &= ~(0x10);
-			tmp |= (0 << 4);	/* MRSTB_EN */
-			sec_reg_write(s2mpu05->iodev, S2MPU05_REG_CTRL1, tmp);
-
-			/* Enable warm reset */
-			sec_reg_read(s2mpu05->iodev, S2MPU05_REG_CTRL3, &tmp);
-			tmp &= ~(0x70);
-			tmp |= (1 << 6) | (0 << 5) | (1 << 4);	/* set MRSEL bit to 0 */
-			sec_reg_write(s2mpu05->iodev, S2MPU05_REG_CTRL3, tmp);
-		} else {
-			/* LOW: manual reset */
-			/* Disable warm reset */
-			sec_reg_read(s2mpu05->iodev, S2MPU05_REG_CTRL3, &tmp);
-			tmp &= ~(0x70);
-			tmp |= (0 << 6) | (0 << 5) | (0 << 4);	/* set MRSEL bit to 0 */
-			sec_reg_write(s2mpu05->iodev, S2MPU05_REG_CTRL3, tmp);
-
-			/* Enable manual reset */
-			sec_reg_read(s2mpu05->iodev, S2MPU05_REG_CTRL1, &tmp);
-			tmp &= ~(0x10);
-			tmp |= (1 << 4);	/* MRSTB_EN */
-			sec_reg_write(s2mpu05->iodev, S2MPU05_REG_CTRL1, tmp);
-		}
-	}
-
-	return ret;
-}
-#endif
-
 static int s2mpu05_pmic_probe(struct platform_device *pdev)
 {
 	struct sec_pmic_dev *iodev = dev_get_drvdata(pdev->dev.parent);
@@ -694,6 +646,7 @@ static int s2mpu05_pmic_probe(struct platform_device *pdev)
 	struct regulator_config config = { };
 	struct s2mpu05_info *s2mpu05;
 	int i, ret;
+	int value;
 
 	ret = sec_reg_read(iodev, S2MPU05_REG_ID, &SEC_PMIC_REV(iodev));
 	if (ret < 0)
@@ -716,13 +669,21 @@ static int s2mpu05_pmic_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	s2mpu05->iodev = iodev;
-
-	s2mpu05->g3d_en_pin =
-		(const char *)of_get_property(iodev->dev->of_node,
+	if ((SEC_PMIC_REV(iodev) & 0x80) == 0x00){
+		s2mpu05->g3d_en_pin =
+			(const char *)of_get_property(iodev->dev->of_node,
 						"buck2en_pin", NULL);
-	s2mpu05->g3d_en_addr =
-		(const char *)of_get_property(iodev->dev->of_node,
+		s2mpu05->g3d_en_addr =
+			(const char *)of_get_property(iodev->dev->of_node,
 						"buck2en_addr", NULL);
+	} else {
+		s2mpu05->g3d_en_pin =
+			(const char *)of_get_property(iodev->dev->of_node,
+						"buck3en_pin", NULL);
+		s2mpu05->g3d_en_addr =
+			(const char *)of_get_property(iodev->dev->of_node,
+						"buck3en_addr", NULL);
+	}
 
 	static_info = s2mpu05;
 
@@ -759,12 +720,50 @@ static int s2mpu05_pmic_probe(struct platform_device *pdev)
 	}
 
 	/* On sequence Config for MIF_G3D, CP_PWR_UP */
-	sec_reg_write(iodev, 0x62, 0x4E);	/* seq. LDO9, LDO8 */
-	sec_reg_write(iodev, 0x63, 0x33);	/* seq. LDO11, LDO10 */
+	if ((SEC_PMIC_REV(iodev) & 0x80) == 0x00) {
+		sec_reg_write(iodev, 0x62, 0x4E);	/* seq. LDO9, LDO8 */
+		sec_reg_write(iodev, 0x63, 0x33);	/* seq. LDO11, LDO10 */
+	} else {
+		sec_reg_write(iodev, 0x62, 0x3E);	/* seq. LDO9, LDO8 */
+		sec_reg_write(iodev, 0x63, 0x34);	/* seq. LDO11, LDO10 */
+	}
 	sec_reg_write(iodev, 0x64, 0x54);	/* seq. LDO13, LDO12 */
 	sec_reg_write(iodev, 0x65, 0x76);	/* seq. LDO15, LDO14 */
 	sec_reg_write(iodev, 0x71, 0x80);	/* seq. L11~L4 */
 	sec_reg_write(iodev, 0x72, 0x0F);	/* seq. L19~L12 */
+
+	ret = sec_reg_update(iodev, S2MPU05_REG_L10CTRL, 0x0, S2MPU05_ENABLE_MASK);
+	if (ret) {
+		dev_err(&pdev->dev, "set fail LDO10 CTRL\n");
+		return ret;
+	}
+	ret = sec_reg_read(iodev, S2MPU05_REG_L10CTRL, &value);
+	if (ret) {
+		dev_err(&pdev->dev, "Do not read LDO10 CTRL\n");
+		return ret;
+	}
+	dev_info(&pdev->dev, "LDO10_CTRL : %8.x \n", value);
+
+	ret = sec_reg_read(iodev, S2MPU05_REG_B2CTRL2, &value);
+	if (ret) {
+		dev_err(&pdev->dev, "Do not read S2MPU05_REG_B2CTRL2 CTRL\n");
+		return ret;
+	}
+	dev_info(&pdev->dev, "BUCK2_CTRL2 : %d uV \n", (value * S2MPU05_BUCK_STEP1) + S2MPU05_BUCK_MIN1);
+
+	ret = sec_reg_read(iodev, S2MPU05_REG_B2CTRL3, &value);
+	if (ret) {
+		dev_err(&pdev->dev, "Do not read S2MPU05_REG_B2CTRL3 CTRL\n");
+		return ret;
+	}
+	dev_info(&pdev->dev, "BUCK2_CTRL3 : %d uV\n", (value * S2MPU05_BUCK_STEP1) + S2MPU05_BUCK_MIN1);
+
+	ret = sec_reg_read(iodev, S2MPU05_REG_B2CTRL4, &value);
+	if (ret) {
+		dev_err(&pdev->dev, "Do not read S2MPU05_REG_B2CTRL4 CTRL\n");
+		return ret;
+	}
+	dev_info(&pdev->dev, "BUCK2_CTRL4 : %d uV\n", (value * S2MPU05_BUCK_STEP1) + S2MPU05_BUCK_MIN1);
 
 #ifdef CONFIG_SEC_DEBUG_PMIC
 	s2mpu05->pmic_test_class = class_create(THIS_MODULE, "pmic_test");

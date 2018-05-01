@@ -86,6 +86,11 @@ enum {
 	END_POWER_TRANSFER_CODE_NO_RESPONSE,
 };
 
+enum bq51221_get_voltage_type {
+	BQ51221_GET_VRECT = 0,
+	BQ51221_GET_VOUT,
+};
+
 struct bq51221_charger_platform_data {
 	int irq_gpio;
 	int irq_base;
@@ -95,6 +100,7 @@ struct bq51221_charger_platform_data {
 	int wireless_cc_cv;
 	int siop_level;
 	bool default_voreg;
+	bool ic_on_mode;
 	char *wireless_charger_name;
 };
 

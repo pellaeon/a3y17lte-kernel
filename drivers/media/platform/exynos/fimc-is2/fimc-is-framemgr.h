@@ -14,6 +14,7 @@
 
 #include <linux/kthread.h>
 #include "fimc-is-time.h"
+#include "fimc-is-config.h"
 
 #define FIMC_IS_MAX_BUFS	VIDEO_MAX_FRAME
 #define FIMC_IS_MAX_PLANES	VIDEO_MAX_PLANES
@@ -107,6 +108,15 @@ enum fimc_is_frame_state {
 	FS_COMPLETE,
 	FS_INVALID
 };
+
+enum fimc_is_hw_frame_state {
+	FS_HW_FREE,
+	FS_HW_REQUEST,
+	FS_HW_CONFIGURE,
+	FS_HW_WAIT_DONE,
+	FS_HW_INVALID
+};
+
 #define NR_FRAME_STATE FS_INVALID
 
 enum fimc_is_frame_mem_state {
@@ -152,6 +162,7 @@ struct fimc_is_frame {
 	/* common use */
 	u32			planes;
 	u32			dvaddr_buffer[FIMC_IS_MAX_PLANES];
+	ulong 		kvaddr_buffer[FIMC_IS_MAX_PLANES];
 
 	/* internal use */
 	unsigned long		mem_state;
@@ -173,11 +184,20 @@ struct fimc_is_frame {
 	atomic_t		shot_done_flag;
 #endif
 
+#ifdef ENABLE_SYNC_REPROCESSING
+	struct list_head	sync_list;
+#endif
+
 #ifdef MEASURE_TIME
 	/* time measure externally */
 	struct timeval	*tzone;
 	/* time measure internally */
 	struct fimc_is_monitor	mpoint[TMM_END];
+#endif
+
+#ifdef DBG_DRAW_DIGIT
+	u32			width;
+	u32			height;
 #endif
 };
 
@@ -193,6 +213,7 @@ struct fimc_is_framemgr {
 	struct list_head	queued_list[NR_FRAME_STATE];
 };
 
+int frame_fcount(struct fimc_is_frame *frame, void *data);
 int put_frame(struct fimc_is_framemgr *this, struct fimc_is_frame *frame,
 			enum fimc_is_frame_state state);
 struct fimc_is_frame *get_frame(struct fimc_is_framemgr *this,

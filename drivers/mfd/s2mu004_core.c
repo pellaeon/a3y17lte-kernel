@@ -492,7 +492,7 @@ static int __init s2mu004_i2c_init(void)
 	return i2c_add_driver(&s2mu004_i2c_driver);
 }
 /* init early so consumer devices can complete system boot */
-subsys_initcall(s2mu004_i2c_init);
+module_init(s2mu004_i2c_init);
 
 static void __exit s2mu004_i2c_exit(void)
 {

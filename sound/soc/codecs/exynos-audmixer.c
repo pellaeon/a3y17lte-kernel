@@ -82,6 +82,7 @@ enum audmixer_type {
 	SRC2801X,
 	SRC2803X,
 	SRC1402X,
+	SRC1403X
 };
 
 /*
@@ -127,6 +128,13 @@ static struct audmixer_hw_config s1402x_config = {
 	.bus = AUDMIXER_APB,
 };
 
+/* H/W configuration information for SRC1403X */
+static struct audmixer_hw_config s1403x_config = {
+	.type = SRC1403X,
+	.bus = AUDMIXER_APB,
+};
+
+
 /* I2C device ID information for SRC2801X */
 static const struct i2c_device_id audmixer_i2c_id[] = {
 	{ "s2801x", 0 },
@@ -155,53 +163,10 @@ MODULE_DEVICE_TABLE(of, audmixer_i2c_dt_ids);
 static const struct of_device_id audmixer_apb_dt_ids[] = {
 	{ .compatible = "samsung,s2803x", .data = (void *) &s2803x_config },
 	{ .compatible = "samsung,s1402x", .data = (void *) &s1402x_config },
+	{ .compatible = "samsung,s1403x", .data = (void *) &s1403x_config },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, audmixer_apb_dt_ids);
-
-/*
- * audmixer_save_resgs_addr: List of regsiters to save/restore during
- * suspend/resume cycle
- *
- * As of now, we are saving all the registers as we would like to save the
- * complete context of the Audio Mixer and not depend on any other function to
- * write default configuration during system resume.
- */
-static unsigned int audmixer_save_regs_addr[] = {
-	AUDMIXER_REG_01_IN1_CTL1,
-	AUDMIXER_REG_02_IN1_CTL2,
-	AUDMIXER_REG_03_IN1_CTL3,
-	AUDMIXER_REG_04_IN2_CTL1,
-	AUDMIXER_REG_05_IN2_CTL2,
-	AUDMIXER_REG_06_IN2_CTL3,
-	AUDMIXER_REG_07_IN3_CTL1,
-	AUDMIXER_REG_08_IN3_CTL2,
-	AUDMIXER_REG_09_IN3_CTL3,
-	AUDMIXER_REG_0A_HQ_CTL,
-	AUDMIXER_REG_0B_SLOT_L,
-	AUDMIXER_REG_0C_SLOT_R,
-	AUDMIXER_REG_0D_RMIX_CTL,
-	AUDMIXER_REG_0E_TSLOT,
-	AUDMIXER_REG_0F_DIG_EN,
-	AUDMIXER_REG_10_DMIX1,
-	AUDMIXER_REG_11_DMIX2,
-	AUDMIXER_REG_16_DOUTMX1,
-	AUDMIXER_REG_17_DOUTMX2,
-	AUDMIXER_REG_18_INAMP_CTL,
-	AUDMIXER_REG_19_OUTAP1_CTL,
-	AUDMIXER_REG_1A_OUTCP1_CTL,
-	AUDMIXER_REG_68_ALC_CTL,
-	AUDMIXER_REG_69_ALC_GA1,
-	AUDMIXER_REG_6A_ALC_GA2,
-	AUDMIXER_REG_6B_ALC_LVL,
-	AUDMIXER_REG_6C_ALC_LVR,
-	AUDMIXER_REG_6D_ALC_HLD,
-	AUDMIXER_REG_6E_ALC_ATK,
-	AUDMIXER_REG_6F_ALC_DCY,
-	AUDMIXER_REG_70_ALC_NG,
-	AUDMIXER_REG_71_ALC_SGL,
-	AUDMIXER_REG_72_ALC_SGR,
-};
 
 /*
  * struct audmixer_extrareg_info: Structure to hold information about some SoC
@@ -233,7 +198,6 @@ struct audmixer_soc_reg_info {
  * @num_active_stream: Counter to find number of streams active in all i/f
  * @use_count: Counter to find number of active streams per i/f
  * @pinctrl: Pointer to pinctrl handler
- * @save_regs_val: Buffer to store the values of SFR during suspend
  * @aifrate: Current active sample rate of AIF1 interface (to set clock rate)
  * @is_bck4_mcko_enabled: If true, codec MCLK is provided through BCLK line of
  * AIF4, otherwise normal BCLK is provided. Set it to false if a voice-processor
@@ -258,13 +222,13 @@ struct audmixer_priv {
 	atomic_t num_active_stream;
 	atomic_t use_count[AUDMIXER_IF_COUNT];
 	struct pinctrl *pinctrl;
-	unsigned int *save_regs_val;
 	unsigned int aifrate;
 	bool is_active;
 	bool is_bck4_mcko_enabled;
 	bool is_alc_enabled;
 	bool update_fw;
 	bool is_regs_stored;
+	bool is_bt_slave;
 	const struct audmixer_hw_config *hw;
 
 };
@@ -317,18 +281,39 @@ static bool audmixer_readable_register(struct device *dev, unsigned int reg)
 			return false;
 	}
 
-	switch (reg) {
-	case AUDMIXER_REG_00_SOFT_RSTB ... AUDMIXER_REG_11_DMIX2:
-	case AUDMIXER_REG_16_DOUTMX1 ... AUDMIXER_REG_17_DOUTMX2:
-	case AUDMIXER_REG_68_ALC_CTL ... AUDMIXER_REG_72_ALC_SGR:
-		return true;
-	case AUDMIXER_REG_18_INAMP_CTL ... AUDMIXER_REG_1A_OUTCP1_CTL:
-		if (g_audmixer->hw->type > SRC2803X)
+	switch (g_audmixer->hw->type) {
+	case SRC2801X:
+		switch (reg) {
+		case AUDMIXER_REG_00_SOFT_RSTB ... AUDMIXER_REG_11_DMIX2:
+		case AUDMIXER_REG_16_DOUTMX1 ... AUDMIXER_REG_17_DOUTMX2:
+		case AUDMIXER_REG_68_ALC_CTL ... AUDMIXER_REG_72_ALC_SGR:
 			return true;
-		else
+		default:
 			return false;
+		}
+		break;
 	default:
-		return false;
+	case SRC2803X:
+	case SRC1402X:
+		switch (reg) {
+		case AUDMIXER_REG_00_SOFT_RSTB ... AUDMIXER_REG_11_DMIX2:
+		case AUDMIXER_REG_16_DOUTMX1 ... AUDMIXER_REG_1A_OUTCP1_CTL:
+		case AUDMIXER_REG_68_ALC_CTL ... AUDMIXER_REG_72_ALC_SGR:
+			return true;
+		default:
+			return false;
+		}
+		break;
+	case SRC1403X:
+		switch (reg) {
+		case AUDMIXER_REG_00_SOFT_RSTB ... AUDMIXER_REG_07_IN3_CTL1:
+		case AUDMIXER_REG_0A_HQ_CTL ... AUDMIXER_REG_11_DMIX2:
+		case AUDMIXER_REG_16_DOUTMX1 ... AUDMIXER_REG_1A_OUTCP1_CTL:
+			return true;
+		default:
+			return false;
+		}
+		break;
 	}
 }
 
@@ -347,20 +332,100 @@ static bool audmixer_writeable_register(struct device *dev, unsigned int reg)
 			return false;
 	}
 
-	switch (reg) {
-	case AUDMIXER_REG_00_SOFT_RSTB ... AUDMIXER_REG_11_DMIX2:
-	case AUDMIXER_REG_16_DOUTMX1 ... AUDMIXER_REG_17_DOUTMX2:
-	case AUDMIXER_REG_68_ALC_CTL ... AUDMIXER_REG_72_ALC_SGR:
-		return true;
-	case AUDMIXER_REG_18_INAMP_CTL ... AUDMIXER_REG_1A_OUTCP1_CTL:
-		if (g_audmixer->hw->type > SRC2803X)
+	switch (g_audmixer->hw->type) {
+	case SRC2801X:
+		switch (reg) {
+		case AUDMIXER_REG_00_SOFT_RSTB ... AUDMIXER_REG_11_DMIX2:
+		case AUDMIXER_REG_16_DOUTMX1 ... AUDMIXER_REG_17_DOUTMX2:
+		case AUDMIXER_REG_68_ALC_CTL ... AUDMIXER_REG_72_ALC_SGR:
 			return true;
-		else
+		default:
 			return false;
+		}
+		break;
 	default:
-		return false;
+	case SRC2803X:
+	case SRC1402X:
+		switch (reg) {
+		case AUDMIXER_REG_00_SOFT_RSTB ... AUDMIXER_REG_11_DMIX2:
+		case AUDMIXER_REG_16_DOUTMX1 ... AUDMIXER_REG_1A_OUTCP1_CTL:
+		case AUDMIXER_REG_68_ALC_CTL ... AUDMIXER_REG_72_ALC_SGR:
+			return true;
+		default:
+			return false;
+		}
+		break;
+	case SRC1403X:
+		switch (reg) {
+		case AUDMIXER_REG_00_SOFT_RSTB ... AUDMIXER_REG_07_IN3_CTL1:
+		case AUDMIXER_REG_0A_HQ_CTL ... AUDMIXER_REG_11_DMIX2:
+		case AUDMIXER_REG_16_DOUTMX1 ... AUDMIXER_REG_1A_OUTCP1_CTL:
+			return true;
+		default:
+			return false;
+		}
+		break;
 	}
 }
+
+static const struct reg_default audmixer_reg_defaults_src1402x[] = {
+	{.reg = 0x0004, .def = 0x0C},
+	{.reg = 0x0008, .def = 0x62},
+	{.reg = 0x000C, .def = 0x24},
+	{.reg = 0x0010, .def = 0x0C},
+	{.reg = 0x0014, .def = 0x62},
+	{.reg = 0x0018, .def = 0x24},
+	{.reg = 0x001C, .def = 0x0C},
+	{.reg = 0x0020, .def = 0x62},
+	{.reg = 0x0024, .def = 0x24},
+	{.reg = 0x0028, .def = 0x04},
+	{.reg = 0x002C, .def = 0x01},
+	{.reg = 0x0030, .def = 0x02},
+	{.reg = 0x0034, .def = 0x00},
+	{.reg = 0x0038, .def = 0x01},
+	{.reg = 0x003C, .def = 0x00},
+	{.reg = 0x0040, .def = 0x00},
+	{.reg = 0x0044, .def = 0x00},
+	{.reg = 0x0058, .def = 0x00},
+	{.reg = 0x005C, .def = 0x00},
+	{.reg = 0x0060, .def = 0x2A},
+	{.reg = 0x0064, .def = 0x22},
+	{.reg = 0x0068, .def = 0x22},
+	{.reg = 0x01A0, .def = 0x00},
+	{.reg = 0x01A4, .def = 0x80},
+	{.reg = 0x01A8, .def = 0x58},
+	{.reg = 0x01AC, .def = 0x1A},
+	{.reg = 0x01B0, .def = 0x1A},
+	{.reg = 0x01B4, .def = 0x12},
+	{.reg = 0x01B8, .def = 0x12},
+	{.reg = 0x01BC, .def = 0x12},
+	{.reg = 0x01C0, .def = 0x17},
+	{.reg = 0x01C4, .def = 0x6C},
+	{.reg = 0x01C8, .def = 0x6C},
+};
+
+static const struct reg_default audmixer_reg_defaults_src1403x[] = {
+	{.reg = 0x0004, .def = 0x00},
+	{.reg = 0x0008, .def = 0x62},
+	{.reg = 0x000C, .def = 0x24},
+	{.reg = 0x0010, .def = 0x00},
+	{.reg = 0x0014, .def = 0x62},
+	{.reg = 0x0018, .def = 0x24},
+	{.reg = 0x001C, .def = 0x00},
+	{.reg = 0x0028, .def = 0x04},
+	{.reg = 0x002C, .def = 0x01},
+	{.reg = 0x0030, .def = 0x02},
+	{.reg = 0x0034, .def = 0x00},
+	{.reg = 0x0038, .def = 0x01},
+	{.reg = 0x003C, .def = 0x00},
+	{.reg = 0x0040, .def = 0x00},
+	{.reg = 0x0044, .def = 0x00},
+	{.reg = 0x0058, .def = 0x00},
+	{.reg = 0x005C, .def = 0x00},
+	{.reg = 0x0060, .def = 0x2A},
+	{.reg = 0x0064, .def = 0x22},
+	{.reg = 0x0068, .def = 0x2A},
+};
 
 static const struct regmap_config audmixer_regmap_mmio = {
 	.reg_bits = 32,
@@ -371,7 +436,9 @@ static const struct regmap_config audmixer_regmap_mmio = {
 	.volatile_reg = audmixer_volatile_register,
 	.readable_reg = audmixer_readable_register,
 	.writeable_reg = audmixer_writeable_register,
-	.cache_type = REGCACHE_NONE,
+	.reg_defaults = audmixer_reg_defaults_src1402x,
+	.num_reg_defaults = ARRAY_SIZE(audmixer_reg_defaults_src1402x),
+	.cache_type = REGCACHE_RBTREE,
 };
 
 static const struct regmap_config audmixer_regmap_i2c = {
@@ -445,21 +512,25 @@ static int audmixer_init_mixer(void)
 			LRCLK_POL_LEFT << INCTL2_LRCK_POL_SHIFT |
 			I2S_DF_I2S << INCTL2_I2S_DF_SHIFT |
 			I2S_DL_16BIT << INCTL2_I2S_DL_SHIFT);
+	switch (g_audmixer->hw->type) {
+	case SRC1403X:
+		break;
+	default:
+		/* BT Configuration Initialisation */
+		/* I2s mode - Mixer Slave - 32 BCK configuration*/
+		regmap_write(g_audmixer->regmap, AUDMIXER_REG_07_IN3_CTL1,
+				MIXER_MASTER << INCTL1_MASTER_SHIFT |
+				MPCM_SLOT_32BCK << INCTL1_MPCM_SLOT_SHIFT |
+				I2S_PCM_MODE_I2S << INCTL1_I2S_PCM_SHIFT);
 
-	/* BT Configuration Initialisation */
-	/* I2s mode - Mixer Slave - 32 BCK configuration*/
-	regmap_write(g_audmixer->regmap, AUDMIXER_REG_07_IN3_CTL1,
-			MIXER_SLAVE << INCTL1_MASTER_SHIFT |
-			MPCM_SLOT_32BCK << INCTL1_MPCM_SLOT_SHIFT |
-			I2S_PCM_MODE_I2S << INCTL1_I2S_PCM_SHIFT);
-
-	/* 32xfs - i2s format 16bit */
-	regmap_write(g_audmixer->regmap, AUDMIXER_REG_08_IN3_CTL2,
-			I2S_XFS_32FS << INCTL2_I2S_XFS_SHIFT |
-			LRCLK_POL_LEFT << INCTL2_LRCK_POL_SHIFT |
-			I2S_DF_I2S << INCTL2_I2S_DF_SHIFT |
-			I2S_DL_16BIT << INCTL2_I2S_DL_SHIFT);
-
+		/* 32xfs - i2s format 16bit */
+		regmap_write(g_audmixer->regmap, AUDMIXER_REG_08_IN3_CTL2,
+				I2S_XFS_32FS << INCTL2_I2S_XFS_SHIFT |
+				LRCLK_POL_LEFT << INCTL2_LRCK_POL_SHIFT |
+				I2S_DF_I2S << INCTL2_I2S_DF_SHIFT |
+				I2S_DL_16BIT << INCTL2_I2S_DL_SHIFT);
+		break;
+	}
 	/*
 	 * Below setting only requird for PCM mode, but it has no impact for I2S
 	 * mode.
@@ -551,45 +622,118 @@ static void audmixer_cfg_gpio(struct device *dev, const char *name)
 
 /*
  * audmixer_save_regs: Prepare the registers before suspend
- *
- * For APB interface, it saves the registers.
- * For I2C interface, it disables h/w access and operates under cache-only mode.
  */
 static void audmixer_save_regs(struct device *dev)
 {
-	int i;
-
-	if (g_audmixer->hw->bus == AUDMIXER_APB) {
-	for (i = 0; i < ARRAY_SIZE(audmixer_save_regs_addr); i++)
-		regmap_read(g_audmixer->regmap, audmixer_save_regs_addr[i],
-				&g_audmixer->save_regs_val[i]);
-	} else {
-		regcache_cache_only(g_audmixer->regmap, true);
-		regcache_mark_dirty(g_audmixer->regmap);
-	}
+	regcache_cache_only(g_audmixer->regmap, true);
+	regcache_mark_dirty(g_audmixer->regmap);
 }
 
 /*
  * audmixer_restore_regs: Restore the h/w register values
- *
- * For APB interface, restore the registers from saved values.
- * For I2C interface, restore the registers for regcache.
  */
 static void audmixer_restore_regs(struct device *dev)
 {
-	int i;
-
-	if (g_audmixer->hw->bus == AUDMIXER_APB) {
-		for (i = 0; i < ARRAY_SIZE(audmixer_save_regs_addr); i++)
-			regmap_write(g_audmixer->regmap,
-					audmixer_save_regs_addr[i],
-					g_audmixer->save_regs_val[i]);
-	} else {
-		regcache_cache_only(g_audmixer->regmap, false);
-		regcache_sync(g_audmixer->regmap);
-	}
+	regcache_cache_only(g_audmixer->regmap, false);
+	regcache_sync(g_audmixer->regmap);
 }
 #endif
+
+static int audmixer_set_bclk_ratio(struct snd_soc_dai *dai, unsigned int ratio)
+{
+	enum audmixer_if_t interface = (enum audmixer_if_t)(dai->id);
+	int xfs;
+	int ret = 0;
+
+	/* Only I2S_XFS_32FS is verified now */
+	switch (ratio) {
+	case 32:
+		xfs = I2S_XFS_32FS;
+		break;
+
+	case 48:
+		xfs = I2S_XFS_48FS;
+		break;
+
+	case 64:
+		xfs = I2S_XFS_64FS;
+		break;
+
+	default:
+		dev_err(g_audmixer->dev, "%s: Unsupported bfs (%d)\n",
+				__func__, ratio);
+		return -EINVAL;
+	}
+
+	switch (interface) {
+	case AUDMIXER_IF_AP:
+		ret = regmap_update_bits(g_audmixer->regmap,
+			AUDMIXER_REG_02_IN1_CTL2,
+			(INCTL2_I2S_XFS_MASK << INCTL2_I2S_XFS_SHIFT),
+			(xfs << INCTL2_I2S_XFS_SHIFT));
+		break;
+	case AUDMIXER_IF_CP:
+		ret = regmap_update_bits(g_audmixer->regmap,
+			AUDMIXER_REG_05_IN2_CTL2,
+			(INCTL2_I2S_XFS_MASK << INCTL2_I2S_XFS_SHIFT),
+			(xfs << INCTL2_I2S_XFS_SHIFT));
+		break;
+	case AUDMIXER_IF_BT:
+	case AUDMIXER_IF_FM:
+		switch (g_audmixer->hw->type) {
+		case SRC1403X:
+			break;
+		default:
+			ret = regmap_update_bits(g_audmixer->regmap,
+				AUDMIXER_REG_08_IN3_CTL2,
+				(INCTL2_I2S_XFS_MASK << INCTL2_I2S_XFS_SHIFT),
+				(xfs << INCTL2_I2S_XFS_SHIFT));
+			break;
+		}
+		break;
+	case AUDMIXER_IF_AP1:
+		ret = regmap_update_bits(g_audmixer->regmap,
+			AUDMIXER_REG_19_OUTAP1_CTL,
+			(OUTAMP_CTL_I2S_XFS_MASK << OUTAMP_CTL_I2S_XFS_SHIFT),
+			(xfs << OUTAMP_CTL_I2S_XFS_SHIFT));
+		break;
+	case AUDMIXER_IF_CP1:
+		ret = regmap_update_bits(g_audmixer->regmap,
+			AUDMIXER_REG_1A_OUTCP1_CTL,
+			(OUTAMP_CTL_I2S_XFS_MASK << OUTAMP_CTL_I2S_XFS_SHIFT),
+			(xfs << OUTAMP_CTL_I2S_XFS_SHIFT));
+		break;
+	default:
+		dev_err(g_audmixer->dev, "%s: Unsupported interface (%d)\n",
+				__func__, interface);
+		break;
+	}
+	return ret;
+}
+
+static int audmixer_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
+{
+
+	if (g_audmixer == NULL)
+		return -EINVAL;
+
+	/* Format is priority */
+	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
+	case SND_SOC_DAIFMT_CBS_CFS:
+		regmap_write(g_audmixer->regmap, AUDMIXER_REG_07_IN3_CTL1,
+			MIXER_MASTER << INCTL1_MASTER_SHIFT);
+		break;
+	case SND_SOC_DAIFMT_CBM_CFM:
+		regmap_write(g_audmixer->regmap, AUDMIXER_REG_07_IN3_CTL1,
+			MIXER_SLAVE << INCTL1_MASTER_SHIFT);
+		break;
+	default:
+		dev_err(g_audmixer->dev, "Format not supported\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
 
 /*
  * audmixer_hw_params: Configure different interfaces of Audio Mixer.
@@ -607,14 +751,14 @@ static void audmixer_restore_regs(struct device *dev)
  *
  * Returns 0 on success otherwise some error code.
  */
-int audmixer_hw_params(struct snd_pcm_substream *substream,
+static int audmixer_hw_params(struct snd_pcm_substream *substream,
 			struct snd_pcm_hw_params *params,
-			int bfs, enum audmixer_if_t interface)
+			struct snd_soc_dai *dai)
 {
-	int xfs, dl_bit;
+	enum audmixer_if_t interface = (enum audmixer_if_t)(dai->id);
+	int dl_bit;
 	unsigned int hq_mode;
 	unsigned int sys_clk_freq;
-	unsigned int mpcm_rate;
 	unsigned int aifrate;
 	int ret;
 
@@ -645,33 +789,12 @@ int audmixer_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 
-	/* Only I2S_XFS_32FS is verified now */
-	switch (bfs) {
-	case 32:
-		xfs = I2S_XFS_32FS;
-		break;
-
-	case 48:
-		xfs = I2S_XFS_48FS;
-		break;
-
-	case 64:
-		xfs = I2S_XFS_64FS;
-		break;
-
-	default:
-		dev_err(g_audmixer->dev, "%s: Unsupported bfs (%d)\n",
-				__func__, bfs);
-		return -EINVAL;
-	}
-
 	switch (interface) {
 	case AUDMIXER_IF_AP:
 		ret = regmap_update_bits(g_audmixer->regmap,
 			AUDMIXER_REG_02_IN1_CTL2,
-			(INCTL2_I2S_XFS_MASK << INCTL2_I2S_XFS_SHIFT) |
 			(INCTL2_I2S_DL_MASK << INCTL2_I2S_DL_SHIFT),
-			(xfs << INCTL2_I2S_XFS_SHIFT) | dl_bit);
+			dl_bit);
 
 		aifrate = params_rate(params);
 
@@ -718,62 +841,94 @@ int audmixer_hw_params(struct snd_pcm_substream *substream,
 		}
 		ret = regmap_update_bits(g_audmixer->regmap,
 			AUDMIXER_REG_05_IN2_CTL2,
-			(INCTL2_I2S_XFS_MASK << INCTL2_I2S_XFS_SHIFT) |
 			(INCTL2_I2S_DL_MASK << INCTL2_I2S_DL_SHIFT),
-			(xfs << INCTL2_I2S_XFS_SHIFT) | dl_bit);
+			dl_bit);
 		break;
 
 	case AUDMIXER_IF_BT:
-		ret = regmap_update_bits(g_audmixer->regmap,
-			AUDMIXER_REG_08_IN3_CTL2,
-			(INCTL2_I2S_XFS_MASK << INCTL2_I2S_XFS_SHIFT) |
-			(INCTL2_I2S_DL_MASK << INCTL2_I2S_DL_SHIFT),
-			(xfs << INCTL2_I2S_XFS_SHIFT) | dl_bit);
+		if(g_audmixer->is_bt_slave) {
+			ret = regmap_update_bits(g_audmixer->regmap,
+						AUDMIXER_REG_07_IN3_CTL1,
+						(MIXER_MASTER << INCTL1_MASTER_SHIFT),
+						(MIXER_MASTER << INCTL1_MASTER_SHIFT));
 
-		/*
-		 * Sample rate setting only requird for PCM master mode, but the
-		 * below configuration have no impact in I2S mode.
-		 */
-		aifrate = params_rate(params);
+			ret = regmap_update_bits(g_audmixer->regmap,
+						AUDMIXER_REG_07_IN3_CTL1,
+						(INCTL1_MPCM_SLOT_MASK << INCTL1_MPCM_SLOT_SHIFT),
+						(MPCM_SLOT_32BCK << INCTL1_MPCM_SLOT_SHIFT));
 
-		switch (aifrate) {
-		case AUDMIXER_SAMPLE_RATE_8KHZ:
-			mpcm_rate = MPCM_SRATE_8KHZ;
-			break;
-		case AUDMIXER_SAMPLE_RATE_16KHZ:
-			mpcm_rate = MPCM_SRATE_16KHZ;
+			ret = regmap_update_bits(g_audmixer->regmap,
+						AUDMIXER_REG_07_IN3_CTL1,
+						(I2S_PCM_MODE_PCM << INCTL1_I2S_PCM_SHIFT),
+						(I2S_PCM_MODE_PCM << INCTL1_I2S_PCM_SHIFT));
+
+			ret = regmap_update_bits(g_audmixer->regmap,
+						AUDMIXER_REG_09_IN3_CTL3,
+						(INCTL3_PCM_DF_MASK << INCTL3_PCM_DF_SHIFT),
+						(PCM_DF_LONG_FRAME << INCTL3_PCM_DF_SHIFT));
+		}
+	case AUDMIXER_IF_FM:
+		switch (g_audmixer->hw->type) {
+		case SRC1403X:
 			break;
 		default:
-			dev_err(g_audmixer->dev,
-					"%s: Unsupported BT samplerate (%d)\n",
-					__func__, aifrate);
-			return -EINVAL;
+			ret = regmap_update_bits(g_audmixer->regmap,
+				AUDMIXER_REG_08_IN3_CTL2,
+			(INCTL2_I2S_DL_MASK << INCTL2_I2S_DL_SHIFT),
+			dl_bit);
+
+			/*
+			 * Sample rate setting only requird for PCM master mode, but the
+			 * below configuration have no impact in I2S mode.
+			 */
+			aifrate = params_rate(params);
+
+			switch (aifrate) {
+			case AUDMIXER_SAMPLE_RATE_8KHZ:
+				ret = regmap_update_bits(g_audmixer->regmap,
+					AUDMIXER_REG_07_IN3_CTL1,
+					(INCTL1_MPCM_SRATE_MASK << INCTL1_MPCM_SRATE_SHIFT),
+					(MPCM_SRATE_8KHZ << INCTL1_MPCM_SRATE_SHIFT));
+				break;
+			case AUDMIXER_SAMPLE_RATE_16KHZ:
+				ret = regmap_update_bits(g_audmixer->regmap,
+					AUDMIXER_REG_07_IN3_CTL1,
+					(INCTL1_MPCM_SRATE_MASK << INCTL1_MPCM_SRATE_SHIFT),
+					(MPCM_SRATE_16KHZ << INCTL1_MPCM_SRATE_SHIFT));
+				break;
+			case AUDMIXER_SAMPLE_RATE_48KHZ:
+				break;
+			default:
+				dev_warn(g_audmixer->dev,
+						"%s: Unsupported BT/FM samplerate (%d)\n",
+						__func__, aifrate);
+				break;
+			}
+			sys_clk_freq = AUDMIXER_SYS_CLK_FREQ_48KHZ;
+			ret = clk_set_rate(g_audmixer->clk_dout, sys_clk_freq);
+			if (ret != 0) {
+				dev_err(g_audmixer->dev,
+					"%s: Error setting mixer sysclk rate as %u\n",
+					__func__, sys_clk_freq);
+				return ret;
+			}
+			break;
 		}
-
-		ret = regmap_update_bits(g_audmixer->regmap,
-			AUDMIXER_REG_07_IN3_CTL1,
-			(INCTL1_MPCM_SRATE_MASK << INCTL1_MPCM_SRATE_SHIFT),
-			(mpcm_rate << INCTL1_MPCM_SRATE_SHIFT));
-
 		break;
 
 	case AUDMIXER_IF_AP1:
 		ret = regmap_update_bits(g_audmixer->regmap,
 			AUDMIXER_REG_19_OUTAP1_CTL,
-			(OUTAMP_CTL_I2S_XFS_MASK << OUTAMP_CTL_I2S_XFS_SHIFT) |
 			(OUTAMP_CTL_I2S_DL_MASK << OUTAMP_CTL_I2S_DL_SHIFT),
-			(xfs << OUTAMP_CTL_I2S_XFS_SHIFT) |
-			(dl_bit << OUTAMP_CTL_I2S_DL_SHIFT ));
+			(dl_bit << OUTAMP_CTL_I2S_DL_SHIFT));
 
 		break;
 
 	case AUDMIXER_IF_CP1:
 		ret = regmap_update_bits(g_audmixer->regmap,
 			AUDMIXER_REG_1A_OUTCP1_CTL,
-			(OUTAMP_CTL_I2S_XFS_MASK << OUTAMP_CTL_I2S_XFS_SHIFT) |
 			(OUTAMP_CTL_I2S_DL_MASK << OUTAMP_CTL_I2S_DL_SHIFT),
-			(xfs << OUTAMP_CTL_I2S_XFS_SHIFT) |
-			(dl_bit << OUTAMP_CTL_I2S_DL_SHIFT ));
+			(dl_bit << OUTAMP_CTL_I2S_DL_SHIFT));
 
 		break;
 
@@ -789,7 +944,6 @@ int audmixer_hw_params(struct snd_pcm_substream *substream,
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(audmixer_hw_params);
 
 /*
  * audmixer_startup: Start a particular interface of Audio Mixer
@@ -802,10 +956,12 @@ EXPORT_SYMBOL_GPL(audmixer_hw_params);
  *
  * @interface: The ID of the current interface
  */
-void audmixer_startup(enum audmixer_if_t interface)
+static int audmixer_startup(struct snd_pcm_substream *stream, struct snd_soc_dai *dai)
 {
+	enum audmixer_if_t interface = (enum audmixer_if_t)(dai->id);
+
 	if (g_audmixer == NULL)
-		return;
+		return -ENODEV;
 
 	dev_dbg(g_audmixer->dev, "aif%d: %s called\n", interface, __func__);
 
@@ -830,13 +986,47 @@ void audmixer_startup(enum audmixer_if_t interface)
 	 */
 	atomic_inc(&g_audmixer->use_count[interface]);
 
-	if (interface == AUDMIXER_IF_BT)
-		if (atomic_read(&g_audmixer->use_count[AUDMIXER_IF_BT]) == 1)
-			audmixer_cfg_gpio(g_audmixer->dev, "default");
+	switch (g_audmixer->hw->type) {
+	case SRC1403X:
+		switch (interface) {
+		case AUDMIXER_IF_BT:
+			regmap_update_bits(g_audmixer->regmap,
+					AUDMIXER_REG_07_IN3_CTL1,
+					INCTL1_FM_BT_SEL_MASK << INCTL1_FM_BT_SEL_SHIFT,
+					0 << INCTL1_FM_BT_SEL_SHIFT);
+			break;
+		case AUDMIXER_IF_FM:
+			regmap_update_bits(g_audmixer->regmap,
+					AUDMIXER_REG_07_IN3_CTL1,
+					INCTL1_FM_BT_SEL_MASK << INCTL1_FM_BT_SEL_SHIFT,
+					1 << INCTL1_FM_BT_SEL_SHIFT);
+			break;
+		default:
+			break;
+		}
+		break;
+	default:
+		switch (interface) {
+		case AUDMIXER_IF_BT:
+			if (atomic_read(&g_audmixer->use_count[AUDMIXER_IF_BT]) == 1)
+				audmixer_cfg_gpio(g_audmixer->dev, "bt");
+			lpass_set_fm_bt_mux(0);
+			break;
+		case AUDMIXER_IF_FM:
+			if (atomic_read(&g_audmixer->use_count[AUDMIXER_IF_FM]) == 1)
+				audmixer_cfg_gpio(g_audmixer->dev, "fm");
+			lpass_set_fm_bt_mux(1);
+			break;
+		default:
+			break;
+		}
+		break;
+	}
 
 	atomic_inc(&g_audmixer->num_active_stream);
+
+	return 0;
 }
-EXPORT_SYMBOL_GPL(audmixer_startup);
 
 /*
  * audmixer_shutdown: Stop a particular interface of Audio Mixer
@@ -849,8 +1039,10 @@ EXPORT_SYMBOL_GPL(audmixer_startup);
  *
  * @interface: The ID of the current interface
  */
-void audmixer_shutdown(enum audmixer_if_t interface)
+static void audmixer_shutdown(struct snd_pcm_substream *stream, struct snd_soc_dai *dai)
 {
+	enum audmixer_if_t interface = (enum audmixer_if_t)(dai->id);
+
 	if (g_audmixer == NULL)
 		return;
 
@@ -860,13 +1052,34 @@ void audmixer_shutdown(enum audmixer_if_t interface)
 
 	atomic_dec(&g_audmixer->use_count[interface]);
 
-	if (interface == AUDMIXER_IF_BT)
-		if (atomic_read(&g_audmixer->use_count[AUDMIXER_IF_BT]) == 0)
-			audmixer_cfg_gpio(g_audmixer->dev, "bt-idle");
-
+	switch (g_audmixer->hw->type) {
+	case SRC1403X:
+		break;
+	default:
+		switch (interface) {
+		case AUDMIXER_IF_BT:
+			if (atomic_read(&g_audmixer->use_count[AUDMIXER_IF_BT]) == 0)
+				audmixer_cfg_gpio(g_audmixer->dev, "bt-idle");
+			break;
+		case AUDMIXER_IF_FM:
+			if (atomic_read(&g_audmixer->use_count[AUDMIXER_IF_FM]) == 0)
+				audmixer_cfg_gpio(g_audmixer->dev, "fm-idle");
+			break;
+		default:
+			break;
+		}
+		break;
+	}
 	pm_runtime_put_sync(g_audmixer->dev);
 }
-EXPORT_SYMBOL_GPL(audmixer_shutdown);
+
+static const struct snd_soc_dai_ops audmixer_dai_ops = {
+	.set_bclk_ratio = audmixer_set_bclk_ratio,
+	.startup = audmixer_startup,
+	.shutdown = audmixer_shutdown,
+	.hw_params = audmixer_hw_params,
+	.set_fmt = audmixer_set_fmt,
+};
 
 /**
  * is_cp_aud_enabled(void): Checks whether mixer is active or not
@@ -1275,6 +1488,24 @@ static const struct soc_enum audmixer_pcm_df3_enum =
 			audmixer_pcm_df_text);
 
 /**
+ * in3_pol
+ *
+ * Polarity of internal bus for IN3
+ */
+static const char *audmixer_in3_pol_text[] = {
+	"Normal", "Inverted"
+};
+
+static const struct soc_enum audmixer_in3_isync_pol_enum =
+	SOC_ENUM_SINGLE(AUDMIXER_REG_07_IN3_CTL1, INCTL1_ISYNC_POL_SHIFT,
+			ARRAY_SIZE(audmixer_in3_pol_text),
+			audmixer_in3_pol_text);
+static const struct soc_enum audmixer_in3_bt_osync_pol_enum =
+	SOC_ENUM_SINGLE(AUDMIXER_REG_07_IN3_CTL1, INCTL1_BT_OSYNC_POL_SHIFT,
+			ARRAY_SIZE(audmixer_in3_pol_text),
+			audmixer_in3_pol_text);
+
+/**
  * bck4_mode
  *
  * BCK4 Output Selection
@@ -1370,7 +1601,9 @@ SOC_ENUM_SINGLE(AUDMIXER_REG_0F_DIG_EN, DIG_EN_SRC3_EN_SHIFT,
 static const struct soc_enum src2_enable_enum =
 SOC_ENUM_SINGLE(AUDMIXER_REG_0F_DIG_EN, DIG_EN_SRC2_EN_SHIFT,
 		ARRAY_SIZE(audmixer_off_on_text), audmixer_off_on_text);
-#ifdef CONFIG_SOC_EXYNOS7870
+static const struct soc_enum src1_enable_enum =
+SOC_ENUM_SINGLE(AUDMIXER_REG_0F_DIG_EN, DIG_EN_SRC1_EN_SHIFT,
+		ARRAY_SIZE(audmixer_off_on_text), audmixer_off_on_text);
 static const struct soc_enum ap0_enable_enum =
 SOC_ENUM_SINGLE(AUDMIXER_REG_0F_DIG_EN, DIG_EN_AP0_EN_SHIFT,
 		ARRAY_SIZE(audmixer_off_on_text), audmixer_off_on_text);
@@ -1380,11 +1613,7 @@ SOC_ENUM_SINGLE(AUDMIXER_REG_0F_DIG_EN, DIG_EN_AP1_EN_SHIFT,
 static const struct soc_enum cp1_enable_enum =
 SOC_ENUM_SINGLE(AUDMIXER_REG_0F_DIG_EN, DIG_EN_CP1_EN_SHIFT,
 		ARRAY_SIZE(audmixer_off_on_text), audmixer_off_on_text);
-#else
-static const struct soc_enum src1_enable_enum =
-SOC_ENUM_SINGLE(AUDMIXER_REG_0F_DIG_EN, DIG_EN_SRC1_EN_SHIFT,
-		ARRAY_SIZE(audmixer_off_on_text), audmixer_off_on_text);
-#endif
+
 static const struct soc_enum alc_enable_enum =
 SOC_ENUM_SINGLE(AUDMIXER_REG_68_ALC_CTL, ALC_CTL_ALC_EN_SHIFT,
 		ARRAY_SIZE(audmixer_off_on_text), audmixer_off_on_text);
@@ -1424,33 +1653,7 @@ static int audmixer_soc_kcontrol_handler(struct snd_kcontrol *kcontrol,
 		struct snd_ctl_elem_value *ucontrol,
 		int (*func)(struct snd_kcontrol *, struct snd_ctl_elem_value *))
 {
-	int ret;
-
-	/* Enable the power */
-	if (g_audmixer->hw->bus == AUDMIXER_APB)
-		pm_runtime_get_sync(g_audmixer->dev);
-
-	ret = func(kcontrol, ucontrol);
-
-	/*
-	 * There may be a pending request for accessing another control element,
-	 * so use a delayed suspend API so that we don't get into an avoidable
-	 * suspend-resume cycle.
-	 *
-	 * pm_runtime_mark_last_busy: Tells the RPM framework the last activity
-	 * time of this device
-	 *
-	 * pm_runtime_put_autosuspend: It queues the device runtime suspend
-	 * request. Internally the framework waits till auto-suspend delay after
-	 * the last busy time (updated in previous API) and then runs the
-	 * device runtime suspend API.
-	 */
-	if (g_audmixer->hw->bus == AUDMIXER_APB) {
-		pm_runtime_mark_last_busy(g_audmixer->dev);
-		pm_runtime_put_autosuspend(g_audmixer->dev);
-	}
-
-	return ret;
+	return func(kcontrol, ucontrol);
 }
 
 /* Function to get TLV control value */
@@ -1518,7 +1721,7 @@ static int audmixer_soc_enum_put(struct snd_kcontrol *kcontrol,
  * SOC_DOUBLE: Two bit-fields are updated in a single register
  * SOC_DOUBLE_R: Two bit-fields in 2 different registers are updated
  */
-static const struct snd_kcontrol_new audmixer_snd_controls[] = {
+static const struct snd_kcontrol_new audmixer_common_snd_controls[] = {
 	SOC_SINGLE_EXT_TLV("RMIX1_LVL", AUDMIXER_REG_0D_RMIX_CTL,
 			RMIX_CTL_RMIX2_LVL_SHIFT,
 			BIT(RMIX_CTL_RMIX2_LVL_WIDTH) - 1, 0,
@@ -1555,6 +1758,126 @@ static const struct snd_kcontrol_new audmixer_snd_controls[] = {
 			audmixer_snd_soc_get_volsw, audmixer_snd_soc_put_volsw,
 			audmixer_mix_tlv),
 
+	SOC_ENUM_EXT("CH1 Master PCM Sample Rate", audmixer_mpcm_srate1_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH2 Master PCM Sample Rate", audmixer_mpcm_srate2_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+
+	SOC_ENUM_EXT("CH1 Master PCM Slot", audmixer_mpcm_slot1_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH2 Master PCM Slot", audmixer_mpcm_slot2_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+
+	SOC_ENUM_EXT("CH1 BCLK Polarity", audmixer_bck_pol1_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH2 BCLK Polarity", audmixer_bck_pol2_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+
+	SOC_ENUM_EXT("CH1 LRCLK Polarity", audmixer_lrck_pol1_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH2 LRCLK Polarity", audmixer_lrck_pol2_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+
+	SOC_ENUM_EXT("CH1 Input Audio Mode", audmixer_i2s_pcm1_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH2 Input Audio Mode", audmixer_i2s_pcm2_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+
+	SOC_ENUM_EXT("CH1 XFS", audmixer_i2s_xfs1_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH2 XFS", audmixer_i2s_xfs2_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+
+	SOC_ENUM_EXT("CH1 I2S Format", audmixer_i2s_df1_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH2 I2S Format", audmixer_i2s_df2_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+
+	SOC_ENUM_EXT("CH1 I2S Data Length", audmixer_i2s_dl1_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH2 I2S Data Length", audmixer_i2s_dl2_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+
+	SOC_ENUM_EXT("CH1 PCM DAD", audmixer_pcm_dad1_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH2 PCM DAD", audmixer_pcm_dad2_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+
+	SOC_ENUM_EXT("CH1 PCM Data Format", audmixer_pcm_df1_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH2 PCM Data Format", audmixer_pcm_df2_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+
+	SOC_ENUM_EXT("CH3 Rec En", audmixer_ch3_rec_en_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("MCKO En", audmixer_mcko_en_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+
+	SOC_ENUM_EXT("RMIX1 En", audmixer_rmix1_en_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("RMIX2 En", audmixer_rmix2_en_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+
+	SOC_ENUM_EXT("BCK4 Output Selection", audmixer_bck4_mode_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+
+	SOC_ENUM_EXT("HQ En", audmixer_hq_en_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+
+	SOC_ENUM_EXT("CH1 DOUT Select", audmixer_dout_sel1_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH2 DOUT Select", audmixer_dout_sel2_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH3 DOUT Select", audmixer_dout_sel3_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+
+	SOC_ENUM_EXT("CH1 Mixer En", mixer_ch1_enable_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH2 Mixer En", mixer_ch2_enable_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH3 Mixer En", mixer_ch3_enable_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH4 Mixer En", mixer_ch4_enable_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("Mixer En", mixer_enable_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("SRC2 En", src2_enable_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("SRC3 En", src3_enable_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+};
+
+static const struct snd_kcontrol_new audmixer_external_in3_snd_controls[] = {
+	SOC_ENUM_EXT("CH3 Master PCM Sample Rate", audmixer_mpcm_srate3_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH3 Master PCM Slot", audmixer_mpcm_slot3_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH3 BCLK Polarity", audmixer_bck_pol3_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH3 LRCLK Polarity", audmixer_lrck_pol3_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH3 Input Audio Mode", audmixer_i2s_pcm3_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH3 XFS", audmixer_i2s_xfs3_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH3 I2S Format", audmixer_i2s_df3_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH3 I2S Data Length", audmixer_i2s_dl3_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH3 PCM DAD", audmixer_pcm_dad3_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH3 PCM Data Format", audmixer_pcm_df3_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+};
+
+static const struct snd_kcontrol_new audmixer_internal_in3_snd_controls[] = {
+	SOC_ENUM_EXT("CH3 ISYNC Polarity", audmixer_in3_isync_pol_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CH3 BT OSYNC Polarity", audmixer_in3_bt_osync_pol_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+};
+
+static const struct snd_kcontrol_new audmixer_alc_snd_controls[] = {
 	SOC_SINGLE_EXT_TLV("ALC NG HYS", AUDMIXER_REG_68_ALC_CTL,
 			ALC_CTL_ALC_NG_HYS_SHIFT,
 			BIT(ALC_CTL_ALC_NG_HYS_WIDTH) - 1, 0,
@@ -1611,125 +1934,6 @@ static const struct snd_kcontrol_new audmixer_snd_controls[] = {
 			audmixer_snd_soc_get_volsw, audmixer_snd_soc_put_volsw,
 			audmixer_alc_ng_th_tlv),
 
-	SOC_ENUM_EXT("CH1 Master PCM Sample Rate", audmixer_mpcm_srate1_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH2 Master PCM Sample Rate", audmixer_mpcm_srate2_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH3 Master PCM Sample Rate", audmixer_mpcm_srate3_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-
-	SOC_ENUM_EXT("CH1 Master PCM Slot", audmixer_mpcm_slot1_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH2 Master PCM Slot", audmixer_mpcm_slot2_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH3 Master PCM Slot", audmixer_mpcm_slot3_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-
-	SOC_ENUM_EXT("CH1 BCLK Polarity", audmixer_bck_pol1_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH2 BCLK Polarity", audmixer_bck_pol2_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH3 BCLK Polarity", audmixer_bck_pol3_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-
-	SOC_ENUM_EXT("CH1 LRCLK Polarity", audmixer_lrck_pol1_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH2 LRCLK Polarity", audmixer_lrck_pol2_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH3 LRCLK Polarity", audmixer_lrck_pol3_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-
-	SOC_ENUM_EXT("CH1 Input Audio Mode", audmixer_i2s_pcm1_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH2 Input Audio Mode", audmixer_i2s_pcm2_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH3 Input Audio Mode", audmixer_i2s_pcm3_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-
-	SOC_ENUM_EXT("CH1 XFS", audmixer_i2s_xfs1_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH2 XFS", audmixer_i2s_xfs2_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH3 XFS", audmixer_i2s_xfs3_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-
-	SOC_ENUM_EXT("CH1 I2S Format", audmixer_i2s_df1_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH2 I2S Format", audmixer_i2s_df2_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH3 I2S Format", audmixer_i2s_df3_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-
-	SOC_ENUM_EXT("CH1 I2S Data Length", audmixer_i2s_dl1_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH2 I2S Data Length", audmixer_i2s_dl2_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH3 I2S Data Length", audmixer_i2s_dl3_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-
-	SOC_ENUM_EXT("CH1 PCM DAD", audmixer_pcm_dad1_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH2 PCM DAD", audmixer_pcm_dad2_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH3 PCM DAD", audmixer_pcm_dad3_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-
-	SOC_ENUM_EXT("CH1 PCM Data Format", audmixer_pcm_df1_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH2 PCM Data Format", audmixer_pcm_df2_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH3 PCM Data Format", audmixer_pcm_df3_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-
-	SOC_ENUM_EXT("CH3 Rec En", audmixer_ch3_rec_en_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("MCKO En", audmixer_mcko_en_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-
-	SOC_ENUM_EXT("RMIX1 En", audmixer_rmix1_en_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("RMIX2 En", audmixer_rmix2_en_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-
-	SOC_ENUM_EXT("BCK4 Output Selection", audmixer_bck4_mode_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-
-	SOC_ENUM_EXT("HQ En", audmixer_hq_en_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-
-	SOC_ENUM_EXT("CH1 DOUT Select", audmixer_dout_sel1_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH2 DOUT Select", audmixer_dout_sel2_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH3 DOUT Select", audmixer_dout_sel3_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-
-	SOC_ENUM_EXT("CH1 Mixer En", mixer_ch1_enable_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH2 Mixer En", mixer_ch2_enable_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH3 Mixer En", mixer_ch3_enable_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CH4 Mixer En", mixer_ch4_enable_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("Mixer En", mixer_enable_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-#ifdef CONFIG_SOC_EXYNOS7870
-	SOC_ENUM_EXT("AP0 En", ap0_enable_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("AP1 En", ap1_enable_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("CP1 En", cp1_enable_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-#else
-	SOC_ENUM_EXT("SRC1 En", src1_enable_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-#endif
-	SOC_ENUM_EXT("SRC2 En", src2_enable_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-	SOC_ENUM_EXT("SRC3 En", src3_enable_enum,
-		audmixer_soc_enum_get, audmixer_soc_enum_put),
-
 	SOC_ENUM_EXT("ALC Window Length", audmixer_alc_winsel_enum,
 		audmixer_soc_enum_get, audmixer_soc_enum_put),
 	SOC_ENUM_EXT("ALC Mode", audmixer_alc_mode_enum,
@@ -1757,6 +1961,20 @@ static const struct snd_kcontrol_new audmixer_snd_controls[] = {
 	SOC_ENUM_EXT("ALC Path", audmixer_alc_path_sel_enum,
 		audmixer_soc_enum_get, audmixer_soc_enum_put),
 	SOC_ENUM_EXT("ALC Noise Gate En", audmixer_noise_gate_enable_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+};
+
+static const struct snd_kcontrol_new audmixer_src1_snd_controls[] = {
+	SOC_ENUM_EXT("SRC1 En", src1_enable_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+};
+
+static const struct snd_kcontrol_new audmixer_splited_src1_snd_controls[] = {
+	SOC_ENUM_EXT("AP0 En", ap0_enable_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("AP1 En", ap1_enable_enum,
+		audmixer_soc_enum_get, audmixer_soc_enum_put),
+	SOC_ENUM_EXT("CP1 En", cp1_enable_enum,
 		audmixer_soc_enum_get, audmixer_soc_enum_put),
 };
 
@@ -1903,14 +2121,147 @@ static void audmixer_power_off(struct device *dev)
 #define AUDMIXER_RATES SNDRV_PCM_RATE_8000_192000
 #define AUDMIXER_FORMATS (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE)
 
-static struct snd_soc_dai_driver audmixer_dai = {
-	.name = "HiFi",
-	.playback = {
-		.stream_name = "Primary",
-		.channels_min = 2,
-		.channels_max = 2,
-		.rates = AUDMIXER_RATES,
-		.formats = AUDMIXER_FORMATS,
+static struct snd_soc_dai_driver audmixer_dais[] = {{
+		.name = "AP0",
+		.id = AUDMIXER_IF_AP,
+		.ops = &audmixer_dai_ops,
+		.playback = {
+			.stream_name = "AP0 Playback",
+			.channels_min = 2,
+			.channels_max = 2,
+			.rate_min = 48000,
+			.rate_max = 192000,
+			.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_192000,
+			.formats = AUDMIXER_FORMATS,
+		},
+		.capture = {
+			.stream_name = "AP0 Capture",
+			.channels_min = 2,
+			.channels_max = 2,
+			.rate_min = 48000,
+			.rate_max = 192000,
+			.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_192000,
+			.formats = AUDMIXER_FORMATS,
+		},
+		.symmetric_rates = 1,
+		.symmetric_channels = 1,
+		.symmetric_samplebits = 1,
+	},{
+		.name = "CP0",
+		.id = AUDMIXER_IF_CP,
+		.ops = &audmixer_dai_ops,
+		.playback = {
+			.stream_name = "CP0 Playback",
+			.channels_min = 2,
+			.channels_max = 2,
+			.rate_min = 8000,
+			.rate_max = 48000,
+			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_48000,
+			.formats = AUDMIXER_FORMATS,
+		},
+		.capture = {
+			.stream_name = "CP0 Capture",
+			.channels_min = 2,
+			.channels_max = 2,
+			.rate_min = 8000,
+			.rate_max = 48000,
+			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_48000,
+			.formats = AUDMIXER_FORMATS,
+		},
+		.symmetric_channels = 1,
+		.symmetric_samplebits = 1,
+	},{
+		.name = "BT",
+		.id = AUDMIXER_IF_BT,
+		.ops = &audmixer_dai_ops,
+		.playback = {
+			.stream_name = "BT Playback",
+			.channels_min = 2,
+			.channels_max = 2,
+			.rate_min = 8000,
+			.rate_max = 48000,
+			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
+					SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_KNOT,
+			.formats = AUDMIXER_FORMATS,
+		},
+		.capture = {
+			.stream_name = "BT Capture",
+			.channels_min = 2,
+			.channels_max = 2,
+			.rate_min = 8000,
+			.rate_max = 48000,
+			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
+					SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_KNOT,
+			.formats = AUDMIXER_FORMATS,
+		},
+		.symmetric_rates = 1,
+		.symmetric_channels = 1,
+		.symmetric_samplebits = 1,
+	},{
+		.name = "FM",
+		.id = AUDMIXER_IF_FM,
+		.ops = &audmixer_dai_ops,
+		.playback = {
+			.stream_name = "FM Playback",
+			.channels_min = 2,
+			.channels_max = 2,
+			.rate_min = 8000,
+			.rate_max = 48000,
+			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
+					SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_KNOT,
+			.formats = AUDMIXER_FORMATS,
+		},
+		.capture = {
+			.stream_name = "FM Capture",
+			.channels_min = 2,
+			.channels_max = 2,
+			.rate_min = 8000,
+			.rate_max = 48000,
+			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
+					SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_KNOT,
+			.formats = AUDMIXER_FORMATS,
+		},
+		.symmetric_rates = 1,
+		.symmetric_channels = 1,
+		.symmetric_samplebits = 1,
+	},{
+		.name = "AMP",
+		.id = AUDMIXER_IF_ADC,
+		.capture = {
+			.stream_name = "AMP Capture",
+			.channels_min = 2,
+			.channels_max = 2,
+			.rate_min = 48000,
+			.rate_max = 48000,
+			.rates = SNDRV_PCM_RATE_48000,
+			.formats = AUDMIXER_FORMATS,
+		},
+	},{
+		.name = "AP1",
+		.id = AUDMIXER_IF_AP1,
+		.ops = &audmixer_dai_ops,
+		.capture = {
+			.stream_name = "AP1 Capture",
+			.channels_min = 2,
+			.channels_max = 2,
+			.rate_min = 48000,
+			.rate_max = 48000,
+			.rates = SNDRV_PCM_RATE_48000,
+			.formats = AUDMIXER_FORMATS,
+		},
+	},{
+		.name = "CP1",
+		.id = AUDMIXER_IF_CP1,
+		.ops = &audmixer_dai_ops,
+		.capture = {
+			.stream_name = "CP1 Capture",
+			.channels_min = 2,
+			.channels_max = 2,
+			.rate_min = 8000,
+			.rate_max = 16000,
+			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000,
+			.formats = AUDMIXER_FORMATS,
+		},
 	},
 };
 
@@ -1945,7 +2296,6 @@ static void audmixer_drvdata_init(void)
 	int i;
 	g_audmixer->is_alc_enabled = false;
 	g_audmixer->aifrate = 0;
-	g_audmixer->save_regs_val = NULL;
 
 	g_audmixer->is_active = false;
 	g_audmixer->is_regs_stored = false;
@@ -2056,6 +2406,11 @@ static int audmixer_parse_dt(struct device *dev)
 	else
 		g_audmixer->update_fw = false;
 
+	if (of_find_property(g_audmixer->dev->of_node, "stand-alone-bt", NULL))
+		g_audmixer->is_bt_slave = true;
+	else
+		g_audmixer->is_bt_slave = false;
+
 	return 0;
 }
 
@@ -2164,6 +2519,33 @@ static int audmixer_probe(struct snd_soc_codec *codec)
 
 	pm_runtime_put_sync(g_audmixer->dev);
 
+	switch (g_audmixer->hw->type) {
+	case SRC2801X:
+	case SRC2803X:
+		snd_soc_add_codec_controls(codec, audmixer_external_in3_snd_controls,
+				ARRAY_SIZE(audmixer_external_in3_snd_controls));
+		snd_soc_add_codec_controls(codec, audmixer_alc_snd_controls,
+				ARRAY_SIZE(audmixer_alc_snd_controls));
+		snd_soc_add_codec_controls(codec, audmixer_src1_snd_controls,
+				ARRAY_SIZE(audmixer_src1_snd_controls));
+		break;
+	default:
+	case SRC1402X:
+		snd_soc_add_codec_controls(codec, audmixer_external_in3_snd_controls,
+				ARRAY_SIZE(audmixer_external_in3_snd_controls));
+		snd_soc_add_codec_controls(codec, audmixer_alc_snd_controls,
+				ARRAY_SIZE(audmixer_alc_snd_controls));
+		snd_soc_add_codec_controls(codec, audmixer_splited_src1_snd_controls,
+				ARRAY_SIZE(audmixer_splited_src1_snd_controls));
+		break;
+	case SRC1403X:
+		snd_soc_add_codec_controls(codec, audmixer_internal_in3_snd_controls,
+				ARRAY_SIZE(audmixer_internal_in3_snd_controls));
+		snd_soc_add_codec_controls(codec, audmixer_splited_src1_snd_controls,
+				ARRAY_SIZE(audmixer_splited_src1_snd_controls));
+		break;
+	}
+
 	return 0;
 }
 
@@ -2185,9 +2567,10 @@ static int audmixer_remove(struct snd_soc_codec *codec)
 static struct snd_soc_codec_driver soc_codec_dev_audmixer = {
 	.probe = audmixer_probe,
 	.remove = audmixer_remove,
-	.controls = audmixer_snd_controls,
-	.num_controls = ARRAY_SIZE(audmixer_snd_controls),
+	.controls = audmixer_common_snd_controls,
+	.num_controls = ARRAY_SIZE(audmixer_common_snd_controls),
 	.idle_bias_off = true,
+	.ignore_pmdown_time = true,
 };
 
 /*
@@ -2231,16 +2614,6 @@ static int audmixer_apb_probe(struct platform_device *pdev)
 		return ret;
 	dev_set_drvdata(&pdev->dev, g_audmixer);
 
-	g_audmixer->save_regs_val = devm_kzalloc(&pdev->dev,
-			ARRAY_SIZE(audmixer_save_regs_addr) *
-			sizeof(unsigned int),
-			GFP_KERNEL);
-	if (!g_audmixer->save_regs_val) {
-		dev_err(&pdev->dev,
-				"Unable to allocate save_regs_val\n");
-		return -ENOMEM;
-	}
-
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
 		dev_err(&pdev->dev, "Unable to get SFR base addr\n");
@@ -2263,7 +2636,7 @@ static int audmixer_apb_probe(struct platform_device *pdev)
 	}
 
 	ret = snd_soc_register_codec(&pdev->dev,
-			&soc_codec_dev_audmixer, &audmixer_dai, 1);
+			&soc_codec_dev_audmixer, audmixer_dais, ARRAY_SIZE(audmixer_dais));
 	if (ret < 0)
 		dev_err(&pdev->dev, "Failed to register codec: %d\n", ret);
 
@@ -2309,7 +2682,7 @@ static int audmixer_i2c_probe(struct i2c_client *i2c,
 	}
 
 	ret = snd_soc_register_codec(&i2c->dev,
-			&soc_codec_dev_audmixer, &audmixer_dai, 1);
+			&soc_codec_dev_audmixer, audmixer_dais, ARRAY_SIZE(audmixer_dais));
 	if (ret < 0)
 		dev_err(&i2c->dev, "Failed to register codec: %d\n", ret);
 

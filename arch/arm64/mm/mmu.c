@@ -154,13 +154,15 @@ spinlock_t ro_rkp_pages_lock = __SPIN_LOCK_UNLOCKED();
 char ro_pages_stat[RO_PAGES] = {0};
 unsigned ro_alloc_last = 0; 
 int rkp_ro_mapped = 0; 
-
+int ro_buf_done = 0;
 
 void *rkp_ro_alloc(void)
 {
 	unsigned long flags;
 	int i, j;
 	void * alloc_addr = NULL;
+	if (!ro_buf_done)
+		return alloc_addr;
 	
 	spin_lock_irqsave(&ro_rkp_pages_lock,flags);
 	
@@ -205,6 +207,9 @@ static inline void __init block_to_pages(pmd_t *pmd, unsigned long addr,
 	pmd_t new ; 
 	pte_t *pte = rkp_ro_alloc();	
 
+	if (!pte)
+		pte = (pte_t *)early_alloc(PAGE_SIZE);
+
 	old_pte = pte;
 
 	__pmd_populate(&new, __pa(pte), PMD_TYPE_TABLE); /* populate to temporary pmd */
@@ -213,7 +218,7 @@ static inline void __init block_to_pages(pmd_t *pmd, unsigned long addr,
 
 	do {		
 		if (iotable_on == 1)
-			set_pte(pte, pfn_pte(pfn, pgprot_iotable_init(PAGE_KERNEL_EXEC)));
+			set_pte(pte, pfn_pte(pfn, PROT_NORMAL_NC));
 		else
 			set_pte(pte, pfn_pte(pfn, PAGE_KERNEL_EXEC));
 		pfn++;
@@ -251,7 +256,7 @@ static void __init alloc_init_pte(pmd_t *pmd, unsigned long addr,
 	pte = pte_offset_kernel(pmd, addr);
 	do {
 		if (iotable_on == 1)
-			set_pte(pte, pfn_pte(pfn, pgprot_iotable_init(PAGE_KERNEL_EXEC)));
+			set_pte(pte, pfn_pte(pfn, PROT_NORMAL_NC));
 		else
 			set_pte(pte, pfn_pte(pfn, prot));
 		pfn++;
@@ -284,11 +289,11 @@ static void __init alloc_init_pmd(pud_t *pud, unsigned long addr,
 	if (pud_none(*pud) || pud_bad(*pud)) {
 #ifdef CONFIG_TIMA_RKP
 #ifdef CONFIG_KNOX_KAP
-		if (boot_mode_security)  rkp_do = 1;
-#else
-		rkp_do = 1;
+		if (boot_mode_security)
 #endif
-		if( rkp_do ){
+			rkp_do = 1;
+
+		if( rkp_do && ro_buf_done ){
 			pmd = rkp_ro_alloc();
 		}else{
 			pmd = early_alloc(PTRS_PER_PMD * sizeof(pmd_t));
@@ -305,7 +310,6 @@ static void __init alloc_init_pmd(pud_t *pud, unsigned long addr,
 		/* try section mapping first */
 		if (((addr | next | phys) & ~SECTION_MASK) == 0) {
 			pmd_t old_pmd =*pmd;
-			set_pmd(pmd, __pmd(phys | prot_sect));
 			if (iotable_on == 1)
 				set_pmd(pmd, __pmd(phys | PROT_SECT_NORMAL_NC));
 			else
@@ -463,14 +467,20 @@ static void __init map_mem(void)
 
 #ifdef CONFIG_TIMA_RKP
 #ifdef CONFIG_KNOX_KAP
-	if (boot_mode_security)  rkp_do = 1;
-#else
-	rkp_do = 1;
+	if (boot_mode_security)
 #endif
+		rkp_do = 1;
+
 	if( rkp_do ){
-		create_mapping(start, __phys_to_virt(start), mid - start);
-		memset((void*)RKP_RBUF_VA, 0, TIMA_ROBUF_SIZE);
-		create_mapping(mid, __phys_to_virt(mid), end - mid);
+		if (((u64)start < TIMA_ROBUF_START) && ((u64)end > TIMA_ROBUF_START)) {
+			create_mapping(start, __phys_to_virt(start), mid - start);
+			memset((void*)RKP_RBUF_VA, 0, TIMA_ROBUF_SIZE);
+			ro_buf_done = 1;
+			create_mapping(mid, __phys_to_virt(mid), end - mid);
+		}
+		else {
+			create_mapping(start, __phys_to_virt(start), end - start);
+		}
 	}else{
 		create_mapping(start, __phys_to_virt(start), end - start);
 	}
@@ -519,9 +529,9 @@ void __init paging_init(void)
 #ifdef CONFIG_TIMA_RKP
 #ifdef CONFIG_KNOX_KAP
 	if (boot_mode_security)
-		rkp_do = 1;
 #endif
-	if (rkp_do)
+		rkp_do = 1;
+	if (rkp_do && ro_buf_done)
 		zero_page = rkp_ro_alloc();
 	else
 		zero_page = early_alloc(PAGE_SIZE);

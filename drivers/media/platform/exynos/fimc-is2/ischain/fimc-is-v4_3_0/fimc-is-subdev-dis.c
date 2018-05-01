@@ -118,7 +118,7 @@ static int fimc_is_ischain_dis_cfg(struct fimc_is_subdev *leader,
 	 */
 	fps = fimc_is_sensor_g_framerate(device->sensor);
 	setfile = device->setfile;
-	if (fps > 60 || (fps > 30 && ((width * height) > SIZE_WHD)) ||
+	if (fps > 60 || (fps > 30 && ((width * height) >= SIZE_UHD)) ||
 		((setfile & FIMC_IS_SETFILE_MASK) == ISS_SUB_SCENARIO_DUAL_STILL) ||
 		((setfile & FIMC_IS_SETFILE_MASK) == ISS_SUB_SCENARIO_DUAL_VIDEO))
 		full_bypass = true;

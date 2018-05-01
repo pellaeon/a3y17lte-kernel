@@ -265,7 +265,7 @@ static int __die(const char *str, int err, struct thread_info *thread,
 		dump_mem(KERN_EMERG, "Stack: ", regs->sp,
 			 THREAD_SIZE + (unsigned long)task_stack_page(tsk));
 
-#ifdef CONFIG_SEC_DEBUG_AUTO_SUMMARY		
+#ifdef CONFIG_SEC_DEBUG_AUTO_SUMMARY
 		dump_backtrace_auto_summary(regs, tsk);
 #else
 		dump_backtrace(regs, tsk);
@@ -298,10 +298,10 @@ void die(const char *str, struct pt_regs *regs, int err)
 		str = "Oops - BUG";
 
 	ret = __die(str, err, thread, regs);
-
+#if 0
 	if (regs && kexec_should_crash(thread->task))
 		crash_kexec(regs);
-
+#endif
 	bust_spinlocks(0);
 	add_taint(TAINT_DIE, LOCKDEP_NOW_UNRELIABLE);
 	raw_spin_unlock_irq(&die_lock);
@@ -314,12 +314,12 @@ void die(const char *str, struct pt_regs *regs, int err)
 #if defined(CONFIG_SEC_DEBUG)
 	if (in_interrupt())
 		panic("%s\nPC is at %pS\nLR is at %pS",
-		      "Fatal exception in interrupt", (void *)regs->pc,
-		      compat_user_mode(regs) ? (void *)regs->compat_lr : (void *)regs->regs[30]);
+				"Fatal exception in interrupt", (void *)regs->pc,
+				compat_user_mode(regs) ? (void *)regs->compat_lr : (void *)regs->regs[30]);
 	if (panic_on_oops)
 		panic("%s\nPC is at %pS\nLR is at %pS",
-		      "Fatal exception", (void *)regs->pc,
-		      compat_user_mode(regs) ? (void *)regs->compat_lr : (void *)regs->regs[30]);
+				"Fatal exception", (void *)regs->pc,
+				compat_user_mode(regs) ? (void *)regs->compat_lr : (void *)regs->regs[30]);
 #else
 	if (in_interrupt())
 		panic("Fatal exception in interrupt");

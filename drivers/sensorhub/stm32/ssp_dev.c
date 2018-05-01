@@ -365,10 +365,6 @@ static int ssp_parse_dt(struct device *dev,
 	ssp_info("hi-thresh[%u] low-thresh[%u]\n",
 		data->uProxHiThresh, data->uProxLoThresh);
 
-#ifdef CONFIG_SENSORS_SSP_TMD3700
-		data->uProxHiThresh_default = data->uProxHiThresh;
-		data->uProxLoThresh_default = data->uProxLoThresh;
-#else
 	if (of_property_read_u32(np, "ssp,prox-detect_hi_thresh",
 			&data->uProxHiThresh_detect))
 		data->uProxHiThresh_detect = DEFUALT_DETECT_HIGH_THRESHOLD;
@@ -379,7 +375,6 @@ static int ssp_parse_dt(struct device *dev,
 
 	ssp_info("detect-hi[%u] detect-low[%u]\n",
 		data->uProxHiThresh_detect, data->uProxLoThresh_detect);
-#endif
 
 	/* acc type */
 	if (of_property_read_u32(np, "ssp-acc-type", &data->acc_type))
@@ -491,7 +486,7 @@ static int ssp_resume(struct device *dev)
 	ssp_infof();
 	enable_debug_timer(data);
 	ssp_timestamp_resume(data);
-
+	
 	if (SUCCESS != ssp_send_cmd(data, MSG2SSP_AP_STATUS_RESUME, 0))
 		ssp_errf("MSG2SSP_AP_STATUS_RESUME failed");
 

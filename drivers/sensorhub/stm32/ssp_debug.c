@@ -217,13 +217,8 @@ int print_mcu_debug(char *pchRcvDataFrame, int *pDataIdx,
 	u16 length = 0;
 	int cur = *pDataIdx;
 
-#ifdef CONFIG_SENSORS_SSP_A3XPREMIUM
-		memcpy(&length, pchRcvDataFrame + *pDataIdx, 2);
-		*pDataIdx += 2;
-#else
 	memcpy(&length, pchRcvDataFrame + *pDataIdx, 1);
 	*pDataIdx += 1;
-#endif
 
 	if (length > iRcvDataFrameLength - *pDataIdx || length <= 0) {
 		ssp_infof("[M] invalid debug length(%u/%d/%d)",

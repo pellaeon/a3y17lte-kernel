@@ -144,6 +144,7 @@ typedef enum {
 #ifdef MALI_SEC_HWCNT
 	GPU_HWCNT_GATHERING,
 	GPU_HWCNT_GPR,
+	GPU_HWCNT_PROFILE,
 	GPU_HWCNT_POLLING_TIME,
 	GPU_HWCNT_UP_STEP,
 	GPU_HWCNT_DOWN_STEP,
@@ -169,7 +170,7 @@ typedef enum {
 	GPU_SUSTAINABLE_GPU_CLOCK,
 	GPU_THRESHOLD_MAXLOCK,
 	GPU_LOW_POWER_CPU_MAX_LOCK,
-	GPU_CONFIG_LIST_END,
+ 	GPU_CONFIG_LIST_END,
 } gpu_config_list;
 
 typedef struct _gpu_attribute {
@@ -353,7 +354,6 @@ struct exynos_context {
 	bool dvs_is_enabled;
 
 	bool power_status;
-	spinlock_t power_status_spinlock;
 
 	bool perf_gathering_status;
 #ifdef MALI_SEC_HWCNT
@@ -371,6 +371,7 @@ struct exynos_context {
 
 	bool hwcnt_bt_clk;
 	int hwcnt_allow_vertex_throttle;
+	bool hwcnt_profile;
 #endif
 
 	int polling_speed;

@@ -18,12 +18,21 @@
 #include <mali_kbase.h>
 
 #ifdef CONFIG_MALI_DVFS
-#ifdef CONFIG_PWRCAL
+#if defined (CONFIG_SOC_EXYNOS7870) && defined (CONFIG_PWRCAL)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 17, 0)
 #include <../pwrcal/S5E7870/S5E7870-vclk.h>
 #include <../pwrcal/pwrcal.h>
 #else
 #include <../drivers/soc/samsung/pwrcal/S5E7870/S5E7870-vclk.h>
+#include <../drivers/soc/samsung/pwrcal/pwrcal.h>
+#endif
+#endif
+#if defined (CONFIG_SOC_EXYNOS7880) && defined (CONFIG_PWRCAL)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 17, 0)
+#include <../pwrcal/S5E7880/S5E7880-vclk.h>
+#include <../pwrcal/pwrcal.h>
+#else
+#include <../drivers/soc/samsung/pwrcal/S5E7880/S5E7880-vclk.h>
 #include <../drivers/soc/samsung/pwrcal/pwrcal.h>
 #endif
 #endif

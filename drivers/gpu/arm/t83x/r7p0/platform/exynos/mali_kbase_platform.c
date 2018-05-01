@@ -269,6 +269,9 @@ static int gpu_validate_attrib_data(struct exynos_context *platform)
 	data = gpu_get_attrib_data(attrib, GPU_HWCNT_GPR);
 	platform->hwcnt_gpr_status = data == 0 ? 0 : data;
 
+	data = gpu_get_attrib_data(attrib, GPU_HWCNT_PROFILE);
+	platform->hwcnt_profile = data == 0 ? 0 : data;
+
 	data = gpu_get_attrib_data(attrib, GPU_HWCNT_POLLING_TIME);
 	platform->hwcnt_polling_speed = data == 0 ? 0 : (u32) data;
 
@@ -338,7 +341,6 @@ static int gpu_context_init(struct kbase_device *kbdev)
 	mutex_init(&platform->gpu_process_job_lock);
 #endif
 	spin_lock_init(&platform->gpu_dvfs_spinlock);
-	spin_lock_init(&platform->power_status_spinlock);
 
 	gpu_validate_attrib_data(platform);
 
@@ -590,8 +592,8 @@ static int exynos_secure_mem_enable(struct kbase_device *kbdev, int ion_fd, u64 
 			if (ion_phys(client, ion_handle, &phys, &len)) {
 				GPU_LOG(DVFS_ERROR, LSI_GPU_SECURE, 0u, 0u, "%s: Failed to get phys. addr of G3D\n",
 						__func__);
-				ion_free(client, ion_handle);
 				ion_client_destroy(client);
+				ion_free(client, ion_handle);
 				goto secure_out;
 			}
 

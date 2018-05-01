@@ -16,9 +16,9 @@
 
 #ifdef CONFIG_TIMA_RKP
 #include <linux/rkp_entry.h>
+#endif
 #ifdef CONFIG_KNOX_KAP
 extern int boot_mode_security;
-#endif
 #endif
 
 #define	SECURE_LOG	0

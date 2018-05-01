@@ -376,12 +376,6 @@
 		samsung,syscon-phandle = <&pmu_system_controller>;
 	};
 
-	cpu_hotplug {
-		compatible = "exynos,cpu_hotplug";
-		display_off_online_cpu = <4>;
-		boot_lock_time = <40>;
-	};
-
 	cpufreq {
 		compatible = "samsung,exynos-mp-cpufreq";
 

@@ -1759,7 +1759,10 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 		pr_info("%s: Connect gadget: enabled=%d, dev->enabled=%d\n",
 				__func__, enabled, dev->enabled);
 		cdev->next_string_id = 0;
-		usb_gadget_connect(gadget);
+		if (gadget) {
+			if (gadget->ops)
+				usb_gadget_connect(gadget);
+		}
 		dev->enabled = true;
 	} else if (!enabled && dev->enabled) {
 		pr_info("%s: Disconnect gadget: enabled=%d, dev->enabled=%d\n",

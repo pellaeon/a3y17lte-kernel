@@ -52,8 +52,8 @@
 
 /*
  * input type
- * [0] : on the fly input
- * [1] : memory input
+ * [0] : memory input
+ * [1] : on the fly input
  * [2] : pipe input
  */
 #define INPUT_INTYPE_MASK			0x000000F0
@@ -399,6 +399,6 @@ extern int fimc_is_ssxvc3_video_probe(void *data);
 #define GET_FRAMEMGR(vctx)		(vctx ? &(vctx)->queue.framemgr : NULL)
 #define GET_DEVICE(vctx)		(vctx ? (vctx)->device : NULL)
 #define CALL_QOPS(q, op, args...)	(((q)->qops->op) ? ((q)->qops->op(args)) : 0)
-#define CALL_VOPS(v, op, args...)	(((v)->vops.op) ? ((v)->vops.op(v, args)) : 0)
+#define CALL_VOPS(v, op, args...)	((v) && ((v)->vops.op) ? ((v)->vops.op(v, args)) : 0)
 
 #endif

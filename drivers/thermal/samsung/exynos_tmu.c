@@ -46,9 +46,10 @@
 #include "exynos_thermal_common.h"
 #include "exynos_tmu.h"
 #include "exynos_tmu_data.h"
+#include <trace/events/exynos.h>
 
-#ifdef CONFIG_SEC_EXT
-#include <linux/sec_ext.h>
+#ifdef CONFIG_SEC_BSP
+#include <linux/sec_bsp.h>
 #endif
 
 #ifdef CONFIG_CPU_THERMAL_IPA
@@ -72,6 +73,7 @@ struct isp_fps_table isp_fps_table[10];
  * @soc: id of the SOC type.
  * @irq_work: pointer to the irq work structure.
  * @lock: lock to implement synchronization.
+ * @gate_clk: pointer to the clock structure for accessing the tmu gate clk.
  * @temp_error1: fused value of the first point trim.
  * @temp_error2: fused value of the second point trim.
  * @regulator: pointer to the TMU regulator structure.
@@ -87,6 +89,7 @@ struct exynos_tmu_data {
 	enum soc_type soc;
 	struct work_struct irq_work;
 	struct mutex lock;
+	struct clk *gate_clk;
 	u16 temp_error1, temp_error2;
 	struct regulator *regulator;
 	struct thermal_sensor_conf *reg_conf;
@@ -427,13 +430,6 @@ static int exynos_tmu_initialize(struct platform_device *pdev)
 					rising_threshold3 |= (threshold_code << shift);
 					writel(rising_threshold3,
 							data->base + reg->threshold_th6);
-				} else if (i == EXYNOS_MAX_TRIGGER_PER_REG) {
-					/* 5th level to be assigned in th2 reg */
-					shift = 16 * (i - 6);
-					rising_threshold3 &= ~(0x1ff << shift);
-					rising_threshold3 |= (threshold_code << shift);
-					writel(rising_threshold3,
-							data->base + reg->threshold_th6);
 				}
 			} else {
 				if (i == EXYNOS_MAX_TRIGGER_PER_REG - 1) {
@@ -442,12 +438,6 @@ static int exynos_tmu_initialize(struct platform_device *pdev)
 					rising_threshold |= threshold_code << 8 * i;
 					writel(rising_threshold,
 							data->base + reg->threshold_th0);
-				} else if (i == EXYNOS_MAX_TRIGGER_PER_REG) {
-					/* 5th level to be assigned in th2 reg */
-					rising_threshold =
-					threshold_code << reg->threshold_th3_l0_shift;
-					writel(rising_threshold,
-						data->base + reg->threshold_th2);
 				}
 			}
 
@@ -670,31 +660,23 @@ static int exynos_tmu_read(struct exynos_tmu_data *data)
 		max_temp = exynos_tmu_max_temp_read(data);
 #endif
 	exynos_ss_thermal(pdata, temp, "READ" , 0);
+	trace_exynos_thermal(pdata, temp, "READ" , 0);
 	mutex_unlock(&data->lock);
 
 	return temp;
 }
 
-#ifdef CONFIG_SEC_BOOTSTAT
-void sec_bootstat_get_thermal(int *temp, int size)
+#ifdef CONFIG_SEC_BSP
+void get_exynos_thermal_curr_temp(int *temp, int size)
 {
 	struct exynos_tmu_data *devnode;
-	int i;
+	int i = 0;
 
 	list_for_each_entry(devnode, &dtm_dev_list, node) {
-		if(devnode->pdata->d_type == CLUSTER0)
-			i = 0;
-		else if(devnode->pdata->d_type == CLUSTER1)
-			i = 1;
-		else if(devnode->pdata->d_type == GPU)
-			i = 2;
-		else if(devnode->pdata->d_type == ISP)
-			i = 3;
-		else
-			continue;
-	
-		if (i < size)
-			temp[i] = exynos_tmu_read(devnode);
+		temp[i] = exynos_tmu_read(devnode);
+		i++;
+		if(i == size)
+			break;
 	}
 }
 #endif
@@ -891,6 +873,10 @@ static const struct of_device_id exynos_tmu_match[] = {
 	{
 		.compatible = "samsung,exynos7870-tmu",
 		.data = (void *)EXYNOS7870_TMU_DRV_DATA,
+	},
+	{
+		.compatible = "samsung,exynos7880-tmu",
+		.data = (void *)EXYNOS7880_TMU_DRV_DATA,
 	},
 	{},
 };
@@ -1199,6 +1185,17 @@ static int exynos_tmu_probe(struct platform_device *pdev)
 
 	pdata = data->pdata;
 
+	if (pdata->type == SOC_ARCH_EXYNOS7880) {
+		data->gate_clk = devm_clk_get(&pdev->dev, "gate_tmu");
+		if (IS_ERR(data->gate_clk)) {
+			dev_err(&pdev->dev,
+				"failed to find tmu gate clock\n");
+			ret = PTR_ERR(data->gate_clk);
+			goto err1;
+		}
+		clk_prepare_enable(data->gate_clk);
+	}
+
 	INIT_WORK(&data->irq_work, exynos_tmu_work);
 
 	if (pdata->type == SOC_ARCH_EXYNOS3250 ||
@@ -1210,6 +1207,7 @@ static int exynos_tmu_probe(struct platform_device *pdev)
 	    pdata->type == SOC_ARCH_EXYNOS5440 ||
 	    pdata->type == SOC_ARCH_EXYNOS7580 ||
 	    pdata->type == SOC_ARCH_EXYNOS7870 ||
+	    pdata->type == SOC_ARCH_EXYNOS7880 ||
 	    pdata->type == SOC_ARCH_EXYNOS8890)
 		data->soc = pdata->type;
 	else {
@@ -1312,6 +1310,8 @@ static int exynos_tmu_probe(struct platform_device *pdev)
 
 	return 0;
 err:
+	clk_disable_unprepare(data->gate_clk);
+err1:
 	return ret;
 }
 
@@ -1324,6 +1324,7 @@ static int exynos_tmu_remove(struct platform_device *pdev)
 
 	exynos_tmu_control(pdev, false);
 
+	clk_disable_unprepare(data->gate_clk);
 	if (!IS_ERR(data->regulator))
 		regulator_disable(data->regulator);
 

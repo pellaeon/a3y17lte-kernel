@@ -47,7 +47,6 @@ enum WINDOW_COLOR {
 	WINDOW_COLOR_GREEN,
 	WINDOW_COLOR_BLUE,
 	WINDOW_COLOR_PINKGOLD,
-	WINDOW_COLOR_PINK,
 };
 #define WINDOW_COLOR_DEFAULT		WINDOW_COLOR_BLACK
 
@@ -73,7 +72,7 @@ struct abov_touchkey_platform_data {
 	char *fw_path;
 	bool boot_on_ldo;
 	bool bringup;
-	bool each_tkey_thd;
+	bool ta_notifier;
 	int dt_light_version;
 	int dt_light_table;
 };

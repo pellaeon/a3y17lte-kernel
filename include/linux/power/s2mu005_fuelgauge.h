@@ -28,19 +28,27 @@
  * R/W bit should NOT be included.
  */
 
-#define S2MU005_REG_STATUS		0x00
-#define S2MU005_REG_IRQ			0x02
-#define S2MU005_REG_RVBAT		0x04
-#define S2MU005_REG_RCUR_CC		0x06
-#define S2MU005_REG_RSOC		0x08
-#define S2MU005_REG_MONOUT		0x0A
-#define S2MU005_REG_MONOUT_SEL		0x0C
-#define S2MU005_REG_RBATCAP		0x0E
-#define S2MU005_REG_RZADJ		0x12
-#define S2MU005_REG_RBATZ0		0x16
-#define S2MU005_REG_RBATZ1		0x18
-#define S2MU005_REG_IRQ_LVL		0x1A
-#define S2MU005_REG_START		0x1E
+#define S2MU005_REG_STATUS              0x00
+#define S2MU005_REG_IRQ                 0x02
+#define S2MU005_REG_RVBAT               0x04
+#define S2MU005_REG_RCUR_CC             0x06
+#define S2MU005_REG_RSOC                0x08
+#define S2MU005_REG_MONOUT              0x0A
+#define S2MU005_REG_MONOUT_SEL          0x0C
+#define S2MU005_REG_RBATCAP             0x0E
+#define S2MU005_REG_RZADJ               0x12
+#define S2MU005_REG_RBATZ0              0x16
+#define S2MU005_REG_RBATZ1              0x18
+#define S2MU005_REG_IRQ_LVL             0x1A
+#define S2MU005_REG_START               0x1E
+#define S2MU005_REG_COFFSET             0x5A
+
+enum {
+	CURRENT_MODE = 0,
+	LOW_SOC_VOLTAGE_MODE,
+	HIGH_SOC_VOLTAGE_MODE,
+	END_MODE,
+};
 
 struct sec_fg_info {
 	/* test print count */
@@ -56,7 +64,19 @@ struct sec_fg_info {
 	bool is_low_batt_alarm;
 
 	/* battery info */
-	u32 soc;
+	int soc;
+
+	/* copy from platform data /
+	 * DTS or update by shell script */
+	int battery_table1[88]; /* evt1 */
+	int battery_table2[22]; /* evt1 */
+	int battery_table3[88]; /* evt2 */
+	int battery_table4[22]; /* evt2 */
+	int soc_arr_evt1[22];
+	int ocv_arr_evt1[22];
+	int soc_arr_evt2[22];
+	int ocv_arr_evt2[22];
+	int batcap[4];
 
 	/* miscellaneous */
 	unsigned long fullcap_check_interval;
@@ -91,6 +111,8 @@ struct s2mu005_fuelgauge_data {
 
 	int cable_type;
 	bool is_charging;
+	int mode;
+	int revision;
 
 	/* HW-dedicated fuel guage info structure
 	* used in individual fuel gauge file only
@@ -106,7 +128,7 @@ struct s2mu005_fuelgauge_data {
 
 	bool initial_update_of_soc;
 	struct mutex fg_lock;
-		struct delayed_work isr_work;
+	struct delayed_work isr_work;
 
 	/* register programming */
 	int reg_addr;
@@ -114,5 +136,14 @@ struct s2mu005_fuelgauge_data {
 
 	unsigned int pre_soc;
 	int fg_irq;
+	int diff_soc;
+	int target_ocv;
+	int vm_soc;
+	bool cc_on;
+	u16 coffset_old;
+	bool coffset_flag;
+	int cnt;
+	int pre_vcell;
+	int loop_count;
 };
 #endif /* __S2MU005_FUELGAUGE_H */

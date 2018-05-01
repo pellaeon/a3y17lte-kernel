@@ -27,7 +27,6 @@
 #include <linux/gpio.h>
 #include <linux/mfd/samsung/s2mu005.h>
 #include <linux/mfd/samsung/s2mu005-private.h>
-//#include <plat/gpio-cfg.h>
 
 static const u8 s2mu005_mask_reg[] = {
 	/* TODO: Need to check other INTMASK */
@@ -44,6 +43,7 @@ struct s2mu005_irq_data {
 
 #define DECLARE_IRQ(idx, _group, _mask)		\
 	[(idx)] = { .group = (_group), .mask = (_mask) }
+
 static const struct s2mu005_irq_data s2mu005_irqs[] = {
 	DECLARE_IRQ(S2MU005_CHG_IRQ_DET_BAT,	CHG_INT, 1 << 0),
 	DECLARE_IRQ(S2MU005_CHG_IRQ_BAT,	CHG_INT, 1 << 1),
@@ -147,9 +147,9 @@ static irqreturn_t s2mu005_irq_thread(int irq, void *data)
 {
 	struct s2mu005_dev *s2mu005 = data;
 	u8 irq_reg[S2MU005_IRQ_GROUP_NR] = {0};
-//	u8 tmp_irq_reg[S2MU005_IRQ_GROUP_NR] = {};
 	int i, ret;
 	u8 temp, temp_2;
+	u8 charger_status[6];
 
 	pr_debug("%s: irq gpio pre-state(0x%02x)\n", __func__,
 				gpio_get_value(s2mu005->irq_gpio));
@@ -161,6 +161,12 @@ static irqreturn_t s2mu005_irq_thread(int irq, void *data)
 	pr_info("%s: charger interrupt(0x%02x)\n",
 			__func__, irq_reg[CHG_INT]);
 
+	ret = s2mu005_bulk_read(s2mu005->i2c, S2MU005_REG_SC_STATUS0,
+				6, charger_status);
+	for (i = 0; i < 6; i++) {
+		pr_info("%s: charger status%d : 0x%02x\n",
+			__func__, i, charger_status[i]);
+	}
 
 	/* FLED_INT */
 	ret = s2mu005_read_reg(s2mu005->i2c, S2MU005_REG_FLED_INT,
@@ -174,19 +180,19 @@ static irqreturn_t s2mu005_irq_thread(int irq, void *data)
 	pr_info("%s: muic interrupt(0x%02x, 0x%02x)\n", __func__,
 			irq_reg[MUIC_INT1], irq_reg[MUIC_INT2]);
 
-	if(s2mu005->pmic_rev == 0) {
+	if (s2mu005->pmic_rev == 0) {
 		s2mu005_read_reg(s2mu005->i2c, S2MU005_REG_MUIC_ADC, &temp);
 		temp &= 0x1F;
-		s2mu005_read_reg(s2mu005->i2c, 0x51, &temp_2); /* checking VBUS_WAKEUP bit of R(0x51) */
-		if((temp_2 & 0x02) && (temp != 0x18)
-			&& (temp != 0x19) && (temp != 0x1C) && (temp != 0x1D) )
+		/* checking VBUS_WAKEUP bit of R(0x51) */
+		s2mu005_read_reg(s2mu005->i2c, 0x51, &temp_2);
+		if ((temp_2 & 0x02) && (temp != 0x18)
+			&& (temp != 0x19) && (temp != 0x1C) && (temp != 0x1D))
 			s2mu005_update_reg(s2mu005->i2c, 0x89, 0x01, 0x03);
-		if(irq_reg[MUIC_INT2] & 0x80)
+		if (irq_reg[MUIC_INT2] & 0x80)
 			s2mu005_update_reg(s2mu005->i2c, 0x89, 0x03, 0x03);
 	}
 	/* For OTGGTEST : VMID_INT */
-	if (irq_reg[CHG_INT] == 0x20)
-	{
+	if (irq_reg[CHG_INT] == 0x20) {
 		pr_info("%s: VMID_INT\n", __func__);
 		irq_reg[MUIC_INT2] |= 0x01;
 	}
@@ -256,7 +262,7 @@ int s2mu005_irq_init(struct s2mu005_dev *s2mu005)
 		cur_irq = i + s2mu005->irq_base;
 		irq_set_chip_data(cur_irq, s2mu005);
 		irq_set_chip_and_handler(cur_irq, &s2mu005_irq_chip,
-					 handle_level_irq);
+						handle_level_irq);
 		irq_set_nested_thread(cur_irq, 1);
 #ifdef CONFIG_ARM
 		set_irq_flags(cur_irq, IRQF_VALID);

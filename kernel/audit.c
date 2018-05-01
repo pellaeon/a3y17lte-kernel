@@ -90,8 +90,10 @@ u32		audit_ever_enabled;
 
 EXPORT_SYMBOL_GPL(audit_enabled);
 
+// [ SEC_SELINUX_PORTING_COMMON
 /* Default state when kernel boots without any parameters. */
 static u32	audit_default = 1;
+// ] SEC_SELINUX_PORTING_COMMON
 
 /* If auditing cannot proceed, audit_failure selects what happens. */
 static u32	audit_failure = AUDIT_FAIL_PRINTK;
@@ -398,7 +400,7 @@ static void audit_printk_skb(struct sk_buff *skb)
 	struct nlmsghdr *nlh = nlmsg_hdr(skb);
 	char *data = nlmsg_data(nlh);
 
-	if (nlh->nlmsg_type != AUDIT_EOE && nlh->nlmsg_type != AUDIT_NETFILTER_CFG) {
+	if (nlh->nlmsg_type != AUDIT_EOE) {
 // [ SEC_SELINUX_PORTING_EXYNOS
 #ifdef CONFIG_SEC_AVC_LOG
 		sec_debug_avc_log("type=%d %s\n", nlh->nlmsg_type, data);
@@ -435,7 +437,7 @@ static void kauditd_send_skb(struct sk_buff *skb)
 #ifdef CONFIG_SEC_AVC_LOG
 		struct nlmsghdr *nlh = nlmsg_hdr(skb);
 		char *data = NLMSG_DATA(nlh);
-	
+
 		if (nlh->nlmsg_type != AUDIT_EOE && nlh->nlmsg_type != AUDIT_NETFILTER_CFG) {
 			sec_debug_avc_log("%s\n", data);
 		}
@@ -443,7 +445,7 @@ static void kauditd_send_skb(struct sk_buff *skb)
 // ] SEC_SELINUX_PORTING_EXYNOS
 		/* drop the extra reference if sent ok */
 		consume_skb(skb);
-	}
+    }
 }
 
 /*

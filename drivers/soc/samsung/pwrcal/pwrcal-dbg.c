@@ -21,7 +21,7 @@ static void cal_vclk_grpgate_info(struct vclk *vclk)
 		pr_info("- %s\t%lldHz\tSFR: 0x%08X[%d]\tID[0x%08X]\n",
 				grpgate->gates[i]->name,
 				pwrcal_clk_get_rate(grpgate->gates[i]),
-				(unsigned int)(unsigned long)(grpgate->gates[i]->offset),
+				(unsigned int)(0xFFFFFFFF & (unsigned long)(grpgate->gates[i]->offset)),
 				grpgate->gates[i]->shift,
 				grpgate->gates[i]->id);
 out:
@@ -41,7 +41,7 @@ static void cal_vclk_m1d1g1_info(struct vclk *vclk)
 		pr_info("- %s\t%lldHz\tSFR: 0x%08X[%d]\tID[0x%08X]\n",
 				m1d1g1->mux->name,
 				pwrcal_clk_get_rate(m1d1g1->mux),
-				(unsigned int)(unsigned long)(m1d1g1->mux->offset),
+				(unsigned int)(0xFFFFFFFF & (unsigned long)(m1d1g1->mux->offset)),
 				m1d1g1->mux->shift,
 				m1d1g1->mux->id);
 
@@ -49,7 +49,7 @@ static void cal_vclk_m1d1g1_info(struct vclk *vclk)
 		pr_info("- %s\t%lldHz\tSFR: 0x%08X[%d]\tID[0x%08X]\n",
 				m1d1g1->div->name,
 				pwrcal_clk_get_rate(m1d1g1->div),
-				(unsigned int)(unsigned long)(m1d1g1->div->offset),
+				(unsigned int)(0xFFFFFFFF & (unsigned long)(m1d1g1->div->offset)),
 				m1d1g1->div->shift,
 				m1d1g1->div->id);
 
@@ -57,7 +57,7 @@ static void cal_vclk_m1d1g1_info(struct vclk *vclk)
 		pr_info("- %s\t%lldHz\tSFR: 0x%08X[%d]\tID[0x%08X]\n",
 				m1d1g1->gate->name,
 				pwrcal_clk_get_rate(m1d1g1->gate),
-				(unsigned int)(unsigned long)(m1d1g1->gate->offset),
+				(unsigned int)(0xFFFFFFFF & (unsigned long)(m1d1g1->gate->offset)),
 				m1d1g1->gate->shift,
 				m1d1g1->gate->id);
 
@@ -65,7 +65,7 @@ static void cal_vclk_m1d1g1_info(struct vclk *vclk)
 		pr_info("- %s\t%lldHz\tSFR: 0x%08X[%d]\tID[0x%08X]\n",
 				m1d1g1->extramux->name,
 				pwrcal_clk_get_rate(m1d1g1->extramux),
-				(unsigned int)(unsigned long)(m1d1g1->extramux->offset),
+				(unsigned int)(0xFFFFFFFF & (unsigned long)(m1d1g1->extramux->offset)),
 				m1d1g1->extramux->shift,
 				m1d1g1->extramux->id);
 
@@ -87,7 +87,7 @@ static void cal_vclk_p1_info(struct vclk *vclk)
 		pr_info("- %s\t%lldHz\tSFR: 0x%08X[%d]\tID[0x%08X]\n",
 				p1->pll->name,
 				pwrcal_clk_get_rate(p1->pll),
-				(unsigned int)(unsigned long)(p1->pll->offset),
+				(unsigned int)(0xFFFFFFFF & (unsigned long)(p1->pll->offset)),
 				p1->pll->shift,
 				p1->pll->id);
 
@@ -109,7 +109,7 @@ static void cal_vclk_m1_info(struct vclk *vclk)
 		pr_info("- %s\t%lldHz\tSFR: 0x%08X[%d]\tID[0x%08X]\n",
 				m1->mux->name,
 				pwrcal_clk_get_rate(m1->mux),
-				(unsigned int)(unsigned long)(m1->mux->offset),
+				(unsigned int)(0xFFFFFFFF & (unsigned long)(m1->mux->offset)),
 				m1->mux->shift,
 				m1->mux->id);
 
@@ -131,7 +131,7 @@ static void cal_vclk_d1_info(struct vclk *vclk)
 		pr_info("- %s\t%lldHz\tSFR: 0x%08X[%d]\tID[0x%08X]\n",
 				d1->div->name,
 				pwrcal_clk_get_rate(d1->div),
-				(unsigned int)(unsigned long)(d1->div->offset),
+				(unsigned int)(0xFFFFFFFF & (unsigned long)(d1->div->offset)),
 				d1->div->shift,
 				d1->div->id);
 
@@ -153,7 +153,7 @@ static void cal_vclk_umux_info(struct vclk *vclk)
 		pr_info("- %s\t%lldHz\tSFR: 0x%08X[%d]\tID[0x%08X]\n",
 				umux->umux->name,
 				pwrcal_clk_get_rate(umux->umux),
-				(unsigned int)(unsigned long)(umux->umux->offset),
+				(unsigned int)(0xFFFFFFFF & (unsigned long)(umux->umux->offset)),
 				umux->umux->shift,
 				umux->umux->id);
 
@@ -178,7 +178,7 @@ static void cal_vclk_pxmxdx_info(struct vclk *vclk)
 		pr_info("- %s\t%lldHz\tSFR: 0x%08X[%d]\tID[0x%08X]\n",
 				clk->name,
 				pwrcal_clk_get_rate(clk),
-				(unsigned int)(unsigned long)(clk->offset),
+				(unsigned int)(0xFFFFFFFF & (unsigned long)(clk->offset)),
 				clk->shift,
 				clk->id);
 	}
@@ -204,7 +204,7 @@ static void cal_vclk_dfs_info(struct vclk *vclk)
 		pr_info("- %s\t%lldHz\tSFR: 0x%08X[%d]\tID[0x%08X]\n",
 				clk->name,
 				pwrcal_clk_get_rate(clk),
-				(unsigned int)(unsigned long)(clk->offset),
+				(unsigned int)(0xFFFFFFFF & (unsigned long)(clk->offset)),
 				clk->shift,
 				clk->id);
 	}

@@ -29,6 +29,7 @@
 #include <linux/io.h>
 #include <linux/mutex.h>
 #include <linux/exynos-ss.h>
+#include <trace/events/exynos.h>
 
 #include <soc/samsung/exynos-pmu.h>
 #if defined(CONFIG_PWRCAL)
@@ -259,6 +260,7 @@ static int s2m_set_voltage_sel_regmap(struct regulator_dev *rdev, unsigned sel)
 	snprintf(name, sizeof(name), "LDO%d", (reg_id - S2MPS16_LDO1) + 1);
 	voltage = ((sel & rdev->desc->vsel_mask) * S2MPS16_LDO_STEP2) + S2MPS16_LDO_MIN1;
 	exynos_ss_regulator(name, rdev->desc->vsel_reg, voltage, ESS_FLAG_IN);
+	trace_exynos_regulator_in(name, rdev, voltage);
 
 	ret = sec_reg_update(s2mps16->iodev, rdev->desc->vsel_reg,
 				  sel, rdev->desc->vsel_mask);
@@ -270,11 +272,13 @@ static int s2m_set_voltage_sel_regmap(struct regulator_dev *rdev, unsigned sel)
 					 rdev->desc->apply_bit,
 					 rdev->desc->apply_bit);
 	exynos_ss_regulator(name, rdev->desc->vsel_reg, voltage, ESS_FLAG_OUT);
+	trace_exynos_regulator_out(name, rdev, voltage);
 
 	return ret;
 out:
 	pr_warn("%s: failed to set voltage_sel_regmap\n", rdev->desc->name);
 	exynos_ss_regulator(name, rdev->desc->vsel_reg, voltage, ESS_FLAG_ON);
+	trace_exynos_regulator_on(name, rdev, voltage);
 	return ret;
 }
 
@@ -297,6 +301,7 @@ static int s2m_set_voltage_sel_regmap_buck(struct regulator_dev *rdev,
 	snprintf(name, sizeof(name), "BUCK%d", (reg_id - S2MPS16_BUCK1) + 1);
 	voltage = (sel * S2MPS16_BUCK_STEP1) + S2MPS16_BUCK_MIN1;
 	exynos_ss_regulator(name, rdev->desc->vsel_reg, voltage, ESS_FLAG_IN);
+	trace_exynos_regulator_in(name, rdev, voltage);
 
 	if (reg_id == S2MPS16_BUCK1 || reg_id == S2MPS16_BUCK2 ||
 		reg_id == S2MPS16_BUCK3 || reg_id == S2MPS16_BUCK4 ||
@@ -312,12 +317,14 @@ static int s2m_set_voltage_sel_regmap_buck(struct regulator_dev *rdev,
 					 rdev->desc->apply_bit,
 					 rdev->desc->apply_bit);
 	exynos_ss_regulator(name, rdev->desc->vsel_reg, voltage, ESS_FLAG_OUT);
+	trace_exynos_regulator_out(name, rdev, voltage);
 
 	return ret;
 
 i2c_out:
 	pr_warn("%s: failed to set voltage_sel_regmap\n", rdev->desc->name);
 	exynos_ss_regulator(name, rdev->desc->vsel_reg, voltage, ESS_FLAG_ON);
+	trace_exynos_regulator_on(name, rdev, voltage);
 	return ret;
 }
 

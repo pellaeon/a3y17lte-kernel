@@ -43,6 +43,8 @@ static enum power_supply_property sec_charger_props[] = {
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
 	POWER_SUPPLY_PROP_CHARGE_OTG_CONTROL,
+	POWER_SUPPLY_PROP_ENERGY_NOW,
+	POWER_SUPPLY_PROP_ENERGY_AVG,
 };
 
 static int bq51221_read_device(struct i2c_client *client,
@@ -100,25 +102,25 @@ static int bq51221_get_pad_mode(struct i2c_client *client)
 	int retry_cnt =0;
 	struct bq51221_charger_data *charger = i2c_get_clientdata(client);
 
-	if(charger->pdata->pad_mode != BQ51221_PAD_MODE_NONE) {
+	if (charger->pdata->pad_mode != BQ51221_PAD_MODE_NONE) {
 		/* read pad mode PMA = 1, WPC = 0 (Status bit)*/
 		ret = bq51221_reg_read(client, BQ51221_REG_INDICATOR);
-		if(ret < 0) {
+		if (ret < 0) {
 			while(retry_cnt++ < 3) {
 				msleep(50);
 				pr_info("%s retry_cnt = %d, ret =%d \n",__func__, retry_cnt, ret);
 				/* read pad mode PMA = 1, WPC = 0 (Status bit)*/
 				ret = bq51221_reg_read(client, BQ51221_REG_INDICATOR);
-				if(ret >= 0)
+				if (ret >= 0)
 					break;
 			}
 		}
 		pr_info("%s pad_mode = %d \n", __func__,ret);
 
-		if(ret >= 0) {
+		if (ret >= 0) {
 			ret &= BQ51221_POWER_MODE_MASK;
 
-			if(ret == 0)
+			if (ret == 0)
 				charger->pdata->pad_mode = BQ51221_PAD_MODE_WPC;
 			else if (ret == 1)
 				charger->pdata->pad_mode = BQ51221_PAD_MODE_PMA;
@@ -144,7 +146,7 @@ int bq51221_set_full_charge_info(struct i2c_client *client)
 		ret = bq51221_reg_write(client, BQ51221_REG_USER_HEADER, BQ51221_EPT_HEADER_CS100);
 		ret = bq51221_reg_write(client, BQ51221_REG_PROP_PACKET_PAYLOAD, BQ51221_CS100_VALUE);
 
-		if(ret < 0) {
+		if (ret < 0) {
 			while(retry_cnt++ < 3) {
 				msleep(50);
 				pr_info("%s retry_cnt = %d, ret =%d \n",__func__, retry_cnt, ret);
@@ -152,7 +154,7 @@ int bq51221_set_full_charge_info(struct i2c_client *client)
 				ret = bq51221_reg_write(client, BQ51221_REG_USER_HEADER, BQ51221_EPT_HEADER_CS100);
 				ret = bq51221_reg_write(client, BQ51221_REG_PROP_PACKET_PAYLOAD, BQ51221_CS100_VALUE);
 
-				if(ret >= 0)
+				if (ret >= 0)
 					break;
 			}
 			return ret;
@@ -171,7 +173,7 @@ int bq51221_set_full_charge_info(struct i2c_client *client)
 
 		pr_info("%s error pkt = 0x%x \n",__func__, data);
 
-		if(data == BQ51221_PTK_ERR_NO_ERR) {
+		if (data == BQ51221_PTK_ERR_NO_ERR) {
 			pr_err("%s sent CS100!\n",__func__);
 			ret = 1;
 		} else {
@@ -191,9 +193,7 @@ int bq51221_set_voreg(struct i2c_client *client, int default_value)
 	union power_supply_propval value;
 	struct bq51221_charger_data *charger = i2c_get_clientdata(client);
 
-#if defined(CONFIG_WIRELESS_CHARGER_INBATTERY_5V_FIX)
-	return 0;
-#endif
+	return 0; // concept chagned, vout is always 5V
 
 	if (charger->pdata->pad_mode == BQ51221_PAD_MODE_PMA) {
 		pr_info("%s PMA MODE, do not set Voreg \n", __func__);
@@ -209,14 +209,14 @@ int bq51221_set_voreg(struct i2c_client *client, int default_value)
 	if (default_value) {
 		/* init VOREG with default value */
 		ret = bq51221_reg_write(client, BQ51221_REG_CURRENT_REGISTER, 0x01);
-		if(ret < 0) {
+		if (ret < 0) {
 			while(retry_cnt++ < 3) {
 				msleep(50);
 				pr_debug("%s retry_cnt = %d, ret =%d \n",__func__, retry_cnt, ret);
 				/* init VOREG with default value */
 				ret = bq51221_reg_write(client, BQ51221_REG_CURRENT_REGISTER, 0x01);
 				data = bq51221_reg_read(client, BQ51221_REG_CURRENT_REGISTER);
-				if(ret >= 0) {
+				if (ret >= 0) {
 					pr_debug("%s VOREG = 0x%x \n", __func__, data);
 					break;
 				}
@@ -226,14 +226,14 @@ int bq51221_set_voreg(struct i2c_client *client, int default_value)
 		pr_info("%s VOREG = 0x%x 5.0V, cnt(%d)\n", __func__, data, retry_cnt);
 	} else {
 		ret = bq51221_reg_write(client, BQ51221_REG_CURRENT_REGISTER, 0x02);
-		if(ret < 0) {
+		if (ret < 0) {
 			while(retry_cnt++ < 3) {
 				msleep(50);
 				pr_debug("%s retry_cnt = %d, ret =%d \n",__func__, retry_cnt, ret);
 				/* init VOREG with default value */
 				ret = bq51221_reg_write(client, BQ51221_REG_CURRENT_REGISTER, 0x02);
 				data = bq51221_reg_read(client, BQ51221_REG_CURRENT_REGISTER);
-				if(ret >= 0) {
+				if (ret >= 0) {
 					pr_debug("%s VOREG = 0x%x \n", __func__, data);
 					break;
 				}
@@ -245,7 +245,8 @@ int bq51221_set_voreg(struct i2c_client *client, int default_value)
 	return ret;
 }
 
-int bq51221_set_end_power_transfer(struct i2c_client *client, int ept_mode)
+int bq51221_set_end_power_transfer(
+	struct i2c_client *client, int ept_mode)
 {
 
 	int pad_mode = 0;
@@ -261,10 +262,10 @@ int bq51221_set_end_power_transfer(struct i2c_client *client, int ept_mode)
 			pad_mode = bq51221_reg_read(client, BQ51221_REG_INDICATOR);
 			pr_info("%s pad_mode = %d \n", __func__,pad_mode);
 
-			if(pad_mode > 0)
+			if (pad_mode > 0)
 				pad_mode &= BQ51221_POWER_MODE_MASK;
 
-			if(pad_mode) {
+			if (pad_mode) {
 				pr_info("%s PMA MODE, send EOC \n", __func__);
 
 				data = bq51221_reg_read(client, BQ51221_REG_MAILBOX);
@@ -288,7 +289,7 @@ int bq51221_set_end_power_transfer(struct i2c_client *client, int ept_mode)
 
 				pr_info("%s error pkt = 0x%x \n",__func__, data);
 
-				if(data != BQ51221_PTK_ERR_NO_ERR) {
+				if (data != BQ51221_PTK_ERR_NO_ERR) {
 					pr_err("%s can not send ept! err pkt = 0x%x\n",__func__, data);
 					ret = -1;
 				}
@@ -312,7 +313,7 @@ int bq51221_set_end_power_transfer(struct i2c_client *client, int ept_mode)
 
 			pr_info("%s error pkt = 0x%x \n",__func__, data);
 
-			if(data != BQ51221_PTK_ERR_NO_ERR) {
+			if (data != BQ51221_PTK_ERR_NO_ERR) {
 				pr_err("%s can not send ept! err pkt = 0x%x\n",__func__, data);
 				ret = -1;
 			}
@@ -324,6 +325,25 @@ int bq51221_set_end_power_transfer(struct i2c_client *client, int ept_mode)
 	}
 
 	return ret;
+}
+
+int bq51221_get_voltage(struct i2c_client *client,
+	enum bq51221_get_voltage_type bq51221_get_volt)
+{
+	int data = 0;
+
+	switch (bq51221_get_volt) {
+		case BQ51221_GET_VRECT:
+			data = bq51221_reg_read(client, BQ51221_REG_VRECT_STATUS);
+			break;
+		case BQ51221_GET_VOUT:
+			data = bq51221_reg_read(client, BQ51221_REG_VOUT_STATUS);
+			break;
+		default:
+			pr_info("%s : Invalid bq51221_get_volt property\n", __func__);
+			break;
+	}
+	return data;
 }
 
 void bq51221_wireless_chg_init(struct i2c_client *client)
@@ -394,7 +414,23 @@ static int bq51221_chg_get_property(struct power_supply *psy,
 			val->intval = charger->pdata->siop_level;
 			break;
 		case POWER_SUPPLY_PROP_ONLINE:
+			val->intval = charger->pdata->pad_mode;
+			break;
 		case POWER_SUPPLY_PROP_CHARGE_OTG_CONTROL:
+			break;
+		case POWER_SUPPLY_PROP_ENERGY_NOW: /* vout */
+			if (charger->pdata->ic_on_mode) {
+				val->intval =
+					bq51221_get_voltage(charger->client, BQ51221_GET_VOUT);
+			} else
+				val->intval = 0;
+			break;
+		case POWER_SUPPLY_PROP_ENERGY_AVG: /* vrect */
+			if (charger->pdata->ic_on_mode) {
+				val->intval =
+					bq51221_get_voltage(charger->client, BQ51221_GET_VRECT);
+			} else
+				val->intval = 0;
 			break;
 		default:
 			return -EINVAL;
@@ -409,10 +445,11 @@ static int bq51221_chg_set_property(struct power_supply *psy,
 	struct bq51221_charger_data *charger =
 		container_of(psy, struct bq51221_charger_data, psy_chg);
 	union power_supply_propval value;
+	int vout, vrect;
 
 	switch (psp) {
 		case POWER_SUPPLY_PROP_STATUS:
-			if(val->intval == POWER_SUPPLY_STATUS_FULL) {
+			if (val->intval == POWER_SUPPLY_STATUS_FULL) {
 				charger->pdata->cs100_status = bq51221_set_full_charge_info(charger->client);
 				pr_info("%s charger->pdata->cs100_status %d \n",__func__,charger->pdata->cs100_status);
 			}
@@ -423,22 +460,24 @@ static int bq51221_chg_set_property(struct power_supply *psy,
 				bq51221_set_voreg(charger->client, val->intval);
 			break;
 		case POWER_SUPPLY_PROP_HEALTH:
-			if(val->intval == POWER_SUPPLY_HEALTH_OVERHEAT ||
+			if (val->intval == POWER_SUPPLY_HEALTH_OVERHEAT ||
 				val->intval == POWER_SUPPLY_HEALTH_OVERHEATLIMIT ||
 				val->intval == POWER_SUPPLY_HEALTH_COLD)
 				bq51221_set_end_power_transfer(charger->client, END_POWER_TRANSFER_CODE_OVER_TEMPERATURE);
-			else if(val->intval == POWER_SUPPLY_HEALTH_UNDERVOLTAGE)
+			else if (val->intval == POWER_SUPPLY_HEALTH_UNDERVOLTAGE)
 				bq51221_set_end_power_transfer(charger->client, END_POWER_TRANSFER_CODE_RECONFIGURE);
 			break;
 		case POWER_SUPPLY_PROP_ONLINE:
-			if(val->intval == POWER_SUPPLY_TYPE_WIRELESS) {
+			if (val->intval == POWER_SUPPLY_TYPE_WIRELESS) {
 				charger->pdata->pad_mode = BQ51221_PAD_MODE_WPC;
 				queue_delayed_work(charger->wqueue, &charger->wpc_work,
 					msecs_to_jiffies(5000));
 				wake_lock_timeout(&charger->wpc_wake_lock, HZ * 6);
-			} else if(val->intval == POWER_SUPPLY_TYPE_BATTERY) {
+				charger->pdata->ic_on_mode = true;
+			} else if (val->intval == POWER_SUPPLY_TYPE_BATTERY) {
 				bq51221_set_voreg(charger->client, 1);
 				charger->pdata->pad_mode = BQ51221_PAD_MODE_NONE;
+				charger->pdata->ic_on_mode = false;
 				cancel_delayed_work(&charger->wpc_work);
 			}
 			break;
@@ -461,6 +500,12 @@ static int bq51221_chg_set_property(struct power_supply *psy,
 					wake_lock_timeout(&charger->wpc_wake_lock, HZ * 6);
 				}
 			}
+			break;
+		case POWER_SUPPLY_PROP_ENERGY_NOW:
+			vrect = bq51221_get_voltage(charger->client, BQ51221_GET_VRECT);
+			vout = bq51221_get_voltage(charger->client, BQ51221_GET_VOUT);
+			pr_info("%s VOUT = 0x%x, VRECT = 0x%x\n",
+				__func__, vout, vrect);
 			break;
 		default:
 			return -EINVAL;
@@ -508,7 +553,7 @@ static int bq51221_chg_parse_dt(struct device *dev,
 			"battery,wireless_cc_cv", &pdata->wireless_cc_cv);
 
 		ret = of_property_read_string(np,
-			"battery,wirelss_charger_name", (char const **)&pdata->wireless_charger_name);
+			"battery,wireless_charger_name", (char const **)&pdata->wireless_charger_name);
 		if (ret)
 			pr_info("%s: Vendor is Empty\n", __func__);
 	}
@@ -600,6 +645,8 @@ static int bq51221_charger_probe(
 	}
 #endif
 	i2c_set_clientdata(client, charger);
+
+	charger->pdata->ic_on_mode = false;
 
 	charger->psy_chg.name		= pdata->wireless_charger_name;
 	charger->psy_chg.type		= POWER_SUPPLY_TYPE_UNKNOWN;
@@ -702,7 +749,7 @@ static void bq51221_charger_shutdown(struct i2c_client *client)
 	struct bq51221_charger_data *charger = i2c_get_clientdata(client);
 	int data = 0;
 
-	if(charger->pdata->pad_mode != BQ51221_PAD_MODE_NONE) {
+	if (charger->pdata->pad_mode != BQ51221_PAD_MODE_NONE) {
 		/* init VOREG set 5.0V*/
 		bq51221_reg_write(client, BQ51221_REG_CURRENT_REGISTER, 0x01);
 		data = bq51221_reg_read(client, BQ51221_REG_CURRENT_REGISTER);

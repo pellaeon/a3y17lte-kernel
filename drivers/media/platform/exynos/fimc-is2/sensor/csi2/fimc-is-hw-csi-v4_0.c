@@ -16,6 +16,9 @@
 #include <linux/errno.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
+#if IS_ENABLED(CONFIG_EXYNOS_OTP)
+#include <linux/exynos_otp.h>
+#endif
 
 #include "fimc-is-hw-api-common.h"
 #include "fimc-is-config.h"
@@ -24,6 +27,34 @@
 #include "fimc-is-device-csi.h"
 #include "fimc-is-hw.h"
 #include "fimc-is-hw-csi-v4_0.h"
+
+void csi_hw_phy_otp_config(u32 __iomem *base_reg, u32 instance)
+{
+#if IS_ENABLED(CONFIG_EXYNOS_OTP)
+	int ret;
+	int i;
+	u16 magic_code;
+	u8 type;
+	u8 index_count;
+	struct tune_bits *data;
+
+	magic_code = OTP_MAGIC_MIPI_CSI0 + instance;
+
+	ret = otp_tune_bits_parsed(magic_code, &type, &index_count, &data);
+	if (ret) {
+		err("otp_tune_bits_parsed is fail(%d)", ret);
+		goto p_err;
+	}
+
+	for (i = 0; i < index_count; i++){
+		writel(data[i].value, base_reg + (data[i].index * 4));
+		info("[CSI%d]set OTP(index = 0x%X, value = 0x%X)\n", instance, data[i].index, data[i].value);
+	}
+
+p_err:
+	return;
+#endif
+}
 
 int csi_hw_reset(u32 __iomem *base_reg)
 {
@@ -183,6 +214,15 @@ int csi_hw_s_control(u32 __iomem *base_reg, u32 id, u32 value)
 		fimc_is_hw_set_field(base_reg, &csi_regs[CSIS_R_LINE_INTR_CH0],
 				&csi_fields[CSIS_F_LINE_INTR_CH_N], value);
 		break;
+	case CSIS_CTRL_DMA_ABORT_REQ:
+		/* dma abort req */
+		fimc_is_hw_set_field(base_reg, &csi_regs[CSIS_R_DMA_CMN_CTRL],
+				&csi_fields[CSIS_F_DMA_ABORT_REQ], value);
+		break;
+	case CSIS_CTRL_ENABLE_LINE_IRQ:
+		fimc_is_hw_set_field(base_reg, &csi_regs[CSIS_R_CSIS_INT_MSK1],
+				&csi_fields[CSIS_F_MSK_LINE_END], value);
+		break;
 	default:
 		err("control id is invalid(%d)", id);
 		break;
@@ -225,13 +265,12 @@ p_err:
 	return ret;
 }
 
-int csi_hw_s_config_dma(u32 __iomem *base_reg, u32 channel, struct fimc_is_vci_config *config, struct fimc_is_image *image)
+int csi_hw_s_config_dma(u32 __iomem *base_reg, u32 channel, struct fimc_is_image *image)
 {
 	int ret = 0;
 	u32 val;
 	u32 dma_dim = 0;
 	u32 dma_pack12 = 0;
-	bool byte_swap = false;
 
 	if (channel > CSI_VIRTUAL_CH_3) {
 		err("invalid channel(%d)", channel);
@@ -245,26 +284,18 @@ int csi_hw_s_config_dma(u32 __iomem *base_reg, u32 channel, struct fimc_is_vci_c
 	else
 		dma_pack12 = CSIS_REG_DMA_NORMAL;
 
-	if (image->format.pixelformat == V4L2_PIX_FMT_SGRBG8)
+	switch (image->format.pixelformat) {
+	case V4L2_PIX_FMT_SGRBG8:
+	case V4L2_PIX_FMT_SBGGR8:
 		dma_dim = CSIS_REG_DMA_1D_DMA;
-	else
+		break;
+	default:
 		dma_dim = CSIS_REG_DMA_2D_DMA;
-
-	/*
-	 * HACK: If sensor's data is yuv domain's data, byte swap should be enabled.
-	 * If sensor's format was Y1U1Y2V1, csis received and stored this data in dma by V1Y2U1Y1.
-	 * But user expected Y1U1Y2V1 data(by V4L2 format), this problem will be solved if byte swap was enabled.
-	 * TODO: It depends on the specific sensor module, so later it should be fixed the logic by sensor module info.
-	 */
-	if (config->hwformat == HW_FORMAT_YUV420_8BIT ||
-		config->hwformat == HW_FORMAT_YUV420_10BIT ||
-		config->hwformat == HW_FORMAT_YUV422_8BIT ||
-		config->hwformat == HW_FORMAT_YUV422_10BIT)
-		byte_swap = true;
+		break;
+	}
 
 	val = fimc_is_hw_get_reg(base_reg, &csi_regs[CSIS_R_DMA0_FMT + (channel * 15)]);
 	val = fimc_is_hw_set_field_value(val, &csi_fields[CSIS_F_DMA_N_DIM], dma_dim);
-	val = fimc_is_hw_set_field_value(val, &csi_fields[CSIS_F_DMA_N_BYTESWAP], byte_swap);
 	val = fimc_is_hw_set_field_value(val, &csi_fields[CSIS_F_DMA_N_PACK12], dma_pack12);
 	fimc_is_hw_set_reg(base_reg, &csi_regs[CSIS_R_DMA0_FMT + (channel * 15)], val);
 
@@ -283,7 +314,7 @@ int csi_hw_s_irq_msk(u32 __iomem *base_reg, bool on)
 		dma_msk = CSIS_IRQ_MASK1;
 #if defined(SUPPORTED_EARLYBUF_DONE_SW) || defined(SUPPORTED_EARLYBUF_DONE_HW)
 #if defined(SUPPORTED_EARLYBUF_DONE_HW)
-		dma_msk = fimc_is_hw_set_field_value(dma_msk, &csi_fields[CSIS_F_MSK_LINE_END], 0xF);
+		dma_msk = fimc_is_hw_set_field_value(dma_msk, &csi_fields[CSIS_F_MSK_LINE_END], 0x1);
 #endif
 		otf_msk = fimc_is_hw_set_field_value(otf_msk, &csi_fields[CSIS_F_FRAMEEND], 0x0);
 #endif
@@ -417,7 +448,7 @@ int csi_hw_g_irq_src(u32 __iomem *base_reg, struct csis_irq_src *src, bool clear
 	return 0;
 }
 
-static void csi_hw_s_frameptr(u32 __iomem *base_reg, u32 vc, u32 number, bool clear)
+void csi_hw_s_frameptr(u32 __iomem *base_reg, u32 vc, u32 number, bool clear)
 {
 	u32 frame_ptr = 0;
 	u32 val = fimc_is_hw_get_reg(base_reg, &csi_regs[CSIS_R_DMA0_CTRL + (vc * 15)]);
@@ -428,6 +459,15 @@ static void csi_hw_s_frameptr(u32 __iomem *base_reg, u32 vc, u32 number, bool cl
 		frame_ptr &= ~(1 << number);
 	val = fimc_is_hw_set_field_value(val, &csi_fields[CSIS_F_DMA_N_UPDT_FRAMEPTR], frame_ptr);
 	fimc_is_hw_set_reg(base_reg, &csi_regs[CSIS_R_DMA0_CTRL + (vc * 15)], val);
+}
+
+u32 csi_hw_g_frameptr(u32 __iomem *base_reg, u32 vc)
+{
+	u32 frame_ptr = 0;
+	u32 val = fimc_is_hw_get_reg(base_reg, &csi_regs[CSIS_R_DMA0_ACT_CTRL + (vc * 15)]);
+	frame_ptr = fimc_is_hw_get_field_value(val, &csi_fields[CSIS_F_ACTIVE_DMA_N_FRAMEPTR]);
+
+	return frame_ptr;
 }
 
 void csi_hw_s_dma_addr(u32 __iomem *base_reg, u32 vc, u32 number, u32 addr)
@@ -445,6 +485,11 @@ void csi_hw_s_dma_addr(u32 __iomem *base_reg, u32 vc, u32 number, u32 addr)
 	 */
 	for (i = 0; i < 8; i++)
 		fimc_is_hw_set_reg(base_reg, &csi_regs[CSIS_R_DMA0_ADDR1 + (vc * 15) + i], addr);
+}
+
+void csi_hw_s_multibuf_dma_addr(u32 __iomem *base_reg, u32 vc, u32 number, u32 addr)
+{
+	fimc_is_hw_set_reg(base_reg, &csi_regs[CSIS_R_DMA0_ADDR1 + (vc * 15) + number], addr);
 }
 
 void csi_hw_s_output_dma(u32 __iomem *base_reg, u32 vc, bool enable)
@@ -467,12 +512,19 @@ bool csi_hw_g_output_dma_enable(u32 __iomem *base_reg, u32 vc)
 
 bool csi_hw_g_output_cur_dma_enable(u32 __iomem *base_reg, u32 vc)
 {
+	u32 val = fimc_is_hw_get_reg(base_reg, &csi_regs[CSIS_R_DMA0_ACT_CTRL + (vc * 15)]);
 	/* if DMA_DISABLE field value is 1, this means dma output is disabled */
-	if (fimc_is_hw_get_field(base_reg, &csi_regs[CSIS_R_DMA0_ACT_CTRL + (vc * 15)],
-			&csi_fields[CSIS_F_ACTIVE_DMA_N_DISABLE]))
-		return false;
-	else
-		return true;
+	bool dma_disable = fimc_is_hw_get_field_value(val, &csi_fields[CSIS_F_ACTIVE_DMA_N_DISABLE]);
+
+	/*
+	 * HACK: active_dma_n_disable filed has reset value(0x0), it means that dma enable was default
+	 * So, if frameptr was 0x7(reset value), it means that dma was disable in the vc.
+	 * CSIS driver control the frameptr by one.
+	 */
+	if (fimc_is_hw_get_field_value(val, &csi_fields[CSIS_F_ACTIVE_DMA_N_FRAMEPTR]) == 0x7)
+		dma_disable = true;
+
+	return !dma_disable;
 }
 
 void csi_hw_set_start_addr(u32 __iomem *base_reg, u32 number, u32 addr)

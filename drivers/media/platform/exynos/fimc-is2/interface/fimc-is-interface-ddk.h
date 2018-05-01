@@ -14,7 +14,6 @@
 #include "fimc-is-core.h"
 #include "fimc-is-interface-library.h"
 #include "fimc-is-param.h"
-#include "fimc-is-config.h"
 
 #define CHAIN_ID_MASK		(0x0000000F)
 #define CHAIN_ID_SHIFT		(0)
@@ -33,6 +32,7 @@
 struct fimc_is_lib_isp {
 	void				*object;
 	struct lib_interface_func	*func;
+	ulong				tune_count;
 };
 
 enum lib_cb_event_type {
@@ -42,6 +42,14 @@ enum lib_cb_event_type {
 	LIB_EVENT_DMA_A_OUT_DONE	= 4,
 	LIB_EVENT_DMA_B_OUT_DONE	= 5,
 	LIB_EVENT_FRAME_START_ISR	= 6,
+	LIB_EVENT_ERROR_CIN_OVERFLOW	= 7,
+	LIB_EVENT_ERROR_CIN_COLUMN	= 8,
+	LIB_EVENT_ERROR_CIN_LINE	= 9,
+	LIB_EVENT_ERROR_CIN_TOTAL_SIZE	= 10,
+	LIB_EVENT_ERROR_COUT_OVERFLOW	= 11,
+	LIB_EVENT_ERROR_COUT_COLUMN	= 12,
+	LIB_EVENT_ERROR_COUT_LINE	= 13,
+	LIB_EVENT_ERROR_COUT_TOTAL_SIZE	= 14,
 	LIB_EVENT_END
 };
 
@@ -98,6 +106,21 @@ struct isp_param_set {
 	u32				output_dva_chunk;
 	u32				output_dva_yuv;
 	u32				instance_id;
+	u32				fcount;
+	bool				reprocessing;
+};
+
+struct tpu_param_set {
+	struct param_control		control;
+	struct param_tpu_config		config;
+	struct param_otf_input		otf_input;
+	struct param_dma_input		dma_input;
+	struct param_otf_output		otf_output;
+	struct param_dma_output		dma_output;
+	u32				input_dva;
+	u32				output_dva;
+
+	u32 				instance_id;
 	u32				fcount;
 	bool				reprocessing;
 };
@@ -197,21 +220,4 @@ int fimc_is_lib_isp_convert_face_map(struct fimc_is_hardware *hardware,
 	struct taa_param_set *param_set, struct fimc_is_frame *frame);
 void fimc_is_lib_isp_configure_algorithm(void);
 void fimc_is_isp_get_bcrop1_size(void __iomem *base_addr, u32 *width, u32 *height);
-
-#ifdef ENABLE_FPSIMD_FOR_USER
-#define CALL_LIBOP(lib, op, args...)					\
-	({								\
-		int ret_call_libop;					\
-									\
-		fpsimd_get();						\
-		ret_call_libop = ((lib)->func->op ?			\
-				(lib)->func->op(args) : -EINVAL);	\
-		fpsimd_put();						\
-									\
-	ret_call_libop;})
-#else
-#define CALL_LIBOP(lib, op, args...)				\
-	((lib)->func->op ? (lib)->func->op(args) : -EINVAL)
-#endif
-
 #endif

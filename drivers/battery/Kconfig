@@ -26,17 +26,6 @@ config BATTERY_SWELLING
 	help
 	  Say Y to include support for prevent battery swelling
 
-config BATTERY_SWELLING_SELF_DISCHARGING
-	bool "prevent battery swelling with self discharging"
-	help
-	  Say Y to include support for prevent battery swelling with self discharging
-
-config SW_SELF_DISCHARGING
-	bool "enable sw_self_discharging"
-	default n
-	help
-	  Say Y to enable CONFIG_SW_SELF_DISCHARGING
-
 config INBATTERY
        bool "prevent inbattery"
        default n
@@ -54,14 +43,9 @@ config CALC_TIME_TO_FULL
 config BATTERY_AGE_FORECAST
 	tristate "battery age forecast"
 	default n
+	depends on BATTERY_SWELLING
 	help
 	Say Y to use calc time to full function.
-
-config CONDITIONAL_SAFETY_TIMER
-	bool "new safety timer concept applied by charging source and current."
-	default n
-	help
-	  Say Y to include support for conditional safety timer concept.
 
 # Fuel Gauge
 
@@ -230,34 +214,26 @@ config FUELGAUGE_MAX77849
 	 or coulomb-counting mode.
 
 config FUELGAUGE_SM5703
-	 tristate "SM5703 fuel gauge driver"
-	 default n
-	 depends on BATTERY_SAMSUNG
-	 help
-	  Say Y to include support SM5703 FUELGAUGE.
-	  Using coulomb counting.
-
-config FUELGAUGE_SM5705
-	tristate "Siliconmitus SM5705 Fuel Gauge"
+	tristate "SM5703 fuel gauge driver"
 	default n
 	depends on BATTERY_SAMSUNG
 	help
-	  SM5705 is fuel-gauge systems for lithium-ion (Li+) batteries
-	  in handheld and portable equipment. The SM5705 is configured
-	  to operate with a single lithium cell
+	 Say Y to include support SM5703 FUELGAUGE.
+	 Using coulomb counting.
 
 config STMP_SUPPORT_FG_ALERT
-	 tristate "SM5703 fuel gauge driver"
-	 default n
-	 depends on FUELGAUGE_SM5703
-	 help
-	  Say Y to include support SM5703 FUELGAUGE alert to STMPE1801
+	tristate "SM5703 fuel gauge driver"
+	default n
+	depends on FUELGAUGE_SM5703
+	help
+	 Say Y to include support SM5703 FUELGAUGE alert to STMPE1801
+
 config PREVENT_SOC_JUMP
-        tristate "prevent soc jump at full-charged"
-        default n
-        depends on BATTERY_SAMSUNG
-        help
-         Say Y to prevent soc jump
+	tristate "prevent soc jump at full-charged"
+	default n
+	depends on BATTERY_SAMSUNG
+	help
+	 Say Y to prevent soc jump
 
 config FUELGAUGE_MAX77849_VOLTAGE_TRACKING
 	tristate "use MAX77849 fuel gauge only as voltage tracking"
@@ -423,12 +399,6 @@ config CHARGER_SM5703
 	  SM5703 incluse led, flash driver.
 	  You have to define MFD_SM5703
 
-config CHARGER_SM5705
-	tristate "SM5705 battery charger support"
-	depends on MFD_SM5705 && I2C
-	help
-	  Say Y here to enable support for the SM5705 charger
-
 config CHARGER_SM5703_SOFT_START_CHARGING
 	bool "SM5703 soft step charging"
 	default n
@@ -458,8 +428,15 @@ config CHARGER_S2MU005
 	depends on (MFD_S2MU005) && I2C
 	help
 	  Say Y here to enable support for the S2MU005 charger
-	  S2MU005 incluse pmic, led driver.
+	  S2MU005 includes PMIC and LED driver.
 	  You have to define MFD_S2MU005
+
+config S2MU005_USES_WIRELESS_CHARGER
+	bool "feature for support of wireless charging in S2MU005 IF-PMIC"
+	default n
+	depends on (MFD_S2MU005) && I2C
+	help
+	  Say Y to include support for wireless S2MU005 charger support
 
 config WIRELESS_CHARGER_INBATTERY
         tristate "wireless charger in battery support"
@@ -520,7 +497,7 @@ config WIRELESS_CHARGER_MAX77900
 config AFC_CHARGER_MODE
 	bool "afc charging support in sec battery driver"
 	default n
-	depends on BATTERY_SAMSUNG
+	depends on CHARGER_MAX77843
 	help
 	  Say Y to include support for sec afc charging support
 

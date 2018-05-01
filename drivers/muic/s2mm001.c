@@ -599,9 +599,9 @@ static ssize_t s2mm001_muic_set_otg_test(struct device *dev,
 
 	pr_info("%s:%s buf:%s\n", MUIC_DEV_NAME, __func__, buf);
 	if (!strncmp(buf, "0", 1)) {
-		/* otg_test = 1 */
+		val = 0;
 	} else if (!strncmp(buf, "1", 1)) {
-		/* otg_test = 0 */
+		val = 1;
 	} else {
 		pr_warn("%s:%s Wrong command\n", MUIC_DEV_NAME, __func__);
 		return count;
@@ -611,6 +611,10 @@ static ssize_t s2mm001_muic_set_otg_test(struct device *dev,
 	val = s2mm001_i2c_write_byte(muic_data->i2c,
 			S2MM001_MUIC_REG_INTMASK2, val|INT_CHG_DET_MASK);
 	mutex_unlock(&muic_data->muic_mutex);
+	if (val < 0) {
+		pr_err("%s:%s err writing INTMASK reg(%d)\n",
+					MUIC_DEV_NAME, __func__, val);
+	}
 
 	val = 0;
 	val = s2mm001_i2c_read_byte(muic_data->i2c, S2MM001_MUIC_REG_INTMASK2);
@@ -1099,8 +1103,6 @@ static int attach_otg_usb(struct s2mm001_muic_data *muic_data,
 
 	pr_info("%s:%s\n", MUIC_DEV_NAME, __func__);
 
-	exynos_pmu_update(PMU_UART_IO_SHARE_CTRL, 0x1 << 0, FUNC_ISO_EN_USB);
-
 #ifdef CONFIG_MUIC_S2MM001_SUPPORT_LANHUB
 	/* LANHUB doesn't work under AUTO switch mode, so turn it off */
 	/* set MANUAL SW mode */
@@ -1333,18 +1335,11 @@ static int attach_jig_uart_boot_off(struct s2mm001_muic_data *muic_data,
 	if (ret)
 		return ret;
 
-	if (pdata->uart_path == MUIC_PATH_UART_AP) {
+	if (pdata->uart_path == MUIC_PATH_UART_AP)
 		ret = switch_to_ap_uart(muic_data);
-		if (ret < 0)
-			pr_err("%s:%s err switch_to_ap/cp_uart (%d)\n",
-					MUIC_DEV_NAME, __func__, ret);
-	}
-	else {
+	else
 		ret = switch_to_cp_uart(muic_data);
-		if (ret < 0)
-			pr_err("%s:%s err switch_to_ap/cp_uart (%d)\n",
-					MUIC_DEV_NAME, __func__, ret);
-	}
+
 	/* if VBUS is enabled, call host_notify_cb to check if it is OTGTEST*/
 	if (vbvolt) {
 		/* JIG_UART_OFF_VB */
@@ -1777,10 +1772,12 @@ static void s2mm001_muic_detect_dev(struct s2mm001_muic_data *muic_data)
 			/* sometimes muic fails to
 				catch JIG_UART_OFF detaching */
 			/* double check with ADC */
-			new_dev = ATTACHED_DEV_UNKNOWN_MUIC;
-			intr = MUIC_INTR_DETACH;
-			pr_info("%s : ADC OPEN DETECTED\n",
+			if (new_dev == ATTACHED_DEV_JIG_UART_OFF_MUIC) {
+				new_dev = ATTACHED_DEV_UNKNOWN_MUIC;
+				intr = MUIC_INTR_DETACH;
+				pr_info("%s : ADC OPEN DETECTED\n",
 							MUIC_DEV_NAME);
+			}
 			break;
 		default:
 			pr_warn("%s:%s unsupported ADC(0x%02x)\n",
@@ -1852,7 +1849,7 @@ static int s2mm001_muic_reg_init(struct s2mm001_muic_data *muic_data)
 		pr_err("%s:%s err %d\n", MUIC_DEV_NAME, __func__, val3);
 
 	adc = s2mm001_i2c_read_byte(i2c, S2MM001_MUIC_REG_ADC);
-	if (adc < 0)
+	if (val3 < 0)
 		pr_err("%s:%s err %d\n", MUIC_DEV_NAME, __func__, adc);
 
 	pr_info("%s:%s dev[1:0x%x, 2:0x%x, 3:0x%x], adc:0x%x\n",
@@ -1999,12 +1996,17 @@ static int s2mm001_init_rev_info(struct s2mm001_muic_data *muic_data)
 	pr_info("%s:%s\n", MUIC_DEV_NAME, __func__);
 
 	dev_id = s2mm001_i2c_read_byte(muic_data->i2c, S2MM001_MUIC_REG_DEVID);
-
-	muic_data->muic_vendor = (dev_id & 0x7);
-	muic_data->muic_version = ((dev_id & 0xF8) >> 3);
-	pr_info("%s:%s device found: vendor=0x%x, ver=0x%x\n",
-			MUIC_DEV_NAME, __func__, muic_data->muic_vendor,
-			muic_data->muic_version);
+	if (dev_id < 0) {
+		pr_err("%s:%s i2c io error(%d)\n", MUIC_DEV_NAME, __func__,
+				ret);
+		ret = -ENODEV;
+	} else {
+		muic_data->muic_vendor = (dev_id & 0x7);
+		muic_data->muic_version = ((dev_id & 0xF8) >> 3);
+		pr_info("%s:%s device found: vendor=0x%x, ver=0x%x\n",
+				MUIC_DEV_NAME, __func__, muic_data->muic_vendor,
+				muic_data->muic_version);
+	}
 
 	return ret;
 }

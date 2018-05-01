@@ -32,26 +32,11 @@
 #include <linux/muic/muic_notifier.h>
 #endif /* CONFIG_MUIC_NOTIFIER */
 
-#if defined(CONFIG_CCIC_NOTIFIER)
-#include <linux/ccic/ccic_notifier.h>
-#endif
-
 #ifdef CONFIG_SWITCH
 static struct switch_dev switch_dock = {
 	.name = "dock",
 };
-
-#ifdef CONFIG_SEC_FACTORY
-struct switch_dev switch_attached_muic_cable = {
-	.name = "attached_muic_cable",	/* sys/class/switch/attached_muic_cable/state */
-};
-#endif
 #endif /* CONFIG_SWITCH */
-
-/* 1: 619K is used as a wake-up noti which sends a dock noti.
-  * 0: 619K is used 619K itself, JIG_UART_ON
-  */
-int muic_wakeup_noti = 1;
 
 #if defined(CONFIG_MUIC_NOTIFIER)
 static struct notifier_block dock_notifier_block;
@@ -63,16 +48,6 @@ static void muic_send_dock_intent(int type)
 	switch_set_state(&switch_dock, type);
 #endif
 }
-
-#ifdef CONFIG_SEC_FACTORY
-void muic_send_attached_muic_cable_intent(int type)
-{
-	pr_info("%s: MUIC attached_muic_cable type(%d)\n", __func__, type);
-#ifdef CONFIG_SWITCH
-	switch_set_state(&switch_attached_muic_cable, type);
-#endif
-}
-#endif
 
 static int muic_dock_attach_notify(int type, const char *name)
 {
@@ -90,18 +65,6 @@ static int muic_dock_detach_notify(void)
 	return NOTIFY_OK;
 }
 
-/* Notice:
-  * Define your own wake-up Noti. function to use 619K 
-  * as a different purpose as it is for wake-up by default.
-  */
-static void __muic_set_wakeup_noti(int flag)
-{
-	pr_info("%s: %d but 1 by default\n", __func__, flag);
-	muic_wakeup_noti = 1;
-}
-void muic_set_wakeup_noti(int flag)
-	__attribute__((weak, alias("__muic_set_wakeup_noti")));
-
 static int muic_handle_dock_notification(struct notifier_block *nb,
 			unsigned long action, void *data)
 {
@@ -113,23 +76,6 @@ static int muic_handle_dock_notification(struct notifier_block *nb,
 #endif
 	int type = MUIC_DOCK_DETACHED;
 	const char *name;
-
-	if (attached_dev == ATTACHED_DEV_JIG_UART_ON_MUIC) {
-		if (muic_wakeup_noti) {
-
-			muic_set_wakeup_noti(0);
-
-			if (action == MUIC_NOTIFY_CMD_ATTACH) {
-				type = MUIC_DOCK_DESKDOCK;
-				name = "Desk Dock Attach";
-				return muic_dock_attach_notify(type, name);
-			}
-			else if (action == MUIC_NOTIFY_CMD_DETACH)
-				return muic_dock_detach_notify();
-		}
-		pr_info("[muic] %s: ignore(%d)\n", __func__, attached_dev);
-		return NOTIFY_DONE;
-	}
 
 	switch (attached_dev) {
 	case ATTACHED_DEV_DESKDOCK_MUIC:
@@ -273,15 +219,6 @@ static void muic_init_switch_dev_cb(void)
 				__func__, ret);
 		return;
 	}
-
-#ifdef CONFIG_SEC_FACTORY
-	ret = switch_dev_register(&switch_attached_muic_cable);
-	if (ret < 0) {
-		pr_err("%s: Failed to register attached_muic_cable switch(%d)\n",
-				__func__, ret);
-		return;
-	}
-#endif
 #endif /* CONFIG_SWITCH */
 
 #if defined(CONFIG_MUIC_NOTIFIER)
@@ -326,6 +263,27 @@ int get_switch_sel(void)
 	return muic_pdata.switch_sel;
 }
 
+/* afc_mode:
+ *   0x31 : Disabled
+ *   0x30 : Enabled
+ */
+static int afc_mode = 0;
+static int __init set_afc_mode(char *str)
+{
+	int mode;
+	get_option(&str, &mode);
+	afc_mode = (mode & 0x0000FF00) >> 8;
+	pr_info("%s: afc_mode is 0x%02x\n", __func__, afc_mode);
+
+	return 0;
+}
+early_param("charging_mode", set_afc_mode);
+
+int get_afc_mode(void)
+{
+	return afc_mode;
+}
+
 bool is_muic_usb_path_ap_usb(void)
 {
 	if (MUIC_PATH_USB_AP == muic_pdata.usb_path) {
@@ -364,7 +322,7 @@ static int muic_init_gpio_cb(int switch_sel)
 	}
 
 	if (pdata->set_gpio_usb_sel)
-		ret = pdata->set_gpio_usb_sel(pdata->usb_path);
+		ret = pdata->set_gpio_usb_sel(pdata->uart_path);
 
 	if (switch_sel & SWITCH_SEL_UART_MASK) {
 		pdata->uart_path = MUIC_PATH_UART_AP;
@@ -376,10 +334,10 @@ static int muic_init_gpio_cb(int switch_sel)
 
 	pdata->rustproof_on = false;
 
-#if !defined(CONFIG_SEC_FACTORY)
+#if defined(CONFIG_MUIC_RUSTPROOF_ON_USER) && !defined(CONFIG_SEC_FACTORY)
 	if (!(switch_sel & SWITCH_SEL_RUSTPROOF_MASK))
 		pdata->rustproof_on = true;
-#endif /* !CONFIG_SEC_FACTORY */
+#endif /* CONFIG_MUIC_RUSTPROOF_ON_USER && !CONFIG_SEC_FACTORY */
 
 	pdata->afc_disable = false;
 #if defined(CONFIG_HV_MUIC_MAX77843_AFC) || defined(CONFIG_HV_MUIC_MAX77833_AFC)

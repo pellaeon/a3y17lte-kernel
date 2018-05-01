@@ -140,6 +140,16 @@ muic_afc_data_t prepare_dupli_to_prepare_dupli = {
 	.next			= &prepare_to_qc_prepare,
 };
 
+muic_afc_data_t prepare_dupli_to_afc_early_9v = {
+	.new_dev		= ATTACHED_DEV_AFC_CHARGER_9V_MUIC,
+	.afc_name		= "AFC charger 9V (early in mrxrdy)",
+	.afc_irq		= MUIC_AFC_IRQ_MRXRDY,
+	.status_vbadc		= VBADC_AFC_9V,
+	.status_vdnmon          = VDNMON_DONTCARE,
+	.function_num		= FUNC_PREPARE_DUPLI_TO_AFC_9V,
+	.next			= &prepare_dupli_to_prepare_dupli,
+};
+
 muic_afc_data_t prepare_dupli_to_afc_9v = {
 	.new_dev		= ATTACHED_DEV_AFC_CHARGER_9V_MUIC,
 	.afc_name		= "AFC charger 9V",
@@ -147,7 +157,7 @@ muic_afc_data_t prepare_dupli_to_afc_9v = {
 	.status_vbadc		= VBADC_AFC_9V,
 	.status_vdnmon          = VDNMON_DONTCARE,
 	.function_num		= FUNC_PREPARE_DUPLI_TO_AFC_9V,
-	.next			= &prepare_dupli_to_prepare_dupli,
+	.next			= &prepare_dupli_to_afc_early_9v,
 };
 
 muic_afc_data_t prepare_dupli_to_afc_err_v = {

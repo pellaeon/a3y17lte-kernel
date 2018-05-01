@@ -6,24 +6,29 @@
 # Licensed under GPLv2
 
 comment "Samsung TN Features"
-menuconfig SEC_EXT
-	bool "Samsung TN extension features"
-	default y
+config SEC_EXT
+	bool "Samsung TN extension Feature"
 
 config SEC_SYSFS
-	bool "Create a sysfs node for SEC_CLASS"
-	depends on SEC_EXT
+	bool "Samsung sec sysfs Feature"
 	default y
+	depends on SEC_EXT
+	help
+	  Samsung sysfs name 'sec' directory create.
 
 config SEC_REBOOT
-	bool "Enable TN reboot features"
-	depends on SEC_EXT
+	bool "Samsung TM reboot extension Feature"
 	default y
+	depends on SEC_EXT
+	help
+	  Samsung TN reboot extension feature. Do additional work when reboot.
 
 menuconfig SEC_DEBUG
 	bool "Enable TN debugging features"
 	depends on EXYNOS_SNAPSHOT && SEC_REBOOT
 	default y
+	help
+	  Samsung TN debugging feature.
 
 config SEC_DEBUG_RESET_REASON
 	bool "Enable TN reset reason"
@@ -75,36 +80,17 @@ config SEC_UPLOAD
 	help
 	  Samsung TN upload mode
 
-config SEC_HW_REV
-	bool "Get GPIO HW REV"
-	depends on SEC_DEBUG
-	default n
-
-
-config SEC_DEBUG_MDM_SEPERATE_CRASH
-	bool "Enable modem crash with a seperated command"
-	depends on SEC_DEBUG
+config SEC_DEBUG_FTRACE_ON
+	bool "Turn on event tracer at driver"
 	default n
 	help
-	  This option enables modem crash other debug level.
+	  Kernel event trace for debugging
 
-comment "Samsung TN BSP Options"
-config SEC_PARAM
-	bool "Enable Param modification"
-	depends on SEC_DEBUG
-	default n
-	help
-	  Samsung TN Param Feature.
-
-config SEC_BOOTSTAT
-	bool "Enable TN Bootstat logging"
-	depends on SEC_EXT
-	default y
-
-config SEC_INITCALL_DEBUG
-	bool "Enable TN Initcall logging"
-	depends on SEC_EXT
-	default y
+config SEC_MISC
+        bool "Samsung TM Misc Feature"
+        default n
+        help
+          Samsung TN Misc extension Feature. Do additional work when Misc.
 
 config ARGOS
 	bool "Throughput monitoring Feature"
@@ -112,7 +98,26 @@ config ARGOS
 	help
 	  Check throughput and set appropriate system parameters(CPU freq, affinity, etc)
 
-comment "Samsung TN Logging Options"
+config SENTINEL
+	bool "Memory Protection"
+	default n
+	help
+	  Memory Protection
+
+config SEC_FACTORY
+	bool "SAMSUNG Factory build option"
+	default n
+	help
+	  Include some codes for Factory binary.
+
+config SEC_HOTPLUG
+	bool "Control cpu qos for samsung feature"
+	default n
+	depends on SENSORS_FP_LOCKSCREEN_MODE
+	help
+	  Request wakeup with big core for samsung fingerprint
+
+comment "Samsung TN logging feature"
 config SEC_AVC_LOG
 	default n
 	bool "Enable avc audit log support" if EMBEDDED
@@ -149,19 +154,43 @@ config SEC_PM_DEBUG
 	help
 	  Enable Samsung TN Power management debug support.
 
-config SEC_EVENT_LOG
-	bool "Enable Event log parser"
-	depends on SEC_EXT
-	default y
 
-comment "Samsung TN NAD Options"
+comment "BSP Feature"
+menuconfig SEC_BSP
+	bool "Samsung TN BSP Feature"
+	default n
+	depends on SEC_EXT
+	help
+	  Samsung TN BSP Feature.
+
+config SEC_INITCALL_DEBUG
+	bool "Enable Samsung initcall debug support"
+	default n
+	depends on SEC_DEBUG && !SAMSUNG_PRODUCT_SHIP
+	help
+	  Enable Samsung initcall debug support.
+
+comment "PARAM Feature"
+config SEC_PARAM
+	bool "Samsung TN Param Feature"
+	default n
+	depends on SEC_DEBUG
+	help
+	  Samsung TN Param Feature.
+
+config CM_OFFSET
+	int "Charging Mode Offset"
+	default 0
+	depends on SEC_PARAM
+	help
+	  set Charging Mode Offset when you enable SEC_PARAM.
+	  
 config SEC_NAD
 	bool "Samsung TN NAD Feature"
 	default n
 	help
-
 	  Samsung TN NAD Feature, support AT CMD for NAD 2.0
-	  	  
+
 config SEC_NAD_MANUAL_PARAM_READTIME
 	int "Samsung TN NAD Feature"
 	depends on SEC_NAD
@@ -169,3 +198,14 @@ config SEC_NAD_MANUAL_PARAM_READTIME
 	help
 	  Samsung TN NAD Feature, set param reading time manually.
 
+config SEC_DUMP_SUMMARY
+	default n
+	bool "Enable summary dump support" if EMBEDDED
+	help
+	  Samsung Summary dump Feature for debugging use.
+
+config KFAULT_AUTO_SUMMARY
+	default n
+	bool "Enable kernel fault auto summary support" if EMBEDDED
+	help
+	  Samsung Kernel Fault Auto Summary Feature

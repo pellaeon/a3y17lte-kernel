@@ -53,9 +53,6 @@ static void spin_dump(raw_spinlock_t *lock, const char *msg)
 {
 	struct task_struct *owner = NULL;
 
-	if (!printk_ratelimit())
-		return;
-
 	if (lock->owner && lock->owner != SPINLOCK_OWNER_INIT)
 		owner = lock->owner;
 

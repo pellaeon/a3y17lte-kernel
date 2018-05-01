@@ -59,10 +59,6 @@ struct rtc_class_ops {
 	int (*set_time)(struct device *, struct rtc_time *);
 	int (*read_alarm)(struct device *, struct rtc_wkalrm *);
 	int (*set_alarm)(struct device *, struct rtc_wkalrm *);
-#if defined(CONFIG_RTC_ALARM_BOOT)
-	int (*set_alarm_boot)(struct device *, struct rtc_wkalrm *);
-	int (*get_alarm_boot)(struct device *, struct rtc_wkalrm *);
-#endif
 	int (*proc)(struct device *, struct seq_file *);
 	int (*set_mmss)(struct device *, unsigned long secs);
 	int (*read_callback)(struct device *, int data);
@@ -154,12 +150,6 @@ extern int rtc_read_alarm(struct rtc_device *rtc,
 			struct rtc_wkalrm *alrm);
 extern int rtc_set_alarm(struct rtc_device *rtc,
 				struct rtc_wkalrm *alrm);
-#if defined(CONFIG_RTC_ALARM_BOOT)
-extern int rtc_set_alarm_boot(struct rtc_device *rtc,
-			      struct rtc_wkalrm *alarm);
-extern int rtc_get_alarm_boot(struct rtc_device *rtc,
-				struct rtc_wkalrm *alarm);
-#endif
 extern int rtc_initialize_alarm(struct rtc_device *rtc,
 				struct rtc_wkalrm *alrm);
 extern void rtc_update_irq(struct rtc_device *rtc,
@@ -207,7 +197,4 @@ extern int rtc_hctosys_ret;
 #define rtc_hctosys_ret -ENODEV
 #endif
 
-#if defined(CONFIG_RTC_ALARM_BOOT)
-extern unsigned int lpcharge;
-#endif
 #endif /* _LINUX_RTC_H_ */

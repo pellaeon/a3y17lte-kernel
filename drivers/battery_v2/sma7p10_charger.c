@@ -168,9 +168,8 @@ static void sma7p10_set_charge_current(struct sma7p10_charger_data *charger,
 		reg_data = charge_current  / 10;
 	}
 
-	sma7p10_update_reg(charger->i2c,
-			SMA7P10_SC_CTRL0, reg_data, CHG_CURRENT_MASK);
-	pr_info("%s: charge_current(%d)\n", __func__, charge_current);
+	sma7p10_write_reg(charger->i2c,	SMA7P10_SC_CTRL0, reg_data);
+	pr_info("%s: charge_current(%d) : 0x%x\n", __func__, charge_current, reg_data);
 }
 
 static void sma7p10_charger_initialize(struct sma7p10_charger_data *charger)

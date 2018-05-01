@@ -56,10 +56,10 @@
 #define   TIMA_DASHBOARD_SIZE    0x1000
 
 #define   TIMA_ROBUF_START      0x52408000
-#define   TIMA_ROBUF_SIZE       0x5f8000 /* 6MB - RKP_SEC_LOG_SIZE - RKP_DASHBOARD_SIZE)*/
+#define   TIMA_ROBUF_SIZE       0x3f8000 /* 4MB - RKP_SEC_LOG_SIZE - RKP_DASHBOARD_SIZE)*/
 
 #define RKP_RBUF_VA      (phys_to_virt(TIMA_ROBUF_START))
-#define RO_PAGES  0x5f8 // (TIMA_ROBUF_SIZE/PAGE_SIZE)
+#define RO_PAGES  (TIMA_ROBUF_SIZE >> PAGE_SHIFT) // (TIMA_ROBUF_SIZE/PAGE_SIZE)
 
 
 extern u8 rkp_pgt_bitmap[];

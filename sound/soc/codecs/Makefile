@@ -81,7 +81,6 @@ snd-soc-rt5645-objs := rt5645.o
 snd-soc-rt5651-objs := rt5651.o
 snd-soc-rt5670-objs := rt5670.o
 snd-soc-rt5677-objs := rt5677.o
-snd-soc-rt5659-objs := rt5659.o
 snd-soc-sgtl5000-objs := sgtl5000.o
 snd-soc-alc5623-objs := alc5623.o
 snd-soc-alc5632-objs := alc5632.o
@@ -93,11 +92,7 @@ snd-soc-sirf-audio-codec-objs := sirf-audio-codec.o
 snd-soc-sn95031-objs := sn95031.o
 snd-soc-spdif-tx-objs := spdif_transmitter.o
 snd-soc-spdif-rx-objs := spdif_receiver.o
-ifeq ($(CONFIG_SND_SOC_EXYNOS_AUDMIXER_VER),2)
-snd-soc-audmixer-v2-objs := exynos-audmixer-v2.o
-else
 snd-soc-audmixer-objs := exynos-audmixer.o
-endif
 snd-soc-ssm2518-objs := ssm2518.o
 snd-soc-ssm2602-objs := ssm2602.o
 snd-soc-ssm2602-spi-objs := ssm2602-spi.o
@@ -265,7 +260,6 @@ obj-$(CONFIG_SND_SOC_RT5645)	+= snd-soc-rt5645.o
 obj-$(CONFIG_SND_SOC_RT5651)	+= snd-soc-rt5651.o
 obj-$(CONFIG_SND_SOC_RT5670)	+= snd-soc-rt5670.o
 obj-$(CONFIG_SND_SOC_RT5677)	+= snd-soc-rt5677.o
-obj-$(CONFIG_SND_SOC_RT5659)	+= snd-soc-rt5659.o
 obj-$(CONFIG_SND_SOC_SGTL5000)  += snd-soc-sgtl5000.o
 obj-$(CONFIG_SND_SOC_SIGMADSP)	+= snd-soc-sigmadsp.o
 obj-$(CONFIG_SND_SOC_SIGMADSP_I2C)	+= snd-soc-sigmadsp-i2c.o
@@ -273,11 +267,7 @@ obj-$(CONFIG_SND_SOC_SIGMADSP_REGMAP)	+= snd-soc-sigmadsp-regmap.o
 obj-$(CONFIG_SND_SOC_SI476X)	+= snd-soc-si476x.o
 obj-$(CONFIG_SND_SOC_SN95031)	+=snd-soc-sn95031.o
 obj-$(CONFIG_SND_SOC_SPDIF)	+= snd-soc-spdif-rx.o snd-soc-spdif-tx.o
-ifeq ($(CONFIG_SND_SOC_EXYNOS_AUDMIXER_VER),2)
-obj-$(CONFIG_SND_SOC_EXYNOS_AUDMIXER)   += snd-soc-audmixer-v2.o
-else
 obj-$(CONFIG_SND_SOC_EXYNOS_AUDMIXER)   += snd-soc-audmixer.o
-endif
 obj-$(CONFIG_SND_SOC_SSM2518)	+= snd-soc-ssm2518.o
 obj-$(CONFIG_SND_SOC_SSM2602)	+= snd-soc-ssm2602.o
 obj-$(CONFIG_SND_SOC_SSM2602_SPI)	+= snd-soc-ssm2602-spi.o

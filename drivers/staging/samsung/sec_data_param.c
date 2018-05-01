@@ -19,7 +19,7 @@
 #include <asm/io.h>
 
 #define MAX_DDR_VENDOR 16
-#define LPDDR_BASE 0x104809A4
+#define LPDDR_BASE 0x106b09ac
 #define DATA_SIZE 700
 
 enum ids_info
@@ -116,7 +116,7 @@ static char* get_dram_manufacturer(void)
 	
 	val = readl((void __iomem *)lpddr_reg);
 
-	mr5_vendor_id = 0xf & (val >> 24);
+	mr5_vendor_id = 0xf & val;
 
 	return lpddr4_manufacture_name[mr5_vendor_id];
 }
@@ -135,11 +135,11 @@ static ssize_t sec_hw_param_ap_info_show(struct kobject *kobj,
 
 	info_size += snprintf(buf, DATA_SIZE, "\"HW_REV\":\"%d\",", sec_hw_rev);
 	info_size += snprintf((char*)(buf+info_size), DATA_SIZE - info_size, "\"LOT_ID\":\"%s\",", lot_id);
-	info_size += snprintf((char*)(buf+info_size), DATA_SIZE - info_size, "\"ASV_LIT\":\"%d\",", asv_ids_information(cpu_asv));
+	info_size += snprintf((char*)(buf+info_size), DATA_SIZE - info_size, "\"ASV_CL0\":\"%d\",", asv_ids_information(cpu_asv));
 	//CPUCL0/1 use same ASV table
-	info_size += snprintf((char*)(buf+info_size), DATA_SIZE - info_size, "\"ASV_BIG\":\"%d\",", asv_ids_information(cpu_asv));
+	info_size += snprintf((char*)(buf+info_size), DATA_SIZE - info_size, "\"ASV_CL1\":\"%d\",", asv_ids_information(cpu_asv));
 	info_size += snprintf((char*)(buf+info_size), DATA_SIZE - info_size, "\"ASV_MIF\":\"%d\",", asv_ids_information(mif_asv));
-	info_size += snprintf((char*)(buf+info_size), DATA_SIZE - info_size, "\"IDS_BIG\":\"\",");
+	info_size += snprintf((char*)(buf+info_size), DATA_SIZE - info_size, "\"IDS_CL1\":\"\",");
 	info_size += snprintf((char*)(buf+info_size), DATA_SIZE - info_size, "\"PARAM0\":\"\"");
 	
 	return info_size;

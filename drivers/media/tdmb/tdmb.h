@@ -156,8 +156,6 @@ struct tdmb_i2c_dev {
 struct tdmb_dt_platform_data {
 	int tdmb_irq;
 	int tdmb_en;
-	int tdmb_1p2_en;
-	int tdmb_lna_en;
 	int tdmb_rst;
 	int tdmb_use_rst;
 	int tdmb_use_irq;

@@ -10,7 +10,6 @@ obj-$(CONFIG_SENSORS_SSP_BMI168)	+= accel_general.o gyro_general.o
 #obj-$(CONFIG_SENSORS_SSP_TMD4903)       += light_tmg399x.o prox_tmg399x.o gesture_tmg399x.o irled_tmd4903.o
 #obj-$(CONFIG_SENSORS_SSP_TMG399X)	+= light_tmg399x.o prox_tmg399x.o gesture_tmg399x.o
 obj-$(CONFIG_SENSORS_SSP_TMD3725)       += light_tmd37xx.o prox_autocal_ams.o
-obj-$(CONFIG_SENSORS_SSP_TMD3700)       += light_tmd37xx.o prox_tmd37xx.o
 obj-$(CONFIG_SENSORS_SSP_TMG399X)	+= light_tmg399x.o prox_tmg399x.o
 obj-$(CONFIG_SENSORS_SSP_MAG_LSM303AH) += magnetic_lsm303ah.o
 obj-$(CONFIG_SENSORS_SSP_AK09916) += magnetic_common.o

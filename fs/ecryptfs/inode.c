@@ -40,6 +40,7 @@
 #include <sdp/fs_request.h>
 #include "ecryptfs_sdp_chamber.h"
 #include "ecryptfs_dek.h"
+
 #include "../sdcardfs/sdcardfs.h"
 #endif
 
@@ -399,6 +400,7 @@ int ecryptfs_initialize_file(struct dentry *ecryptfs_dentry,
 		printk(KERN_ERR "Error writing headers; rc = [%d]\n", rc);
 	ecryptfs_put_lower_file(ecryptfs_inode);
 #endif
+
 out:
 #ifdef CONFIG_DLP
 	if(cmd) {
@@ -537,7 +539,7 @@ static int ecryptfs_lookup_interpose(struct dentry *dentry,
 	                &ecryptfs_superblock_to_private(inode->i_sb)->mount_crypt_stat;
 	        int engineid;
 
-	        //printk("Lookup a directoy under root directory of current partition.\n");
+	        printk("Lookup a directoy under root directory of current partition.\n");
 
 	        if(is_chamber_directory(mount_crypt_stat, dentry->d_name.name, &engineid)) {
 	            /*
@@ -679,6 +681,7 @@ static struct dentry *ecryptfs_lookup(struct inode *ecryptfs_dir_inode,
 		dput(parent);
 	}
 #endif
+
 	lower_dentry = lookup_one_len(encrypted_and_encoded_name,
 				      lower_dir_dentry,
 				      encrypted_and_encoded_name_size);
@@ -1445,10 +1448,6 @@ ecryptfs_setxattr(struct dentry *dentry, const char *name, const void *value,
 {
 	int rc = 0;
 	struct dentry *lower_dentry;
-#ifdef CONFIG_DLP
-	struct ecryptfs_crypt_stat *crypt_stat = NULL;
-	int flag = 1;
-#endif
 
 	lower_dentry = ecryptfs_dentry_to_lower(dentry);
 	if (!lower_dentry->d_inode->i_op->setxattr) {
@@ -1465,17 +1464,7 @@ ecryptfs_setxattr(struct dentry *dentry, const char *name, const void *value,
 			printk(KERN_ERR "DLP %s: setting knox_dlp not allowed by [%d]\n", __func__, from_kuid(&init_user_ns, current_uid()));
 			return -EPERM;
 		}
-		if (dentry->d_inode) {
-			crypt_stat = &ecryptfs_inode_to_private(dentry->d_inode)->crypt_stat;
-			if(crypt_stat) {
-				crypt_stat->flags |= ECRYPTFS_DLP_ENABLED;
-				flag = 0;
-			}
-		}
-		if(flag){
-			printk(KERN_ERR "DLP %s: setting knox_dlp failed\n", __func__);
-			return -EOPNOTSUPP;
-		}
+		/* TODO: Need to set DLP flag here too? */
 	}
 #endif
 

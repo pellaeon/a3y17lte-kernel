@@ -56,6 +56,10 @@ enum is_param {
 	PARAM_ISP_OTF_OUTPUT,
 	PARAM_ISP_VDMA4_OUTPUT,
 	PARAM_ISP_VDMA5_OUTPUT,
+	PARAM_DRC_CONTROL,
+	PARAM_DRC_OTF_INPUT,
+	PARAM_DRC_DMA_INPUT,
+	PARAM_DRC_OTF_OUTPUT,
 	PARAM_TPU_CONTROL,
 	PARAM_TPU_CONFIG,
 	PARAM_TPU_OTF_INPUT,
@@ -1087,11 +1091,13 @@ struct param_mcs_input {
 	u32	plane;
 	u32	width;
 	u32	height;
+	u32	dma_stride_y;
+	u32	dma_stride_c;
 	u32	dma_crop_offset_x;
 	u32	dma_crop_offset_y;
 	u32	dma_crop_width;
 	u32	dma_crop_height;
-	u32	reserved[PARAMETER_MAX_MEMBER-16];
+	u32	reserved[PARAMETER_MAX_MEMBER-18];
 	u32	err;
 };
 
@@ -1155,6 +1161,7 @@ struct is_param_region {
 #endif
 	struct taa_param		taa;
 	struct isp_param		isp;
+	struct drc_param		drc;
 	struct tpu_param		tpu;
 	struct mcs_param		mcs;
 	struct vra_param		vra;
@@ -1236,40 +1243,6 @@ struct srational_t {
 #define FLASH_RED_EYE_SHIFT		6
 #define FLASH_RED_EYE_DISABLED		0
 #define FLASH_RED_EYE_SUPPORTED		1
-
-enum apex_aperture_value {
-#ifdef ENABLE_IS_CORE
-	F1_0		= 0,
-	F1_4		= 1,
-	F2_0		= 2,
-	F2_8		= 3,
-	F4_0		= 4,
-	F5_6		= 5,
-	F8_9		= 6,
-	F11_0		= 7,
-	F16_0		= 8,
-	F22_0		= 9,
-	F32_0		= 10,
-#else
-	F1_0            = 0,
-	F1_4            = 1,
-	F1_9            = 2,
-	F2_0            = 3,
-	F2_2            = 4,
-	F2_4            = 5,
-	F2_45           = 6,
-	F2_6            = 7,
-	F2_7            = 8, /* Added for 6A3 */
-	F2_8            = 9,
-	F4_0            = 10,
-	F5_6            = 11,
-	F8_0            = 12,
-	F11_0           = 13,
-	F16_0           = 14,
-	F22_0           = 15,
-	F32_0           = 16
-#endif
-};
 
 struct exif_attribute {
 	struct rational_t exposure_time;

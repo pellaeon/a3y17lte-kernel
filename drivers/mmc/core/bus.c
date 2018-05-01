@@ -25,14 +25,13 @@
 #include "sdio_cis.h"
 #include "bus.h"
 
+#define to_mmc_driver(d)	container_of(d, struct mmc_driver, drv)
+
 #ifdef CONFIG_MMC_SUPPORT_STLOG
 #include <linux/stlog.h>
 #else
 #define ST_LOG(fmt,...)
 #endif
-
-#define to_mmc_driver(d)	container_of(d, struct mmc_driver, drv)
-
 static ssize_t type_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
@@ -154,7 +153,7 @@ static int mmc_bus_suspend(struct device *dev)
 	struct mmc_driver *drv = to_mmc_driver(dev->driver);
 	struct mmc_card *card = mmc_dev_to_card(dev);
 	struct mmc_host *host = card->host;
-	int ret = 0;
+	int ret;
 
 	if (dev->driver && drv->suspend) {
 		ret = drv->suspend(card);
@@ -162,12 +161,10 @@ static int mmc_bus_suspend(struct device *dev)
 			return ret;
 	}
 
-	if (mmc_bus_needs_resume(host))
+    if (mmc_bus_needs_resume(host))
 		return 0;
 
-	if (host->bus_ops && host->bus_ops->suspend) {
-		ret = host->bus_ops->suspend(host);
-	}
+	ret = host->bus_ops->suspend(host);
 	return ret;
 }
 
@@ -178,7 +175,7 @@ static int mmc_bus_resume(struct device *dev)
 	struct mmc_host *host = card->host;
 	int ret = 0;
 
-	if (mmc_bus_manual_resume(host)) {
+	if (mmc_bus_manual_resume(host) ) {
 		host->bus_resume_flags |= MMC_BUSRESUME_NEEDS_RESUME;
 	} else {
 		ret = host->bus_ops->resume(host);

@@ -39,6 +39,8 @@
 #define MODULE_MASK			0x000000FF
 
 #define FIMC_IS_SETFILE_MASK		0x0000FFFF
+#define FIMC_IS_SCENARIO_MASK		0xFFFF0000
+#define FIMC_IS_SCENARIO_SHIFT		16
 #define FIMC_IS_ISP_CRANGE_MASK		0x0F000000
 #define FIMC_IS_ISP_CRANGE_SHIFT	24
 #define FIMC_IS_SCC_CRANGE_MASK		0x00F00000
@@ -65,6 +67,10 @@ enum fimc_is_ischain_state {
 enum fimc_is_camera_device {
 	CAMERA_SINGLE_REAR,
 	CAMERA_SINGLE_FRONT,
+};
+
+struct fast_control_mgr {
+	u32 fast_capture_count;
 };
 
 struct fimc_is_device_ischain {
@@ -139,6 +145,9 @@ struct fimc_is_device_ischain {
 	u32					private_data;
 	struct fimc_is_device_sensor		*sensor;
 	struct pm_qos_request			user_qos;
+
+	/* Async metadata control to reduce frame delay */
+	struct fast_control_mgr			fastctlmgr;
 };
 
 /*global function*/

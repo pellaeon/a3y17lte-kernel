@@ -130,7 +130,7 @@ enum s2mu004_reg_bit_control {
 #define HVRXBYTE_MAX			16
 
 /* S2MU004 AFC charger W/A Check NUM */
-#define AFC_CHARGER_WA_PING		3
+#define AFC_CHARGER_WA_PING		5
 
 /* S2MU004 MPing miss SW Workaround - delay time */
 #define MPING_MISS_WA_TIME		2000
@@ -179,7 +179,6 @@ typedef enum {
 //	VBADC_QC_20V		= 0xee,
 
 	VBADC_AFC_5V		= 0xfa,
-	VBADC_QC_5V		= 0xfa,
 	VBADC_AFC_9V		= 0xfb,
 	VBADC_QC_9V		= 0xfb,
 	VBADC_AFC_ERR_V		= 0xfc,

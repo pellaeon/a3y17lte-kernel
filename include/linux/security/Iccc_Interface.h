@@ -83,19 +83,19 @@ typedef struct {
 }iccc_secure_pamameters_info_t;
 
 
-#define ICCC_SECURE_PARAMETERS_LENGTH			((uint32_t)sizeof(iccc_secure_pamameters_info_t))
+#define ICCC_SECURE_PARAMETERS_LENGTH ((uint32_t)sizeof(iccc_secure_pamameters_info_t))
 #define ICCC_SECURE_PARAMETERS_READING_LENGTH	((uint32_t)0x4)
 
 /* ICCC section types are defined */
 
-#define ICCC_BL_SECURE_PARAMETERS_OFFSET		((uint32_t)0x164)
+#define ICCC_BL_SECURE_PARAMETERS_OFFSET        ((uint32_t)0x164)
 
 #define BL_ICCC_TYPE_START		0xFFF00000
 #define TA_ICCC_TYPE_START		0xFF000000
 #define KERN_ICCC_TYPE_START		0xFF100000
 #define SYS_ICCC_TYPE_START		0xFF200000
 
-#define ICCC_SECTION_MASK			0xFFF00000
+#define ICCC_SECTION_MASK 0xFFF00000
 #define ICCC_SECTION_TYPE(type)		(ICCC_SECTION_MASK & (type))
 
 /*  BL Secure Parameters */
@@ -125,23 +125,23 @@ typedef struct {
 
 /* TA Secure Parameters */
 
-#define ICCC_TA_SECURE_PARAMETERS_OFFSET	((uint32_t)ICCC_BL_SECURE_PARAMETERS_OFFSET + sizeof (bl_secure_info_t))
+#define ICCC_TA_SECURE_PARAMETERS_OFFSET        ((uint32_t)ICCC_BL_SECURE_PARAMETERS_OFFSET + sizeof (bl_secure_info_t))
 
-#define PKM_TEXT			(TA_ICCC_TYPE_START+0x00000)
-#define PKM_RO				(TA_ICCC_TYPE_START+0x00001)
-#define SELINUX_STATUS		(TA_ICCC_TYPE_START+0x00002)
+#define PKM_TEXT        	(TA_ICCC_TYPE_START+0x00000)
+#define PKM_RO          	(TA_ICCC_TYPE_START+0x00001)
+#define SELINUX_STATUS  	(TA_ICCC_TYPE_START+0x00002)
 
 /* end TA Secure Parameters */
 
 /* KERNEL  Parameter */
-#define ICCC_KERN_SECURE_PARAMETERS_OFFSET	((uint32_t)ICCC_TA_SECURE_PARAMETERS_OFFSET + sizeof (ta_secure_info_t))
+#define ICCC_KERN_SECURE_PARAMETERS_OFFSET        ((uint32_t)ICCC_TA_SECURE_PARAMETERS_OFFSET + sizeof (ta_secure_info_t))
 
 #define DMV_STATUS			(KERN_ICCC_TYPE_START+0x00000)
 
 /* end KERNEL Hash Parameter */
 
 /* System  Parameter */
-#define ICCC_SYS_SECURE_PARAMETERS_OFFSET	((uint32_t)ICCC_KERN_SECURE_PARAMETERS_OFFSET + sizeof (kern_secure_info_t))
+#define ICCC_SYS_SECURE_PARAMETERS_OFFSET        ((uint32_t)ICCC_KERN_SECURE_PARAMETERS_OFFSET + sizeof (kern_secure_info_t))
 
 #define SYSSCOPE_FLAG		(SYS_ICCC_TYPE_START+0x00000)
 #define TRUSTBOOT_FLAG		(SYS_ICCC_TYPE_START+0x00001)
@@ -153,3 +153,4 @@ uint32_t Iccc_ReadData_Kernel(uint32_t type, uint32_t *value);
 
 #endif
 /*  struct for TLC&TA communication */
+

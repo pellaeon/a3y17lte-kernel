@@ -57,7 +57,7 @@ static void init_sensorlist(struct ssp_data *data)
 
 static int ssp_preenable(struct iio_dev *indio_dev)
 {
-	return 0;
+	return iio_sw_buffer_preenable(indio_dev);
 }
 
 static int ssp_predisable(struct iio_dev *indio_dev)

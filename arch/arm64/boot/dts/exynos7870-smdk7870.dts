@@ -12,16 +12,11 @@
 /dts-v1/;
 #include "exynos7870.dtsi"
 #include "modem-ss315ap-pdata.dtsi"
-#include "exynos7870-rmem-2000MB.dtsi"
+#include "exynos7870-rmem.dtsi"
 
 / {
 	model = "Exynos 7870 SMDK board";
 	compatible = "samsung,exynos7870", "samsung,exynos4210";
-
-	ect {
-		parameter_address = <0x90000000>;
-		parameter_size = <0x14000>;	/* u-boot always overwrites this value. */
-	};
 
 	memory@40000000 {
 		device_type = "memory";
@@ -60,11 +55,11 @@
 		};
 	};
 
-	serial_0: uart@13810000 {
+	serial_0: uart@13800000 {
 		status = "okay";
 	};
 
-	serial_1: uart@13800000 {
+	serial_1: uart@13810000 {
 		status = "okay";
 	};
 
@@ -254,14 +249,14 @@
 			wtsr_timer_val = <3>;   /* 1000ms */
 			smpl_timer_val = <4>;   /* 500ms */
 			check_jigon = <0>; /* do not check jigon */
-			/* RTC: If it's first boot, reset rtc to 1/1/2015 12:00:00(Thu) */
+			/* RTC: If it's first boot, reset rtc to 1/1/2014 12:00:00(Wed) */
 			init_time,sec = <0>;
 			init_time,min = <0>;
 			init_time,hour = <12>;
 			init_time,mday = <1>;
 			init_time,mon = <0>;
-			init_time,year = <115>;
-			init_time,wday = <4>;
+			init_time,year = <114>;
+			init_time,wday = <3>;
 
 			regulators {
 				buck1_reg: BUCK1 {
@@ -271,7 +266,7 @@
 					regulator-always-on;
 					regulator-boot-on;
 					regulator-ramp-delay = <12000>;
-					regulator-initial-mode = <1>;
+					regulator-initial-mode = <2>;
 				};
 
 				buck2_reg: BUCK2 {
@@ -352,7 +347,7 @@
 					regulator-boot-on;
 					regulator-always-on;
 					regulator-ramp-delay = <12000>;
-					regulator-initial-mode = <1>;
+					regulator-initial-mode = <2>;
 				};
 
 				ldo5_reg: LDO5 {
@@ -372,7 +367,7 @@
 					regulator-boot-on;
 					regulator-always-on;
 					regulator-ramp-delay = <12000>;
-					regulator-initial-mode = <1>;
+					regulator-initial-mode = <2>;
 				};
 
 				ldo7_reg: LDO7 {
@@ -716,7 +711,6 @@
 		use-fine-tuning;
 		bypass-for-allpass;
 		card-init-hwacg-ctrl;
-		switch_transfer;
 		fifo-depth = <0x40>;
 		non-removable;
 		card-detect-delay = <200>;
@@ -724,12 +718,12 @@
 		samsung,dw-mshc-ciu-div = <3>;
 		samsung,dw-mshc-txdt-crc-timer-fastlimit = <0x12>;
 		samsung,dw-mshc-txdt-crc-timer-initval = <0x14>;
-		samsung,dw-mshc-ddr200-delay-line = <0x60>;
+		samsung,dw-mshc-ddr200-delay-line = <0x50>;
 		samsung,dw-mshc-sdr-timing = <3 0 4 0>;
 		samsung,dw-mshc-ddr-timing = <3 0 4 2>;
 		samsung,dw-mshc-hs200-timing = <3 0 3 0>;
 		samsung,dw-mshc-ddr200-timing = <1 0 4 0>;
-		samsung,dw-mshc-ddr200-ulp-timing = <3 0 3 0>;
+		samsung,dw-mshc-ddr200-ulp-timing = <3 0 4 0>;
 		clk_pin = "gpr0-0";
 		clk_addr = "13750000.pinctrl";
 		num-ref-clks = <10>;
@@ -753,7 +747,6 @@
 		caps-control;
 		use-fine-tuning;
 		card-init-hwacg-ctrl;
-		switch_transfer;
 		fifo-depth = <0x40>;
 		card-detect-delay = <200>;
 		samsung,dw-mshc-ciu-div = <3>;
@@ -800,7 +793,7 @@
 		size = <70 121>;
 		timing,refresh = <60>;
 		timing,h-porch = <1 1 1>;
-		timing,v-porch = <10 3 1>;
+		timing,v-porch = <10 1 1>;
 		timing,dsi-hs-clk = <1100>;
 		timing,pms = <3 127 0>;
 		timing,dsi-escape-clk = <20>;
@@ -844,8 +837,8 @@
 		freq_tab_count = <5>;
 
 		freq_clip_max_0 = <1586000>;
-		freq_clip_max_1 = <1248000>;
-		freq_clip_max_2 = <1248000>;
+		freq_clip_max_1 = <1274000>;
+		freq_clip_max_2 = <1274000>;
 		freq_clip_max_3 = <546000>;
 		freq_clip_max_4 = <546000>;
 
@@ -894,8 +887,8 @@
 		freq_tab_count = <5>;
 
 		freq_clip_max_0 = <1586000>;
-		freq_clip_max_1 = <1248000>;
-		freq_clip_max_2 = <1248000>;
+		freq_clip_max_1 = <1274000>;
+		freq_clip_max_2 = <1274000>;
 		freq_clip_max_3 = <546000>;
 		freq_clip_max_4 = <546000>;
 
@@ -904,10 +897,6 @@
 		cooling_level_2 = <86>;
 		cooling_level_3 = <91>;
 		cooling_level_4 = <96>;
-
-		hotplug_enable = <1>;
-		hotplug_in_threshold = <91>;
-		hotplug_out_threshold = <96>;
 	};
 
 	tmuctrl_2: tmuctrl_G3D@10130000 {
@@ -948,11 +937,11 @@
 		freq_tab_count = <6>;
 
 		freq_clip_max_0 = <1246000>;
-		freq_clip_max_1 = <1146000>;
-		freq_clip_max_2 = <1001000>;
+		freq_clip_max_1 = <1100000>;
+		freq_clip_max_2 = <962000>;
 		freq_clip_max_3 = <728000>;
-		freq_clip_max_4 = <343000>;
-		freq_clip_max_5 = <343000>;
+		freq_clip_max_4 = <350000>;
+		freq_clip_max_5 = <350000>;
 
 		cooling_level_0 = <76>;
 		cooling_level_1 = <81>;
@@ -964,11 +953,11 @@
 		/* gpu cooling related table */
 		gpu_idx_num = <6>;
 		/* flags, driver_data(index), frequency */
-		gpu_cooling_table = < 0 0 1001000
-				      0 1 845000
-				      0 2 728000
-				      0 3 676000
-				      0 4 343000
+		gpu_cooling_table = < 0 0 1246000
+				      0 1 1100000
+				      0 2 962000
+				      0 3 728000
+				      0 4 350000
 				      0 5 TABLE_END>;
 	};
 
@@ -982,28 +971,28 @@
 			/* khz */
 			1586000
 			1482000
-			1352000
-			1248000
+			1378000
+			1274000
 			1144000
-			1014000
-			902000
-			839000
+			1040000
+			962000
+			829000
 			757000
 			676000
 			546000
 			449000
-			343000
+			345000
 			>;
 
 		mif,mif_clk_table = <
 			/* khz */
-			902000
+			933000
 			825000
 			728000
-			676000
-			546000
-			451000
-			275000
+			667000
+			559000
+			416000
+			273000
 			>;
 	};
 

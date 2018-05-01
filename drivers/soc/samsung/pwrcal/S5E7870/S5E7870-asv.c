@@ -93,13 +93,7 @@ struct asv_tbl_info {
 	unsigned asv_table_ver:7;
 	unsigned fused_grp:1;
 	unsigned asb_pgm_version:8;
-
-	unsigned cp_asv_group:4;
-	unsigned cp_modified_group:4;
-	unsigned cp_ssa10:2;
-	unsigned cp_ssa11:2;
-	unsigned cp_ssa0:4;
-
+	unsigned reserverd_0:16;
 	unsigned cpucl0_vthr:2;
 	unsigned cpucl0_delta:2;
 	unsigned cpucl1_vthr:2;
@@ -110,23 +104,8 @@ struct asv_tbl_info {
 	unsigned int_delta:2;
 	unsigned mif_vthr:2;
 	unsigned mif_delta:2;
-
-	unsigned cpu_cl_ema:3;
-	unsigned cpu_cl_emas:1;
-	unsigned cpu_cl_emaw:2;
-	unsigned reserve_21:2;
-	unsigned g3d_ema:3;
-	unsigned g3d_emas:1;
-	unsigned g3d_emaw:2;
-	unsigned reserved_22:2;
-	unsigned cp_rwa:6;
-	unsigned cp_ema:4;
-	unsigned int_ema:4;
-	unsigned gnss_ema:4;
-	unsigned product_group_sel:1;
-	unsigned product_group_0:4;
-	unsigned product_group_1:4;
-	unsigned reserved_23:1;
+	unsigned g3d_mcs_0:4;
+	unsigned g3d_mcs_1:4;
 };
 #define ASV_INFO_ADDR_BASE	(0x100D9000)
 #define ASV_INFO_ADDR_CNT	(sizeof(struct asv_tbl_info) / 4)
@@ -154,38 +133,6 @@ static struct pwrcal_vclk_dfs *asv_dvfs_int;
 static struct pwrcal_vclk_dfs *asv_dvfs_disp;
 static struct pwrcal_vclk_dfs *asv_dvfs_cam;
 
-static unsigned int cpucl0_subgrp_index = 256;
-static unsigned int cpucl1_subgrp_index = 256;
-static unsigned int g3d_subgrp_index = 256;
-static unsigned int mif_subgrp_index = 256;
-static unsigned int int_subgrp_index = 256;
-static unsigned int cam_subgrp_index = 256;
-static unsigned int disp_subgrp_index = 256;
-
-static unsigned int cpucl0_ssa1_table[8];
-static unsigned int cpucl1_ssa1_table[8];
-static unsigned int g3d_ssa1_table[8];
-static unsigned int mif_ssa1_table[8];
-static unsigned int int_ssa1_table[8];
-static unsigned int cam_ssa1_table[8];
-static unsigned int disp_ssa1_table[8];
-
-static unsigned int cpucl0_ssa0_base;
-static unsigned int cpucl1_ssa0_base;
-static unsigned int g3d_ssa0_base;
-static unsigned int mif_ssa0_base;
-static unsigned int int_ssa0_base;
-static unsigned int cam_ssa0_base;
-static unsigned int disp_ssa0_base;
-
-static unsigned int cpucl0_ssa0_offset;
-static unsigned int cpucl1_ssa0_offset;
-static unsigned int g3d_ssa0_offset;
-static unsigned int mif_ssa0_offset;
-static unsigned int int_ssa0_offset;
-static unsigned int cam_ssa0_offset;
-static unsigned int disp_ssa0_offset;
-
 static void asv_set_grp(unsigned int id, unsigned int asvgrp)
 {
 	force_asv_group[id & 0x0000FFFF] = FORCE_ASV_MAGIC | asvgrp;
@@ -196,36 +143,6 @@ static void asv_set_tablever(unsigned int version)
 	asv_tbl_info.asv_table_ver = version;
 
 	return;
-}
-
-static void asv_set_ssa0(unsigned int id, unsigned int ssa0)
-{
-	switch (id & 0x0000FFFF) {
-	case cal_asv_dvfs_cpucl0:
-		asv_tbl_info.cpucl0_ssa0 = ssa0;
-		break;
-	case cal_asv_dvfs_cpucl1:
-		asv_tbl_info.cpucl1_ssa0 = ssa0;
-		break;
-	case cal_asv_dvfs_g3d:
-		asv_tbl_info.g3d_ssa0 = ssa0;
-		break;
-	case cal_asv_dvfs_mif:
-		asv_tbl_info.mif_ssa0 = ssa0;
-		break;
-	case cal_asv_dvfs_int:
-		asv_tbl_info.int_ssa0 = ssa0;
-		break;
-	case cal_asv_dvfs_cam:
-		asv_tbl_info.disp_ssa0 = ssa0;
-		break;
-	case cal_asv_dvfs_disp:
-		asv_tbl_info.disp_ssa0 = ssa0;
-		break;
-	default:
-		break;
-	}
-
 }
 
 static int get_max_freq_lv(struct ect_voltage_domain *domain, unsigned int version)
@@ -274,15 +191,6 @@ static void asv_set_freq_limit(void)
 	domain = ect_asv_get_domain(asv_block, "dvfs_cpucl0");
 	if (!domain)
 		BUG();
-
-	if (asv_tbl_info.asv_table_ver >= domain->num_of_table) {
-		pr_err("!! CHECK !!\n");
-		pr_err("ASV Table version higher than ECT(Fused ver:%d)\n",
-				asv_tbl_info.asv_table_ver);
-		pr_err("!! CHECK !! \n");
-		asv_tbl_info.asv_table_ver = domain->num_of_table - 1;
-	}
-
 	lv = get_max_freq_lv(domain, asv_tbl_info.asv_table_ver);
 	if (lv >= 0)
 		asv_dvfs_cpucl0->table->max_freq = domain->level_list[lv] * 1000;
@@ -422,13 +330,7 @@ static void asv_get_asvinfo(void)
 		asv_tbl_info.asv_table_ver = 0;
 		asv_tbl_info.fused_grp = 0;
 		asv_tbl_info.asb_pgm_version = 0;
-
-		asv_tbl_info.cp_asv_group = 0;
-		asv_tbl_info.cp_modified_group = 0;
-		asv_tbl_info.cp_ssa10 = 0;
-		asv_tbl_info.cp_ssa11 = 0;
-		asv_tbl_info.cp_ssa0 = 0;
-
+		asv_tbl_info.reserverd_0 = 0;
 		asv_tbl_info.cpucl0_vthr = 0;
 		asv_tbl_info.cpucl0_delta = 0;
 		asv_tbl_info.cpucl1_vthr = 0;
@@ -438,24 +340,9 @@ static void asv_get_asvinfo(void)
 		asv_tbl_info.int_vthr = 0;
 		asv_tbl_info.int_delta = 0;
 		asv_tbl_info.mif_vthr = 0;
-		asv_tbl_info.mif_delta = 0;
-
-		asv_tbl_info.cpu_cl_ema = 0;
-		asv_tbl_info.cpu_cl_emas = 0;
-		asv_tbl_info.cpu_cl_emaw = 0;
-		asv_tbl_info.reserve_21 = 0;
-		asv_tbl_info.g3d_ema = 0;
-		asv_tbl_info.g3d_emas = 0;
-		asv_tbl_info.g3d_emaw = 0;
-		asv_tbl_info.reserved_22 = 0;
-		asv_tbl_info.cp_rwa = 0;
-		asv_tbl_info.cp_ema = 0;
-		asv_tbl_info.int_ema = 0;
-		asv_tbl_info.gnss_ema = 0;
-		asv_tbl_info.product_group_sel = 0;
-		asv_tbl_info.product_group_0 = 0;
-		asv_tbl_info.product_group_1 = 0;
-		asv_tbl_info.reserved_23 = 0;
+		asv_tbl_info.mif_vthr = 0;
+		asv_tbl_info.g3d_mcs_0 = 0;
+		asv_tbl_info.g3d_mcs_1 = 0;
 	}
 	asv_set_freq_limit();
 }
@@ -521,8 +408,6 @@ static unsigned int get_asv_voltage(enum dvfs_id domain, unsigned int lv)
 	unsigned int subgrp_index;
 	const unsigned int *table;
 	unsigned int volt;
-	unsigned int *ssa1_table = NULL;
-	unsigned int ssa0_base = 0, ssa0_offset = 0;
 
 	switch (domain) {
 	case cal_asv_dvfs_cpucl0:
@@ -530,10 +415,6 @@ static unsigned int get_asv_voltage(enum dvfs_id domain, unsigned int lv)
 		ssa10 = asv_tbl_info.cpucl0_ssa10;
 		ssa11 = asv_tbl_info.cpucl0_ssa11;
 		ssa0 = asv_tbl_info.cpucl0_ssa0;
-		subgrp_index = cpucl0_subgrp_index;
-		ssa0_base = cpucl0_ssa0_base;
-		ssa0_offset = cpucl0_ssa0_offset;
-		ssa1_table = cpucl0_ssa1_table;
 		table = pwrcal_cpucl0_asv_table[asv_tbl_info.asv_table_ver].table[lv].voltage;
 		break;
 	case cal_asv_dvfs_cpucl1:
@@ -541,10 +422,6 @@ static unsigned int get_asv_voltage(enum dvfs_id domain, unsigned int lv)
 		ssa10 = asv_tbl_info.cpucl1_ssa10;
 		ssa11 = asv_tbl_info.cpucl1_ssa11;
 		ssa0 = asv_tbl_info.cpucl1_ssa0;
-		subgrp_index = cpucl1_subgrp_index;
-		ssa0_base = cpucl1_ssa0_base;
-		ssa0_offset = cpucl1_ssa0_offset;
-		ssa1_table = cpucl1_ssa1_table;
 		table = pwrcal_cpucl1_asv_table[asv_tbl_info.asv_table_ver].table[lv].voltage;
 		break;
 	case cal_asv_dvfs_g3d:
@@ -552,10 +429,6 @@ static unsigned int get_asv_voltage(enum dvfs_id domain, unsigned int lv)
 		ssa10 = asv_tbl_info.g3d_ssa10;
 		ssa11 = asv_tbl_info.g3d_ssa11;
 		ssa0 = asv_tbl_info.g3d_ssa0;
-		subgrp_index = g3d_subgrp_index;
-		ssa0_base = g3d_ssa0_base;
-		ssa0_offset = g3d_ssa0_offset;
-		ssa1_table = g3d_ssa1_table;
 		table = pwrcal_g3d_asv_table[asv_tbl_info.asv_table_ver].table[lv].voltage;
 		break;
 	case cal_asv_dvfs_mif:
@@ -563,10 +436,6 @@ static unsigned int get_asv_voltage(enum dvfs_id domain, unsigned int lv)
 		ssa10 = asv_tbl_info.mif_ssa10;
 		ssa11 = asv_tbl_info.mif_ssa11;
 		ssa0 = asv_tbl_info.mif_ssa0;
-		subgrp_index = mif_subgrp_index;
-		ssa0_base = mif_ssa0_base;
-		ssa0_offset = mif_ssa0_offset;
-		ssa1_table = mif_ssa1_table;
 		table = pwrcal_mif_asv_table[asv_tbl_info.asv_table_ver].table[lv].voltage;
 		break;
 	case cal_asv_dvfs_int:
@@ -574,10 +443,6 @@ static unsigned int get_asv_voltage(enum dvfs_id domain, unsigned int lv)
 		ssa10 = asv_tbl_info.int_ssa10;
 		ssa11 = asv_tbl_info.int_ssa11;
 		ssa0 = asv_tbl_info.int_ssa0;
-		subgrp_index = int_subgrp_index;
-		ssa0_base = int_ssa0_base;
-		ssa0_offset = int_ssa0_offset;
-		ssa1_table = int_ssa1_table;
 		table = pwrcal_int_asv_table[asv_tbl_info.asv_table_ver].table[lv].voltage;
 		break;
 	case cal_asv_dvfs_cam:
@@ -585,10 +450,6 @@ static unsigned int get_asv_voltage(enum dvfs_id domain, unsigned int lv)
 		ssa10 = asv_tbl_info.disp_ssa10;
 		ssa11 = asv_tbl_info.disp_ssa11;
 		ssa0 = asv_tbl_info.disp_ssa0;
-		subgrp_index = cam_subgrp_index;
-		ssa0_base = cam_ssa0_base;
-		ssa0_offset = cam_ssa0_offset;
-		ssa1_table = cam_ssa1_table;
 		table = pwrcal_cam_asv_table[asv_tbl_info.asv_table_ver].table[lv].voltage;
 		break;
 	case cal_asv_dvfs_disp:
@@ -596,10 +457,6 @@ static unsigned int get_asv_voltage(enum dvfs_id domain, unsigned int lv)
 		ssa10 = asv_tbl_info.disp_ssa10;
 		ssa11 = asv_tbl_info.disp_ssa11;
 		ssa0 = asv_tbl_info.disp_ssa0;
-		subgrp_index = disp_subgrp_index;
-		ssa0_base = disp_ssa0_base;
-		ssa0_offset = disp_ssa0_offset;
-		ssa1_table = disp_ssa1_table;
 		table = pwrcal_disp_asv_table[asv_tbl_info.asv_table_ver].table[lv].voltage;
 		break;
 	default:
@@ -609,17 +466,20 @@ static unsigned int get_asv_voltage(enum dvfs_id domain, unsigned int lv)
 
 	volt = table[asv];
 
-	if (ssa1_table) {
-		if (lv < subgrp_index)
-			volt += ssa1_table[ssa10];
-		else
-			volt += ssa1_table[ssa11 + 4];
-	}
-	if (ssa0_base)
-		if (volt < ssa0_base + ssa0 * ssa0_offset)
-			volt = ssa0_base + ssa0 * ssa0_offset;
-
 	return volt;
+
+	if (lv < subgrp_index) {
+		volt += 12500 * ssa10;
+		if (ssa10 == 3)
+			volt += 12500;
+	} else {
+		volt += 12500 * ssa11;
+		if (ssa11 == 3)
+			volt += 12500;
+	}
+
+	if (volt < 575000 + ssa0 * 25000)
+		volt = 575000 + ssa0 * 25000;
 
 }
 
@@ -648,26 +508,6 @@ static int dvfscpucl1_get_asv_table(unsigned int *table)
 	return max_lv;
 }
 
-static int dfscpu_set_ema(unsigned int volt)
-{
-	unsigned int cpu_ema, ema_temp;
-
-	if (volt >= 950000) {
-		ema_temp = (asv_tbl_info.cpu_cl_ema << 3) | (asv_tbl_info.cpu_cl_emaw << 1) | asv_tbl_info.cpu_cl_emas;
-		cpu_ema = (ema_temp << 12) | (ema_temp << 6) | ema_temp;
-		if (cpu_ema == 0)
-			cpu_ema = 0x1B6D2;
-		pwrcal_writel(CPUCL0_EMA_CON, cpu_ema);
-		pwrcal_writel(CPUCL1_EMA_CON, cpu_ema);
-		}
-	else {
-		pwrcal_writel(CPUCL0_EMA_CON, 0x12492);
-		pwrcal_writel(CPUCL1_EMA_CON, 0x12492);
-		}
-
-	return 0;
-}
-
 static int dvfsg3d_get_asv_table(unsigned int *table)
 {
 	int lv, max_lv;
@@ -678,35 +518,6 @@ static int dvfsg3d_get_asv_table(unsigned int *table)
 		table[lv] = get_asv_voltage(cal_asv_dvfs_g3d, lv);
 
 	return max_lv;
-}
-
-static int dfsg3d_set_ema(unsigned int volt)
-{
-	unsigned int g3d_ema;
-
-	if (asv_dvfs_g3d->vclk.ref_count == 0)
-		return 0;
-
-	if (volt >= 750000) {
-		g3d_ema = (asv_tbl_info.g3d_emas << 8) | (asv_tbl_info.g3d_emaw << 4) | asv_tbl_info.g3d_ema;
-		if (g3d_ema != 0) {
-			pwrcal_writel(G3D_EMA_RA1_HS_CON, g3d_ema);
-			pwrcal_writel(G3D_EMA_RF1_HS_CON, g3d_ema);
-			pwrcal_writel(G3D_EMA_RF2_HS_CON, g3d_ema);
-			}
-		else {
-			pwrcal_writel(G3D_EMA_RA1_HS_CON, 0x12);
-			pwrcal_writel(G3D_EMA_RF1_HS_CON, 0x12);
-			pwrcal_writel(G3D_EMA_RF2_HS_CON, 0x22);
-			}
-		}
-	else {
-		pwrcal_writel(G3D_EMA_RA1_HS_CON, 0x12);
-		pwrcal_writel(G3D_EMA_RF1_HS_CON, 0x12);
-		pwrcal_writel(G3D_EMA_RF2_HS_CON, 0x24);
-		}
-
-	return 0;
 }
 
 static int dvfsmif_get_asv_table(unsigned int *table)
@@ -780,6 +591,9 @@ static void asv_voltage_init_table(struct asv_table_list **asv_table, struct pwr
 	domain = ect_asv_get_domain(asv_block, dfs->vclk.name);
 	if (domain == NULL)
 		return;
+
+	if (asv_tbl_info.asv_table_ver >= domain->num_of_table)
+		BUG();
 
 	if (margin_block)
 		margin_domain = ect_margin_get_domain(margin_block, dfs->vclk.name);
@@ -883,75 +697,6 @@ static void asv_rcc_table_init(void)
 	asv_rcc_init_table(&pwrcal_mif_rcc_table, asv_dvfs_mif);
 }
 
-static void asv_ssa_init(void)
-{
-	int i;
-	void *gen_block;
-	struct ect_gen_param_table *param;
-	unsigned int asv_table_version = asv_tbl_info.asv_table_ver;
-
-	gen_block = ect_get_block("GEN");
-	if (gen_block == NULL)
-		return;
-
-	param = ect_gen_param_get_table(gen_block, "SSA_CPUCL0");
-	if (param) {
-		cpucl0_subgrp_index = param->parameter[asv_table_version * param->num_of_col + 1];
-		cpucl0_ssa0_base = param->parameter[asv_table_version * param->num_of_col + 2];
-		cpucl0_ssa0_offset = param->parameter[asv_table_version * param->num_of_col + 3];
-		for (i = 0; i < 8; i++)
-			cpucl0_ssa1_table[i] = param->parameter[asv_table_version * param->num_of_col + 4 + i];
-	}
-	param = ect_gen_param_get_table(gen_block, "SSA_CPUCL1");
-	if (param) {
-		cpucl1_subgrp_index = param->parameter[asv_table_version * param->num_of_col + 1];
-		cpucl1_ssa0_base = param->parameter[asv_table_version * param->num_of_col + 2];
-		cpucl1_ssa0_offset = param->parameter[asv_table_version * param->num_of_col + 3];
-		for (i = 0; i < 8; i++)
-			cpucl1_ssa1_table[i] = param->parameter[asv_table_version * param->num_of_col + 4 + i];
-	}
-	param = ect_gen_param_get_table(gen_block, "SSA_G3D");
-	if (param) {
-		g3d_subgrp_index = param->parameter[asv_table_version * param->num_of_col + 1];
-		g3d_ssa0_base = param->parameter[asv_table_version * param->num_of_col + 2];
-		g3d_ssa0_offset = param->parameter[asv_table_version * param->num_of_col + 3];
-		for (i = 0; i < 8; i++)
-			g3d_ssa1_table[i] = param->parameter[asv_table_version * param->num_of_col + 4 + i];
-	}
-	param = ect_gen_param_get_table(gen_block, "SSA_MIF");
-	if (param) {
-		mif_subgrp_index = param->parameter[asv_table_version * param->num_of_col + 1];
-		mif_ssa0_base = param->parameter[asv_table_version * param->num_of_col + 2];
-		mif_ssa0_offset = param->parameter[asv_table_version * param->num_of_col + 3];
-		for (i = 0; i < 8; i++)
-			mif_ssa1_table[i] = param->parameter[asv_table_version * param->num_of_col + 4 + i];
-	}
-	param = ect_gen_param_get_table(gen_block, "SSA_INT");
-	if (param) {
-		int_subgrp_index = param->parameter[asv_table_version * param->num_of_col + 1];
-		int_ssa0_base = param->parameter[asv_table_version * param->num_of_col + 2];
-		int_ssa0_offset = param->parameter[asv_table_version * param->num_of_col + 3];
-		for (i = 0; i < 8; i++)
-			int_ssa1_table[i] = param->parameter[asv_table_version * param->num_of_col + 4 + i];
-	}
-	param = ect_gen_param_get_table(gen_block, "SSA_CAM");
-	if (param) {
-		cam_subgrp_index = param->parameter[asv_table_version * param->num_of_col + 1];
-		cam_ssa0_base = param->parameter[asv_table_version * param->num_of_col + 2];
-		cam_ssa0_offset = param->parameter[asv_table_version * param->num_of_col + 3];
-		for (i = 0; i < 8; i++)
-			cam_ssa1_table[i] = param->parameter[asv_table_version * param->num_of_col + 4 + i];
-	}
-	param = ect_gen_param_get_table(gen_block, "SSA_DISP");
-	if (param) {
-		disp_subgrp_index = param->parameter[asv_table_version * param->num_of_col + 1];
-		disp_ssa0_base = param->parameter[asv_table_version * param->num_of_col + 2];
-		disp_ssa0_offset = param->parameter[asv_table_version * param->num_of_col + 3];
-		for (i = 0; i < 8; i++)
-			disp_ssa1_table[i] = param->parameter[asv_table_version * param->num_of_col + 4 + i];
-	}
-}
-
 int cal_asv_init(void)
 {
 	struct vclk *vclk;
@@ -959,17 +704,14 @@ int cal_asv_init(void)
 	vclk = cal_get_vclk(dvfs_cpucl0);
 	asv_dvfs_cpucl0 = to_dfs(vclk);
 	asv_dvfs_cpucl0->dfsops->get_asv_table = dvfscpucl0_get_asv_table;
-	asv_dvfs_cpucl0->dfsops->set_ema = dfscpu_set_ema;
 
 	vclk = cal_get_vclk(dvfs_cpucl1);
 	asv_dvfs_cpucl1 = to_dfs(vclk);
 	asv_dvfs_cpucl1->dfsops->get_asv_table = dvfscpucl1_get_asv_table;
-	asv_dvfs_cpucl1->dfsops->set_ema = dfscpu_set_ema;
 
 	vclk = cal_get_vclk(dvfs_g3d);
 	asv_dvfs_g3d = to_dfs(vclk);
 	asv_dvfs_g3d->dfsops->get_asv_table = dvfsg3d_get_asv_table;
-	asv_dvfs_g3d->dfsops->set_ema = dfsg3d_set_ema;
 
 	vclk = cal_get_vclk(dvfs_mif);
 	asv_dvfs_mif = to_dfs(vclk);
@@ -1003,7 +745,6 @@ int cal_asv_init(void)
 	asv_get_asvinfo();
 	asv_voltage_table_init();
 	asv_rcc_table_init();
-	asv_ssa_init();
 
 	return 0;
 }
@@ -1037,40 +778,6 @@ static int asv_get_tablever(void)
 	return (int)(asv_tbl_info.asv_table_ver);
 }
 
-#if defined(CONFIG_SEC_DEBUG)
-enum ids_info
-{
-	table_ver,
-	cpu_asv,
-	g3d_asv,
-	mif_asv
-};
-
-int asv_ids_information(enum ids_info id)
-{
-	int res = 0;
-
-	switch (id) {
-		case table_ver:
-			res = asv_tbl_info.asv_table_ver;
-			break;
-		case cpu_asv:
-			res = asv_tbl_info.cpucl0_asv_group;
-			break;
-		case g3d_asv:
-			res = asv_tbl_info.g3d_asv_group;
-			break;
-		case mif_asv:
-			res = asv_tbl_info.mif_asv_group;
-			break;
-		default:
-			break;
-	};
-
-	return res;
-}
-#endif /* CONFIG_SEC_DEBUG */
-
 struct cal_asv_ops cal_asv_ops = {
 	.print_asv_info = asv_print_info,
 	.print_rcc_info = rcc_print_info,
@@ -1080,5 +787,4 @@ struct cal_asv_ops cal_asv_ops = {
 	.set_tablever = asv_set_tablever,
 	.get_tablever = asv_get_tablever,
 	.set_rcc_table = asv_rcc_set_table,
-	.set_ssa0 = asv_set_ssa0,
 };

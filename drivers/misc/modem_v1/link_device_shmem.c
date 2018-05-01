@@ -43,12 +43,10 @@
 #include "modem_utils.h"
 #include "link_device_memory.h"
 #include "link_ctrlmsg_iosm.h"
-#include <linux/modem_notifier.h>
 
 #include "link_device_ect.h"
 
 #define MIF_TX_QUOTA 64
-
 
 #ifdef GROUP_MEM_LINK_COMMAND
 
@@ -56,7 +54,7 @@ static inline void reset_ipc_map(struct mem_link_device *mld)
 {
 	int i;
 
-	for (i = 0; i < MAX_SIPC_MAP; i++) {
+	for (i = 0; i < MAX_SIPC5_DEVICES; i++) {
 		struct mem_ipc_device *dev = mld->dev[i];
 
 		set_txq_head(dev, 0);
@@ -78,7 +76,7 @@ static int shmem_reset_ipc_link(struct mem_link_device *mld)
 
 	reset_ipc_map(mld);
 
-	for (i = 0; i < MAX_SIPC_MAP; i++) {
+	for (i = 0; i < MAX_SIPC5_DEVICES; i++) {
 		struct mem_ipc_device *dev = mld->dev[i];
 
 		skb_queue_purge(dev->skb_txq);
@@ -143,7 +141,7 @@ static inline void purge_txq(struct mem_link_device *mld)
 	struct link_device *ld = &mld->link_dev;
 	int i;
 
-	/* Purge the skb_txq in every rb */
+	/* Purge the skb_txq in every IPC device (IPC_FMT, IPC_RAW, etc.) */
 	if (ld->sbd_ipc) {
 		struct sbd_link_device *sl = &mld->sbd_link_dev;
 
@@ -153,8 +151,7 @@ static inline void purge_txq(struct mem_link_device *mld)
 		}
 	}
 
-	/* Purge the skb_txq in every IPC device (IPC_MAP_FMT, IPC_MAP_HPRIO_RAW, etc.) */
-	for (i = 0; i < MAX_SIPC_MAP; i++) {
+	for (i = 0; i < MAX_SIPC5_DEVICES; i++) {
 		struct mem_ipc_device *dev = mld->dev[i];
 		skb_queue_purge(dev->skb_txq);
 	}
@@ -290,7 +287,7 @@ static bool rild_ready(struct link_device *ld)
 
 	fmt_opened = atomic_read(&fmt_iod->opened);
 	rfs_opened = atomic_read(&rfs_iod->opened);
-	mif_info("%s: %s.opened=%d, %s.opened=%d\n", ld->name,
+	mif_err("%s: %s.opened=%d, %s.opened=%d\n", ld->name,
 		fmt_iod->name, fmt_opened, rfs_iod->name, rfs_opened);
 	if (fmt_opened > 0 && rfs_opened > 0)
 		return true;
@@ -304,7 +301,7 @@ static void cmd_init_start_handler(struct mem_link_device *mld)
 	struct modem_ctl *mc = ld->mc;
 	int err;
 
-	mif_info("%s: INIT_START <- %s (%s.state:%s cp_boot_done:%d)\n",
+	mif_err("%s: INIT_START <- %s (%s.state:%s cp_boot_done:%d)\n",
 		ld->name, mc->name, mc->name, mc_state(mc),
 		atomic_read(&mld->cp_boot_done));
 
@@ -327,7 +324,7 @@ static void cmd_init_start_handler(struct mem_link_device *mld)
 	sbd_activate(&mld->sbd_link_dev);
 	send_ipc_irq(mld, cmd2int(CMD_PIF_INIT_DONE));
 
-	mif_info("%s: PIF_INIT_DONE -> %s\n", ld->name, mc->name);
+	mif_err("%s: PIF_INIT_DONE -> %s\n", ld->name, mc->name);
 }
 
 #if defined(CONFIG_ECT)
@@ -346,7 +343,7 @@ static void write_clk_table_to_shmem(struct mem_link_device *mld)
 
 	clk_tb = (struct clock_table *)mld->clk_table;
 
-	strlcpy(clk_tb->parser_version, ect_table_data->parser_version,
+	strncpy(clk_tb->parser_version, ect_table_data->parser_version,
 			sizeof(clk_tb->parser_version));
 	clk_tb->total_table_count = get_total_table_count(ect_table_data);
 
@@ -371,7 +368,7 @@ static void write_clk_table_to_shmem(struct mem_link_device *mld)
 			*clk_data_entry = ect_table->freq[j];
 			clk_data_entry++;
 		}
- 	}
+	}
 
 	/* Print all ECT values */
 	mif_info("PARSER_VERSION: %.4s\n", clk_tb->parser_version);
@@ -406,7 +403,7 @@ static void cmd_phone_start_handler(struct mem_link_device *mld)
 	unsigned long flags;
 	int err;
 
-	mif_info("%s: CP_START <- %s (%s.state:%s cp_boot_done:%d)\n",
+	mif_err("%s: CP_START <- %s (%s.state:%s cp_boot_done:%d)\n",
 		ld->name, mc->name, mc->name, mc_state(mc),
 		atomic_read(&mld->cp_boot_done));
 
@@ -424,7 +421,7 @@ static void cmd_phone_start_handler(struct mem_link_device *mld)
 		even though it has already been in ONLINE state.
 		*/
 		if (rild_ready(ld)) {
-			mif_info("%s: INIT_END -> %s\n", ld->name, mc->name);
+			mif_err("%s: INIT_END -> %s\n", ld->name, mc->name);
 			send_ipc_irq(mld, cmd2int(CMD_INIT_END));
 		}
 		goto exit;
@@ -437,7 +434,7 @@ static void cmd_phone_start_handler(struct mem_link_device *mld)
 	}
 
 	if (rild_ready(ld)) {
-		mif_info("%s: INIT_END -> %s\n", ld->name, mc->name);
+		mif_err("%s: INIT_END -> %s\n", ld->name, mc->name);
 		send_ipc_irq(mld, cmd2int(CMD_INIT_END));
 		atomic_set(&mld->cp_boot_done, 1);
 	}
@@ -494,67 +491,6 @@ static void cmd_crash_exit_handler(struct mem_link_device *mld)
 	shmem_handle_cp_crash(mld, STATE_CRASH_EXIT);
 }
 
-static void shmem_irq_handler(void *data)
-{
-	struct mem_link_device *mld = (struct mem_link_device *)data;
-	struct mst_buff *msb;
-	struct link_device *ld = &mld->link_dev;
-	struct modem_ctl *mc = ld->mc;
-
-	msb = mem_take_snapshot(mld, RX);
-	if (!msb)
-		return;
-
-	if (unlikely(!int_valid(msb->snapshot.int2ap))) {
-		mif_err("%s: ERR! invalid intr 0x%X\n",
-				ld->name, msb->snapshot.int2ap);
-		msb_free(msb);
-		return;
-	}
-
-	if (unlikely(!rx_possible(mc))) {
-		mif_err("%s: ERR! %s.state == %s\n", ld->name, mc->name,
-			mc_state(mc));
-		msb_free(msb);
-		return;
-	}
-
-	msb_queue_tail(&mld->msb_rxq, msb);
-	tasklet_schedule(&mld->rx_tsk);
-}
-
-#ifdef CONFIG_FREE_CP_RSVD_MEMORY
-static void free_cp_reserved_memory(struct mem_link_device *mld)
-{
-	struct link_device *ld = &mld->link_dev;
-	struct page *page;
-	size_t sh_addr = (size_t)shm_get_phys_base();
-	size_t size = (size_t)shm_get_phys_size();
-	int i;
-	volatile u8 __iomem *addr;
-	int err;
-
-	addr = ioremap(0x10480000, 0x50);
-
-	while((readl(addr + 0x38) & 0xff) != 0x1) {
-		usleep_range(10000, 20000);
-		mif_info("%s: CP_STAT:  0x%08X\n", ld->name, readl(addr + 0x38));
-	}
-
-	mif_info("%s: free reserved memory(addr: 0x%08X, size: 0x%08X)\n",
-		    ld->name, (unsigned int)sh_addr, (unsigned int)size);
-
-	err = exynos_smc(SMC_ID, 2, 0, 0);
-
-	for (i = 0; i < (size >> PAGE_SHIFT); i++) {
-		page = phys_to_page(sh_addr);
-		sh_addr += PAGE_SIZE;
-
-		free_reserved_page(page);
-	}
-}
-#endif
-
 static void shmem_cmd_handler(struct mem_link_device *mld, u16 cmd)
 {
 	struct link_device *ld = &mld->link_dev;
@@ -566,11 +502,6 @@ static void shmem_cmd_handler(struct mem_link_device *mld, u16 cmd)
 
 	case CMD_PHONE_START:
 		cmd_phone_start_handler(mld);
-#ifdef CONFIG_FREE_CP_RSVD_MEMORY
-		free_cp_reserved_memory(mld);
-		mcu_ipc_unregister_handler(MCU_CP, mld->irq_cp2ap_msg, shmem_irq_handler);
-		cancel_delayed_work_sync(&mld->udl_rx_dwork);
-#endif
 		break;
 
 	case CMD_CRASH_RESET:
@@ -717,7 +648,7 @@ static enum hrtimer_restart tx_timer_func(struct hrtimer *timer)
 	}
 #endif
 
-	for (i = 0; i < MAX_SIPC_MAP; i++) {
+	for (i = 0; i < MAX_SIPC5_DEVICES; i++) {
 		struct mem_ipc_device *dev = mld->dev[i];
 		int ret;
 
@@ -740,6 +671,10 @@ static enum hrtimer_restart tx_timer_func(struct hrtimer *timer)
 			if (ret == -EBUSY || ret == -ENOSPC) {
 				need_schedule = true;
 				txq_stop(mld, dev);
+				/* If txq has 2 or more packet and 2nd packet
+				  has -ENOSPC return, It request irq to consume
+				  the TX ring-buffer from CP */
+				mask |= msg_mask(dev);
 				continue;
 			} else {
 				shmem_forced_cp_crash(mld);
@@ -1121,7 +1056,7 @@ static int xmit_ipc_to_dev(struct mem_link_device *mld, enum sipc_ch_id ch,
 	struct link_device *ld = &mld->link_dev;
 	struct io_device *iod = skbpriv(skb)->iod;
 	struct modem_ctl *mc = ld->mc;
-	struct mem_ipc_device *dev = mld->dev[get_mmap_idx(ch, skb)];
+	struct mem_ipc_device *dev = mld->dev[dev_id(ch)];
 	struct sk_buff_head *skb_txq;
 	unsigned long flags = 0;
 	int quota = MIF_TX_QUOTA;
@@ -1250,7 +1185,7 @@ static int xmit_udl(struct mem_link_device *mld, struct io_device *iod,
 		    enum sipc_ch_id ch, struct sk_buff *skb)
 {
 	int ret;
-	struct mem_ipc_device *dev = mld->dev[IPC_MAP_NORM_RAW];
+	struct mem_ipc_device *dev = mld->dev[IPC_RAW];
 	int count = skb->len;
 	int tried = 0;
 
@@ -1321,7 +1256,7 @@ static inline void link_to_demux(struct mem_link_device  *mld)
 {
 	int i;
 
-	for (i = 0; i < MAX_SIPC_MAP; i++) {
+	for (i = 0; i < MAX_SIPC5_DEVICES; i++) {
 		struct mem_ipc_device *dev = mld->dev[i];
 		struct sk_buff_head *skb_rxq = dev->skb_rxq;
 
@@ -1444,7 +1379,7 @@ static int rx_frames_from_dev(struct mem_link_device *mld,
 
 		skb = rxq_read(mld, dev, in);
 		if (!skb)
-			return -ENOMEM;
+			break;
 
 		pktlog_rx_bottom_skb(mld, skb);
 
@@ -1480,13 +1415,13 @@ static int rx_frames_from_dev(struct mem_link_device *mld,
 	return rcvd;
 }
 
-static int recv_ipc_frames(struct mem_link_device *mld,
+static void recv_ipc_frames(struct mem_link_device *mld,
 			    struct mem_snapshot *mst)
 {
 	int i;
 	u16 intr = mst->int2ap;
 
-	for (i = 0; i < MAX_SIPC_MAP; i++) {
+	for (i = 0; i < MAX_SIPC5_DEVICES; i++) {
 		struct mem_ipc_device *dev = mld->dev[i];
 		int rcvd;
 
@@ -1499,7 +1434,7 @@ static int recv_ipc_frames(struct mem_link_device *mld,
 
 		rcvd = rx_frames_from_dev(mld, dev);
 		if (rcvd < 0)
-			return rcvd;
+			break;
 
 		if (req_ack_valid(dev, intr))
 			send_res_ack(mld, dev);
@@ -1507,7 +1442,6 @@ static int recv_ipc_frames(struct mem_link_device *mld,
 		if (res_ack_valid(dev, intr))
 			recv_res_ack(mld, dev, mst);
 	}
-	return 0;
 }
 
 static void pass_skb_to_net(struct mem_link_device *mld, struct sk_buff *skb)
@@ -1562,7 +1496,7 @@ static int rx_net_frames_from_rb(struct sbd_ring_buffer *rb, int budget)
 
 		skb = sbd_pio_rx(rb);
 		if (!skb)
-			return -ENOMEM;
+			break;
 
 		/* The $rcvd must be accumulated here, because $skb can be freed
 		   in pass_skb_to_net(). */
@@ -1596,8 +1530,14 @@ static int rx_ipc_frames_from_rb(struct sbd_ring_buffer *rb)
 		struct sk_buff *skb;
 
 		skb = sbd_pio_rx(rb);
-		if (!skb)
-			return -ENOMEM;
+		if (!skb) {
+#ifdef DEBUG_MODEM_IF
+			panic("skb alloc failed.");
+#else
+			shmem_forced_cp_crash(mld);
+#endif
+			break;
+		}
 
 		/* The $rcvd must be accumulated here, because $skb can be freed
 		   in pass_skb_to_demux(). */
@@ -1649,7 +1589,7 @@ int mem_netdev_poll(struct napi_struct *napi, int budget)
 	return rcvd;
 }
 
-static int recv_sbd_ipc_frames(struct mem_link_device *mld,
+static void recv_sbd_ipc_frames(struct mem_link_device *mld,
 				struct mem_snapshot *mst)
 {
 	struct sbd_link_device *sl = &mld->sbd_link_dev;
@@ -1657,7 +1597,6 @@ static int recv_sbd_ipc_frames(struct mem_link_device *mld,
 
 	for (i = 0; i < sl->num_channels; i++) {
 		struct sbd_ring_buffer *rb = sbd_id2rb(sl, i, RX);
-		int rcvd = 0;
 
 		if (unlikely(rb_empty(rb)))
 			continue;
@@ -1668,34 +1607,12 @@ static int recv_sbd_ipc_frames(struct mem_link_device *mld,
 			if (napi_schedule_prep(&rb->iod->napi))
 				__napi_schedule(&rb->iod->napi);
 #else
-			rcvd = rx_net_frames_from_rb(rb, 0);
+			rx_net_frames_from_rb(rb, 0);
 #endif
 		} else {
-			rcvd = rx_ipc_frames_from_rb(rb);
+			rx_ipc_frames_from_rb(rb);
 		}
-
-		if (rcvd < 0)
-			return rcvd;
 	}
-	return 0;
-}
-
-static void shmem_oom_handler_work(struct work_struct *ws)
-{
-	struct mem_link_device *mld =
-		container_of(ws, struct mem_link_device, page_reclaim_work);
-	struct sk_buff *skb;
-
-	/* try to page reclaim with GFP_KERNEL */
-	skb = alloc_skb(PAGE_SIZE - 512, GFP_KERNEL);
-	if (skb)
-		dev_kfree_skb_any(skb);
-
-	/* need to disable the RX irq ?? */
-	msleep(200);
-
-	mif_info("trigger the rx task again\n");
-	tasklet_schedule(&mld->rx_tsk);
 }
 
 static void ipc_rx_func(struct mem_link_device *mld)
@@ -1705,7 +1622,6 @@ static void ipc_rx_func(struct mem_link_device *mld)
 	while (qlen-- > 0) {
 		struct mst_buff *msb;
 		u16 intr;
-		int ret = 0;
 
 		msb = msb_dequeue(&mld->msb_rxq);
 		if (!msb)
@@ -1717,20 +1633,10 @@ static void ipc_rx_func(struct mem_link_device *mld)
 			mld->cmd_handler(mld, int2cmd(intr));
 
 		if (sbd_active(&mld->sbd_link_dev))
-			ret = recv_sbd_ipc_frames(mld, &msb->snapshot);
+			recv_sbd_ipc_frames(mld, &msb->snapshot);
 		else
-			ret = recv_ipc_frames(mld, &msb->snapshot);
+			recv_ipc_frames(mld, &msb->snapshot);
 
-		if (ret == -ENOMEM) {
-			msb_queue_head(&mld->msb_rxq, msb);
-			if (!work_pending(&mld->page_reclaim_work)) {
-				struct link_device *ld = &mld->link_dev;
-				mif_err_limited("Rx ENOMEM, try reclaim work");
-				queue_work(ld->rx_wq,
-						&mld->page_reclaim_work);
-			}
-			return;
-		}
 		msb_free(msb);
 	}
 
@@ -1796,7 +1702,7 @@ static int shmem_init_comm(struct link_device *ld, struct io_device *iod)
 	case SIPC5_CH_ID_FMT_0 ... SIPC5_CH_ID_FMT_9:
 		check_iod = link_get_iod_with_channel(ld, (id + fmt2rfs));
 		if (check_iod ? atomic_read(&check_iod->opened) : true) {
-			mif_info("%s: %s->INIT_END->%s\n",
+			mif_err("%s: %s->INIT_END->%s\n",
 				ld->name, iod->name, mc->name);
 			write_clk_table_to_shmem(mld);
 			send_ipc_irq(mld, cmd2int(CMD_INIT_END));
@@ -1810,7 +1716,7 @@ static int shmem_init_comm(struct link_device *ld, struct io_device *iod)
 		check_iod = link_get_iod_with_channel(ld, (id + rfs2fmt));
 		if (check_iod) {
 			if (atomic_read(&check_iod->opened)) {
-				mif_info("%s: %s->INIT_END->%s\n",
+				mif_err("%s: %s->INIT_END->%s\n",
 					ld->name, iod->name, mc->name);
 				write_clk_table_to_shmem(mld);
 				send_ipc_irq(mld, cmd2int(CMD_INIT_END));
@@ -1849,21 +1755,16 @@ static int shmem_send(struct link_device *ld, struct io_device *iod,
 	switch (id) {
 	case IPC_RAW:
 		if (unlikely(atomic_read(&ld->netif_stopped) > 0)) {
-			if (skb->queue_mapping != 1) {
-				if (in_interrupt()) {
-					mif_err("raw tx is suspended, drop size=%d\n",
-							skb->len);
-					return -EBUSY;
-				}
-
-				mif_info("wait TX RESUME CMD...\n");
-				init_completion(&ld->raw_tx_resumed);
-				wait_for_completion_timeout(&ld->raw_tx_resumed,
-						msecs_to_jiffies(3000));
-				mif_info("TX resumed done.\n");
-			} else {
-				mif_err_limited("Tx_flowctrl, but received ack from ch %d\n", ch);
+			if (in_interrupt()) {
+				mif_err("raw tx is suspended, drop size=%d\n",
+						skb->len);
+				return -EBUSY;
 			}
+
+			mif_err("wait TX RESUME CMD...\n");
+			init_completion(&ld->raw_tx_resumed);
+			wait_for_completion(&ld->raw_tx_resumed);
+			mif_err("TX resumed done.\n");
 		}
 
 	case IPC_RFS:
@@ -1921,16 +1822,14 @@ static int shmem_xmit_boot(struct link_device *ld, struct io_device *iod,
 		     unsigned long arg)
 {
 	struct mem_link_device *mld = to_mem_link_device(ld);
-#ifndef CONFIG_FREE_CP_RSVD_MEMORY
 	struct resource *cpmem_info = mld->syscp_info;
-	u32 *mem_info;
-#endif
 	void __iomem *dst;
 	void __user *src;
 	int err;
 	struct modem_firmware mf;
 	void __iomem *v_base;
 	size_t valid_space;
+	u32 *mem_info;
 
 	/**
 	 * Get the information about the boot image
@@ -1961,7 +1860,7 @@ static int shmem_xmit_boot(struct link_device *ld, struct io_device *iod,
 
 	dst = (void __iomem *)(v_base + mf.m_offset);
 	src = (void __user *)((unsigned long)mf.binary);
-#ifndef CONFIG_FREE_CP_RSVD_MEMORY
+
 	if (mf.m_offset == (u32)cpmem_info->start) {
 		mem_info = (u32 *)src;
 		if (*(mem_info + CP_MEM) != mld->boot_size) {
@@ -1975,7 +1874,7 @@ static int shmem_xmit_boot(struct link_device *ld, struct io_device *iod,
 			return -EFAULT;
 		}
 	}
-#endif
+
 	err = copy_from_user(dst, src, mf.len);
 	if (err) {
 		mif_err("%s: ERR! BOOT copy_from_user fail\n", ld->name);
@@ -2001,7 +1900,7 @@ static int shmem_security_request(struct link_device *ld, struct io_device *iod,
 
 	param2 = shm_get_security_param2(msr.mode, msr.size_boot);
 	param3 = shm_get_security_param3(msr.mode, msr.size_main);
-	mif_info("mode=%u, size=%lu, addr=%lu\n", msr.mode, param2, param3);
+	mif_err("mode=%u, size=%lu, addr=%lu\n", msr.mode, param2, param3);
 	exynos_smc(SMC_ID_CLK, SSS_CLK_ENABLE, 0, 0);
 	err = exynos_smc(SMC_ID, msr.mode, param2, param3);
 	exynos_smc(SMC_ID_CLK, SSS_CLK_DISABLE, 0, 0);
@@ -2034,7 +1933,7 @@ static int shmem_start_download(struct link_device *ld, struct io_device *iod)
 				ld->name, magic, MEM_BOOT_MAGIC);
 			return -EFAULT;
 		}
-		mif_info("%s: magic == 0x%08X\n", ld->name, magic);
+		mif_err("%s: magic == 0x%08X\n", ld->name, magic);
 	}
 
 	return 0;
@@ -2219,7 +2118,7 @@ static char *shmem_get_srinfo_address(struct link_device *ld)
 static int shmem_ioctl(struct link_device *ld, struct io_device *iod,
 		       unsigned int cmd, unsigned long arg)
 {
-	mif_info("%s: cmd 0x%08X\n", ld->name, cmd);
+	mif_err("%s: cmd 0x%08X\n", ld->name, cmd);
 
 	switch (cmd) {
 	case IOCTL_MODEM_GET_SHMEM_SRINFO:
@@ -2299,6 +2198,35 @@ static void shmem_tx_state_handler(void *data)
 	}
 }
 
+static void shmem_irq_handler(void *data)
+{
+	struct mem_link_device *mld = (struct mem_link_device *)data;
+	struct mst_buff *msb;
+	struct link_device *ld = &mld->link_dev;
+	struct modem_ctl *mc = ld->mc;
+
+	msb = mem_take_snapshot(mld, RX);
+	if (!msb)
+		return;
+
+	if (unlikely(!int_valid(msb->snapshot.int2ap))) {
+		mif_err("%s: ERR! invalid intr 0x%X\n",
+				ld->name, msb->snapshot.int2ap);
+		msb_free(msb);
+		return;
+	}
+
+	if (unlikely(!rx_possible(mc))) {
+		mif_err("%s: ERR! %s.state == %s\n", ld->name, mc->name,
+			mc_state(mc));
+		msb_free(msb);
+		return;
+	}
+
+	msb_queue_tail(&mld->msb_rxq, msb);
+	tasklet_schedule(&mld->rx_tsk);
+}
+
 static struct pm_qos_request pm_qos_req_mif;
 static struct pm_qos_request pm_qos_req_cl0;
 static struct pm_qos_request pm_qos_req_cl1;
@@ -2313,39 +2241,27 @@ static void shmem_qos_work(struct work_struct *work)
 	unsigned int level;
 
 	qos_val = mbox_get_value(MCU_CP, mld->mbx_perf_req);
-	mif_info("pm_qos:0x%x requested\n", qos_val);
+	mif_err("pm_qos:0x%x requested\n", qos_val);
 
 	level = (qos_val & 0xff);
 	if (level > 0 && level <= mld->ap_clk_cnt) {
-		mif_info("Lock CPU(%u)\n", mld->ap_clk_table[level - 1]);
+		mif_err("Lock CPU(%u)\n", mld->ap_clk_table[level - 1]);
 		pm_qos_update_request(&pm_qos_req_cpu,
 				mld->ap_clk_table[level - 1]);
 	} else {
-		mif_info("Unlock CPU(%u)\n", level);
+		mif_err("Unlock CPU(%u)\n", level);
 		pm_qos_update_request(&pm_qos_req_cpu, 0);
 	}
 
 	level = (qos_val >> 8) & 0xff;
 	if (level > 0 && level <= mld->mif_clk_cnt) {
-		mif_info("Lock MIF(%u)\n", mld->mif_clk_table[level - 1]);
+		mif_err("Lock MIF(%u)\n", mld->mif_clk_table[level - 1]);
 		pm_qos_update_request(&pm_qos_req_mif,
 				mld->mif_clk_table[level - 1]);
 	} else {
-		mif_info("Unlock MIF(%u)\n", level);
+		mif_err("Unlock CPU(%u)\n", level);
 		pm_qos_update_request(&pm_qos_req_mif, 0);
 	}
-
-	level = (qos_val >> 16) & 0xff;
-	if (level > 0 && level <= mld->int_clk_cnt) {
-		mif_info("Lock INT(%u)\n", mld->int_clk_table[level - 1]);
-		pm_qos_update_request(&pm_qos_req_int,
-				mld->int_clk_table[level - 1]);
-	} else {
-		mif_info("Unlock INT(%u)\n", level);
-		pm_qos_update_request(&pm_qos_req_int, 0);
-	}
-
-	mbox_set_value(MCU_CP, mld->mbx_perf_req, 0);
 }
 #endif
 
@@ -2359,8 +2275,8 @@ static void shmem_qos_work_cpu(struct work_struct *work)
 	int cpu_val;
 
 	qos_val = mbox_get_value(MCU_CP, mld->mbx_perf_req_cpu);
-	mif_info("pm_qos:0x%x requested\n", qos_val);
-	
+	mif_err("pm_qos:0x%x requested\n", qos_val);
+
 	if (mld->ect_table_data.ect_table[CL1_TABLE].num_of_table > 0 &&
 			!(qos_val & BIT(31))) {
 		cpu_table = &mld->ect_table_data.ect_table[CL1_TABLE];
@@ -2390,16 +2306,18 @@ static void shmem_qos_work_mif(struct work_struct *work)
 	int mif_val;
 
 	qos_val = mbox_get_value(MCU_CP, mld->mbx_perf_req_mif);
-	mif_info("pm_qos:0x%x requested\n", qos_val);
+	mif_err("pm_qos:0x%x requested\n", qos_val);
 
 	mif_val = (qos_val & 0xff);
 	if (mif_val > 0 && mif_val <= mld->ect_table_data.ect_table[MIF_TABLE].num_of_table) {
 		mif_err("Lock MIF[%d] : %u\n", mif_val,
 				mld->ect_table_data.ect_table[MIF_TABLE].freq[mif_val - 1]);
+		mld->requested_mif_clk = mld->ect_table_data.ect_table[MIF_TABLE].freq[mif_val - 1];
 		pm_qos_update_request(&pm_qos_req_mif,
 				mld->ect_table_data.ect_table[MIF_TABLE].freq[mif_val - 1]);
 	} else {
 		mif_err("Unlock MIF(req_val : %d)\n", qos_val);
+		mld->requested_mif_clk = 0;
 		pm_qos_update_request(&pm_qos_req_mif, 0);
 	}
 }
@@ -2412,7 +2330,7 @@ static void shmem_qos_work_int(struct work_struct *work)
 	int int_val;
 
 	qos_val = mbox_get_value(MCU_CP, mld->mbx_perf_req_int);
-	mif_info("pm_qos:0x%x requested\n", qos_val);
+	mif_err("pm_qos:0x%x requested\n", qos_val);
 
 	int_val = (qos_val & 0xff);
 	if (int_val > 0 && int_val <= mld->ect_table_data.ect_table[INT_TABLE].num_of_table) {
@@ -2429,31 +2347,31 @@ static void shmem_qos_work_int(struct work_struct *work)
 static void shmem_qos_req_handler(void *data)
 {
 	struct mem_link_device *mld = (struct mem_link_device *)data;
-	mif_info("%s\n", __func__);
+	mif_err("%s\n", __func__);
 
 	schedule_work(&mld->pm_qos_work);
 }
 
-static void shmem_qos_cpu_req_handler(void *data)
+static void shmem_qos_req_handler_cpu(void *data)
 {
 	struct mem_link_device *mld = (struct mem_link_device *)data;
-	mif_info("%s\n", __func__);
+	mif_err("%s\n", __func__);
 
 	schedule_work(&mld->pm_qos_work_cpu);
 }
 
-static void shmem_qos_mif_req_handler(void *data)
+static void shmem_qos_req_handler_mif(void *data)
 {
 	struct mem_link_device *mld = (struct mem_link_device *)data;
-	mif_info("%s\n", __func__);
+	mif_err("%s\n", __func__);
 
 	schedule_work(&mld->pm_qos_work_mif);
 }
 
-static void shmem_qos_int_req_handler(void *data)
+static void shmem_qos_req_handler_int(void *data)
 {
 	struct mem_link_device *mld = (struct mem_link_device *)data;
-	mif_info("%s\n", __func__);
+	mif_err("%s\n", __func__);
 
 	schedule_work(&mld->pm_qos_work_int);
 }
@@ -2469,14 +2387,14 @@ static void remap_4mb_map_to_ipc_dev(struct mem_link_device *mld)
 	/* magic code and access enable fields */
 	mld->magic = (u32 __iomem *)&map->magic;
 	mld->access = (u32 __iomem *)&map->access;
-	
+
 	/* To share ECT clock table with CP */
 	mld->clk_table = (u32 __iomem *)map->reserved;
 
-	/* IPC_MAP_FMT */
-	dev = &mld->ipc_dev[IPC_MAP_FMT];
+	/* IPC_FMT */
+	dev = &mld->ipc_dev[IPC_FMT];
 
-	dev->id = IPC_MAP_FMT;
+	dev->id = IPC_FMT;
 	strcpy(dev->name, "FMT");
 
 	spin_lock_init(&dev->txq.lock);
@@ -2497,57 +2415,19 @@ static void remap_4mb_map_to_ipc_dev(struct mem_link_device *mld)
 	dev->req_ack_mask = MASK_REQ_ACK_FMT;
 	dev->res_ack_mask = MASK_RES_ACK_FMT;
 
-	dev->skb_txq = &ld->skb_txq[IPC_MAP_FMT];
-	dev->skb_rxq = &ld->skb_rxq[IPC_MAP_FMT];
-	skb_queue_head_init(dev->skb_txq);
-	skb_queue_head_init(dev->skb_rxq);
+	dev->skb_txq = &ld->sk_fmt_tx_q;
+	dev->skb_rxq = &ld->sk_fmt_rx_q;
 
 	dev->req_ack_cnt[TX] = 0;
 	dev->req_ack_cnt[RX] = 0;
 
-	mld->dev[IPC_MAP_FMT] = dev;
+	mld->dev[IPC_FMT] = dev;
 
-#ifdef CONFIG_MODEM_IF_QOS
-	/* IPC_MAP_HPRIO_RAW */
-	dev = &mld->ipc_dev[IPC_MAP_HPRIO_RAW];
+	/* IPC_RAW */
+	dev = &mld->ipc_dev[IPC_RAW];
 
-	dev->id = IPC_MAP_HPRIO_RAW;
-	strcpy(dev->name, "HPRIO_RAW");
-
-	spin_lock_init(&dev->txq.lock);
-	atomic_set(&dev->txq.busy, 0);
-	dev->txq.head = &map->raw_hprio_tx_head;
-	dev->txq.tail = &map->raw_hprio_tx_tail;
-	dev->txq.buff = &map->raw_hprio_tx_buff[0];
-	dev->txq.size = SHM_4M_RAW_HPRIO_TX_BUFF_SZ;
-
-	spin_lock_init(&dev->rxq.lock);
-	atomic_set(&dev->rxq.busy, 0);
-	dev->rxq.head = &map->raw_hprio_rx_head;
-	dev->rxq.tail = &map->raw_hprio_rx_tail;
-	dev->rxq.buff = &map->raw_hprio_rx_buff[0];
-	dev->rxq.size = SHM_4M_RAW_HPRIO_RX_BUFF_SZ;
-
-	dev->msg_mask = MASK_SEND_RAW;
-	dev->req_ack_mask = MASK_REQ_ACK_RAW;
-	dev->res_ack_mask = MASK_RES_ACK_RAW;
-
-	dev->skb_txq = &ld->skb_txq[IPC_MAP_HPRIO_RAW];
-	dev->skb_rxq = &ld->skb_rxq[IPC_MAP_HPRIO_RAW];
-	skb_queue_head_init(dev->skb_txq);
-	skb_queue_head_init(dev->skb_rxq);
-
-	dev->req_ack_cnt[TX] = 0;
-	dev->req_ack_cnt[RX] = 0;
-
-	mld->dev[IPC_MAP_HPRIO_RAW] = dev;
-#endif
-
-	/* IPC_MAP_NORM_RAW */
-	dev = &mld->ipc_dev[IPC_MAP_NORM_RAW];
-
-	dev->id = IPC_MAP_NORM_RAW;
-	strcpy(dev->name, "NORM_RAW");
+	dev->id = IPC_RAW;
+	strcpy(dev->name, "RAW");
 
 	spin_lock_init(&dev->txq.lock);
 	atomic_set(&dev->txq.busy, 0);
@@ -2567,15 +2447,13 @@ static void remap_4mb_map_to_ipc_dev(struct mem_link_device *mld)
 	dev->req_ack_mask = MASK_REQ_ACK_RAW;
 	dev->res_ack_mask = MASK_RES_ACK_RAW;
 
-	dev->skb_txq = &ld->skb_txq[IPC_MAP_NORM_RAW];
-	dev->skb_rxq = &ld->skb_rxq[IPC_MAP_NORM_RAW];
-	skb_queue_head_init(dev->skb_txq);
-	skb_queue_head_init(dev->skb_rxq);
+	dev->skb_txq = &ld->sk_raw_tx_q;
+	dev->skb_rxq = &ld->sk_raw_rx_q;
 
 	dev->req_ack_cnt[TX] = 0;
 	dev->req_ack_cnt[RX] = 0;
 
-	mld->dev[IPC_MAP_NORM_RAW] = dev;
+	mld->dev[IPC_RAW] = dev;
 }
 
 static int shmem_rx_setup(struct link_device *ld)
@@ -2598,7 +2476,7 @@ struct link_device *shmem_create_link_device(struct platform_device *pdev)
 	struct mem_link_device *mld;
 	struct link_device *ld;
 	int err;
-	mif_info("+++\n");
+	mif_err("+++\n");
 
 	/**
 	 * Get the modem (platform) data
@@ -2620,7 +2498,7 @@ struct link_device *shmem_create_link_device(struct platform_device *pdev)
 		return NULL;
 	}
 
-	mif_info("MODEM:%s LINK:%s\n", modem->name, modem->link_name);
+	mif_err("MODEM:%s LINK:%s\n", modem->name, modem->link_name);
 
 	/*
 	** Alloc an instance of mem_link_device structure
@@ -2654,12 +2532,12 @@ struct link_device *shmem_create_link_device(struct platform_device *pdev)
 	ld->name = modem->link_name;
 
 	if (mld->attrs & LINK_ATTR(LINK_ATTR_SBD_IPC)) {
-		mif_info("%s<->%s: LINK_ATTR_SBD_IPC\n", ld->name, modem->name);
+		mif_err("%s<->%s: LINK_ATTR_SBD_IPC\n", ld->name, modem->name);
 		ld->sbd_ipc = true;
 	}
 
 	if (mld->attrs & LINK_ATTR(LINK_ATTR_IPC_ALIGNED)) {
-		mif_info("%s<->%s: LINK_ATTR_IPC_ALIGNED\n",
+		mif_err("%s<->%s: LINK_ATTR_IPC_ALIGNED\n",
 			ld->name, modem->name);
 		ld->aligned = true;
 	}
@@ -2696,6 +2574,12 @@ struct link_device *shmem_create_link_device(struct platform_device *pdev)
 
 	INIT_LIST_HEAD(&ld->list);
 
+	skb_queue_head_init(&ld->sk_fmt_tx_q);
+	skb_queue_head_init(&ld->sk_raw_tx_q);
+
+	skb_queue_head_init(&ld->sk_fmt_rx_q);
+	skb_queue_head_init(&ld->sk_raw_rx_q);
+
 	spin_lock_init(&ld->netif_lock);
 	atomic_set(&ld->netif_stopped, 0);
 	ld->tx_flowctrl_mask = 0;
@@ -2705,7 +2589,7 @@ struct link_device *shmem_create_link_device(struct platform_device *pdev)
 		goto error;
 
 	if (mld->attrs & LINK_ATTR(LINK_ATTR_DPRAM_MAGIC)) {
-		mif_info("%s<->%s: LINK_ATTR_DPRAM_MAGIC\n",
+		mif_err("%s<->%s: LINK_ATTR_DPRAM_MAGIC\n",
 			ld->name, modem->name);
 		mld->dpram_magic = true;
 	}
@@ -2730,8 +2614,6 @@ struct link_device *shmem_create_link_device(struct platform_device *pdev)
 
 	hrtimer_init(&mld->tx_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	mld->tx_timer.function = tx_timer_func;
-
-	INIT_WORK(&mld->page_reclaim_work, shmem_oom_handler_work);
 
 	/*
 	** Initialize variables for CP booting and crash dump
@@ -2763,7 +2645,7 @@ struct link_device *shmem_create_link_device(struct platform_device *pdev)
 		mif_err("Failed to vmap boot_region\n");
 		goto error;
 	}
-	mif_info("boot_base=%p, boot_size=%lu\n",
+	mif_err("boot_base=%p, boot_size=%lu\n",
 		mld->boot_base, (unsigned long)mld->boot_size);
 
 	/**
@@ -2776,7 +2658,7 @@ struct link_device *shmem_create_link_device(struct platform_device *pdev)
 		shm_release_region(mld->boot_base);
 		goto error;
 	}
-	mif_info("ipc_base=%p, ipc_size=%lu\n",
+	mif_err("ipc_base=%p, ipc_size=%lu\n",
 		mld->base, (unsigned long)mld->size);
 
 	modem->ipc_base = (u8 __iomem *)mld->base;
@@ -2812,7 +2694,7 @@ struct link_device *shmem_create_link_device(struct platform_device *pdev)
 			ld->name, mld->irq_cp2ap_msg, err);
 		goto error;
 	}
-	
+
 	/* Parsing devfreq, cpufreq table from ECT */
 	err = exynos_devfreq_parse_ect(&mld->ect_table_data);
 	if (err) {
@@ -2829,19 +2711,9 @@ struct link_device *shmem_create_link_device(struct platform_device *pdev)
 	mld->irq_perf_req_mif = modem->mbx->irq_cp2ap_perf_req_mif;
 	mld->irq_perf_req_int = modem->mbx->irq_cp2ap_perf_req_int;
 
-	mld->ap_clk_table = modem->mbx->ap_clk_table;
-	mld->ap_clk_cnt = modem->mbx->ap_clk_cnt;
-
-	mld->mif_clk_table = modem->mbx->mif_clk_table;
-	mld->mif_clk_cnt = modem->mbx->mif_clk_cnt;
-
-	mld->int_clk_table = modem->mbx->int_clk_table;
-	mld->int_clk_cnt = modem->mbx->int_clk_cnt;
-
 	pm_qos_add_request(&pm_qos_req_cl0, PM_QOS_CLUSTER0_FREQ_MIN, 0);
 	pm_qos_add_request(&pm_qos_req_cl1, PM_QOS_CLUSTER1_FREQ_MIN, 0);
 	pm_qos_add_request(&pm_qos_req_mif, PM_QOS_BUS_THROUGHPUT, 0);
-	pm_qos_add_request(&pm_qos_req_int, PM_QOS_DEVICE_THROUGHPUT, 0);
 
 	INIT_WORK(&mld->pm_qos_work_cpu, shmem_qos_work_cpu);
 	INIT_WORK(&mld->pm_qos_work_mif, shmem_qos_work_mif);
@@ -2854,24 +2726,27 @@ struct link_device *shmem_create_link_device(struct platform_device *pdev)
 		goto error;
 	}
 
-	err = mbox_request_irq(MCU_CP, mld->irq_perf_req_cpu, shmem_qos_cpu_req_handler, mld);
+	err = mbox_request_irq(MCU_CP, mld->irq_perf_req_cpu,
+					shmem_qos_req_handler_cpu, mld);
 	if (err) {
-		mif_err("%s: ERR! mbox_request_irq(%u) fail (%d)\n",
-			ld->name, mld->irq_perf_req_cpu, err);
+		mif_err("%s: ERR! mbox_request_irq_cpu(%u) fail (%d)\n",
+			ld->name, mld->irq_perf_req, err);
 		goto error;
 	}
 
-	err = mbox_request_irq(MCU_CP, mld->irq_perf_req_mif, shmem_qos_mif_req_handler, mld);
+	err = mbox_request_irq(MCU_CP, mld->irq_perf_req_mif,
+					shmem_qos_req_handler_mif, mld);
 	if (err) {
-		mif_err("%s: ERR! mbox_request_irq(%u) fail (%d)\n",
-			ld->name, mld->irq_perf_req_mif, err);
+		mif_err("%s: ERR! mbox_request_irq_mif(%u) fail (%d)\n",
+			ld->name, mld->irq_perf_req, err);
 		goto error;
 	}
 
-	err = mbox_request_irq(MCU_CP, mld->irq_perf_req_int, shmem_qos_int_req_handler, mld);
+	err = mbox_request_irq(MCU_CP, mld->irq_perf_req_int,
+					shmem_qos_req_handler_int, mld);
 	if (err) {
-		mif_err("%s: ERR! mbox_request_irq(%u) fail (%d)\n",
-			ld->name, mld->irq_perf_req_int, err);
+		mif_err("%s: ERR! mbox_request_irq_int(%u) fail (%d)\n",
+			ld->name, mld->irq_perf_req, err);
 		goto error;
 	}
 
@@ -2896,7 +2771,11 @@ struct link_device *shmem_create_link_device(struct platform_device *pdev)
 
 	mld->syscp_info = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 
-	mif_info("---\n");
+	/* Link mem_link_device to modem_data */
+	modem->mld = mld;
+
+	mif_err("---\n");
+
 	return ld;
 
 error:

@@ -1160,7 +1160,7 @@ cull_mlocked:
 		if (PageSwapCache(page))
 			try_to_free_swap(page);
 		unlock_page(page);
-		putback_lru_page(page);
+		list_add(&page->lru, &ret_pages);
 		continue;
 
 activate_locked:
@@ -2006,7 +2006,8 @@ static void get_scan_count(struct lruvec *lruvec, int swappiness,
 	 * There is enough inactive page cache, do not reclaim
 	 * anything from the anonymous working set right now.
 	 */
-	if (!inactive_file_is_low(lruvec)) {
+	if (!IS_ENABLED(CONFIG_BALANCE_ANON_FILE_RECLAIM) &&
+			!inactive_file_is_low(lruvec)) {
 		scan_balance = SCAN_FILE;
 		goto out;
 	}

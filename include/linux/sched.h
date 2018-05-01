@@ -186,9 +186,6 @@ extern int register_hmp_task_migration_notifier(struct notifier_block *nb);
 #define HMP_UP_MIGRATION       0
 #define HMP_DOWN_MIGRATION     1
 #endif
-#ifdef CONFIG_SEC_PHCOMP
-extern unsigned long nr_running_cpu(unsigned int cpu);
-#endif
 
 extern void calc_global_load(unsigned long ticks);
 extern void update_cpu_load_nohz(void);
@@ -339,7 +336,12 @@ extern void show_regs(struct pt_regs *);
  * task), SP is the stack pointer of the first frame that should be shown in the back
  * trace (or NULL if the entire call-chain of the task should be shown).
  */
+
 extern void show_stack(struct task_struct *task, unsigned long *sp);
+
+#ifdef CONFIG_KFAULT_AUTO_SUMMARY
+extern void show_stack_auto_summary(struct task_struct *task, unsigned long *sp);
+#endif
 
 void io_schedule(void);
 long io_schedule_timeout(long timeout);

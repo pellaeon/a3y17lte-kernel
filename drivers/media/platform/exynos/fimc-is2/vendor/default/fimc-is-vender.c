@@ -214,12 +214,29 @@ int fimc_is_vender_sensor_gpio_off(struct fimc_is_vender *vender, u32 scenario, 
 	return ret;
 }
 
+void fimc_is_vender_itf_open(struct fimc_is_vender *vender, struct sensor_open_extended *ext_info)
+{
+	return;
+}
+
 int fimc_is_vender_set_torch(u32 aeflashMode)
 {
 	return 0;
 }
 
 int fimc_is_vender_video_s_ctrl(struct v4l2_control *ctrl,
+	void *device_data)
+{
+	return 0;
+}
+
+int fimc_is_vender_ssx_video_s_ctrl(struct v4l2_control *ctrl,
+	void *device_data)
+{
+	return 0;
+}
+
+int fimc_is_vender_ssx_video_g_ctrl(struct v4l2_control *ctrl,
 	void *device_data)
 {
 	return 0;

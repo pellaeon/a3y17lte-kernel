@@ -61,7 +61,7 @@ static void dlp_dump_list(void) {
 			printk("DLP : extensions : (empty)\n");
 		}
 	}
-	mutex_unlock(&dlp_info.list_mutex);
+	mutex_unlock(&dlp_info.list_mutex);	
 }
 #endif
 

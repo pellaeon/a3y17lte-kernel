@@ -447,19 +447,18 @@ static irqreturn_t busmon_logging_irq(int irq, void *data)
 		init_desc = pdata->notifier_info.init_desc;
 		master_desc = pdata->notifier_info.masterip_desc;
 
-		if (init_desc && !strncmp(init_desc, "CPU", strlen("CPU"))) {
-			/* In this case, we expect that CPU exception is occurred */
-			dev_err(busmon->dev, "Skipped to PANIC (Master: CPU), refer to exception\n");
-		} else if (init_desc && (!strncmp(init_desc, "MODEM", strlen("MODEM")) ||
+		if (init_desc && (!strncmp(init_desc, "MODEM", strlen("MODEM")) ||
 					!strncmp(init_desc, "CP", strlen("CP")))) {
-			if (master_desc && strncmp(master_desc, "TL3MtoL2", strlen("TL3MtoL2"))
-					&& strncmp(master_desc, "UNKNOWN", strlen("UNKNOWN"))) {
+			if ((master_desc && strncmp(master_desc, "TL3MtoL2", strlen("TL3MtoL2"))
+					&& strncmp(master_desc, "UNKNOWN", strlen("UNKNOWN"))) || !master_desc) {
 				/* CP && not TL3Mto L2 && not UNKNOWN */
 				busmon_timeout_init(busmon, false);
 				busmon_logging_init(busmon, false);
 				busmon_in_progress = true;
-#if defined(CONFIG_UMTS_MODEM_SS310AP)
+#ifdef CONFIG_UMTS_MODEM_SS310AP
 				ss310ap_force_crash_exit_ext();
+#else
+				panic("CP Crash by BUS monitor");
 #endif
 			} else {
 				/*

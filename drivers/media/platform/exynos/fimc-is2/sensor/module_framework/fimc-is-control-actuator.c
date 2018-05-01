@@ -34,7 +34,7 @@ int fimc_is_actuator_ctl_set_position(struct fimc_is_device_sensor *device,
 		goto p_err;
 	}
 
-#ifdef CONFIG_OIS_USE
+#if defined(CONFIG_OIS_USE) && defined(CONFIG_OIS_USE_BU24219)
 	ret = fimc_is_sensor_ois_shift(device, position);
 	if (ret < 0) {
 		err("OIS Shift compansation fail\n");
@@ -162,7 +162,7 @@ int fimc_is_actuator_notify_m2m_actuator(struct v4l2_subdev *subdev)
 
 	u32 af_window_ratio = 0;
 	u32 virtual_image_size = 0;
-	u32 timer_setting = 0;
+	ulong timer_setting = 0;
 
 	BUG_ON(!subdev);
 

@@ -133,7 +133,7 @@ static int __init vbus_notifier_init(void)
 
 	return ret;
 }
-device_initcall(vbus_notifier_init);
+subsys_initcall(vbus_notifier_init);
 
 static void __exit vbus_notifier_exit(void)
 {

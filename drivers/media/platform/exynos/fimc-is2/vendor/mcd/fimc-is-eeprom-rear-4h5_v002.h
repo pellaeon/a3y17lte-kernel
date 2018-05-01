@@ -5,7 +5,7 @@
 #define EEP_I2C_HEADER_VERSION_START_ADDR      0x20
 #define EEP_I2C_HEADER_CAL_MAP_VER_START_ADDR  0x30
 
-/* Header Offset Addr Section */
+/* Header referenced section */
 #define EEP_HEADER_VERSION_START_ADDR      0x20
 #define EEP_HEADER_CAL_MAP_VER_START_ADDR  0x30
 #define EEP_HEADER_OEM_START_ADDR          0x0

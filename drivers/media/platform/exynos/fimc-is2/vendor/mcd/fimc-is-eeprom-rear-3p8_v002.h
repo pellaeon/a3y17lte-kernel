@@ -88,4 +88,4 @@
 #define EEPROM_AF_CAL_PAN_ADDR             0x0100
 #define EEPROM_AF_CAL_MACRO_ADDR           0x0108
 
-#endif /* FIMC_IS_EEPROM_REAR_3P8_V002_H */
+#endif /* FIMC_IS_EEPROM_REAR_3P8_V001_H */

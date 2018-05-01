@@ -258,7 +258,28 @@ int gnss_pmu_power_on(struct gnss_ctl *gc, enum gnss_mode mode)
 int gnss_change_tcxo_mode(struct gnss_ctl *gc, enum gnss_tcxo_mode mode)
 {
 	int ret = 0;
+#ifdef USE_IOREMAP_NOPMU
+	{
+		u32 regval, tmp;
+		regval = __raw_readl(gc->pmu_reg + EXYNOS_PMU_GNSS_CTRL_NS);
+		if (mode == TCXO_SHARED_MODE) {
+			gif_err("Change TCXO mode to Shared Mode(%d)\n", mode);
+			regval &= ~TCXO_26M_40M_SEL;
+			__raw_writel(regval, gc->pmu_reg + EXYNOS_PMU_GNSS_CTRL_NS);
+		} else if (mode == TCXO_NON_SHARED_MODE) {
+			gif_err("Change TCXO mode to NON-sared Mode(%d)\n", mode);
+			regval |= TCXO_26M_40M_SEL;
+			__raw_writel(regval, gc->pmu_reg + EXYNOS_PMU_GNSS_CTRL_NS);
+		} else
+			gif_err("Unexpected modem(Mode:%d)\n", mode);
 
+		tmp =  __raw_readl(gc->pmu_reg + EXYNOS_PMU_GNSS_CTRL_NS);
+		if (tmp != regval) {
+			pr_err("%s: ERR! GNSS change tcxo: %d\n", __func__, ret);
+			return -1;
+		}
+	}
+#else
 	if (mode == TCXO_SHARED_MODE) {
 		gif_err("Change TCXO mode to Shared Mode(%d)\n", mode);
 		ret = regmap_update_bits(gc->pmu_reg, EXYNOS_PMU_GNSS_CTRL_NS,
@@ -274,7 +295,7 @@ int gnss_change_tcxo_mode(struct gnss_ctl *gc, enum gnss_tcxo_mode mode)
 		pr_err("%s: ERR! GNSS change tcxo: %d\n", __func__, ret);
 		return -1;
 	}
-
+#endif
 	return 0;
 }
 
@@ -292,6 +313,12 @@ int gnss_pmu_init_conf(struct gnss_ctl *gc)
 			0x0);
 	regmap_write(gc->pmu_reg, EXYNOS_PMU_GNSS2AP_MIF1_PERI_ACCESS_CON,
 			0x0);
+#if !defined(CONFIG_SOC_EXYNOS7870)
+	regmap_write(gc->pmu_reg, EXYNOS_PMU_GNSS2AP_MIF2_PERI_ACCESS_CON,
+			0x0);
+	regmap_write(gc->pmu_reg, EXYNOS_PMU_GNSS2AP_MIF3_PERI_ACCESS_CON,
+			0x0);
+#endif
 	regmap_write(gc->pmu_reg, EXYNOS_PMU_GNSS2AP_PERI_ACCESS_WIN,
 			0x0);
 #endif

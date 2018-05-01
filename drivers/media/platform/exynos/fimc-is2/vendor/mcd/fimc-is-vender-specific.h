@@ -24,6 +24,13 @@
 
 /* #define USE_ION_ALLOC */
 #define FIMC_IS_COMPANION_CRC_SIZE	4
+#if defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_OPEN) || defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_CLOSE)
+#ifdef CONFIG_COMPANION_C3_USE
+#define FIMC_IS_COMPANION_CRC_OBJECT	4
+#else
+#define FIMC_IS_COMPANION_CRC_OBJECT	6
+#endif /* #ifdef CONFIG_COMPANION_C3_USE */
+#endif /* #if defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_OPEN) || defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_CLOSE) */
 #define I2C_RETRY_COUNT			5
 
 #ifdef CONFIG_PREPROCESSOR_STANDBY_USE
@@ -60,16 +67,7 @@ struct fimc_is_vender_specific {
 
 	struct i2c_client	*eeprom_client0;
 	struct i2c_client	*eeprom_client1;
-#if defined(CONFIG_USE_DIRECT_IS_CONTROL)\
-	&& (defined(CONFIG_CAMERA_OTPROM_SUPPORT_FRONT) || defined(CONFIG_CAMERA_OTPROM_SUPPORT_REAR))
-	int (*cis_init_reg_write)(void);
-#endif
-#if defined(CONFIG_USE_DIRECT_IS_CONTROL) && defined(CONFIG_CAMERA_OTPROM_SUPPORT_FRONT)
-	struct i2c_client	*front_cis_client;
-#endif
-#if defined(CONFIG_USE_DIRECT_IS_CONTROL) && defined(CONFIG_CAMERA_OTPROM_SUPPORT_REAR)
-	struct i2c_client	*rear_cis_client;
-#endif
+
 	bool			running_rear_camera;
 	bool			running_front_camera;
 
@@ -77,13 +75,13 @@ struct fimc_is_vender_specific {
 	char			*comp_int_pinctrl;
 	u8			standby_state;
 	struct fimc_is_companion_retention	retention_data;
+#ifdef CONFIG_SENSOR_RETENTION_USE
+	bool			need_retention_init;
+#endif
 
 	/* dt */
 	u32			rear_sensor_id;
 	u32			front_sensor_id;
-#ifdef CONFIG_SECURE_CAMERA_USE
-	u32			secure_sensor_id;
-#endif
 	bool			check_sensor_vendor;
 	bool			skip_cal_loading;
 	bool			use_ois_hsi2c;

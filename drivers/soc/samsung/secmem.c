@@ -248,10 +248,10 @@ static long secmem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		}
 
 		if (ion_phys(client, ion_handle, &fd_info.phys, &len)) {
-			pr_err("%s: Failed to get phys. addr of DRM. fd(%d)\n",
-				__func__, fd_info.fd);
-			ion_free(client, ion_handle);
+			pr_err("%s: Failed to get phys. addr of DRM\n",
+				__func__);
 			ion_client_destroy(client);
+			ion_free(client, ion_handle);
 			return -ENOMEM;
 		}
 

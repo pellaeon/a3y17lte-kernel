@@ -23,6 +23,7 @@ enum {
 	gate_g3d_ppmu,
 	gate_g3d_bts,
 	gate_g3d_g3d,
+	gate_peri_peris0,
 	gate_peri_peric0,
 	gate_peri_peric1,
 	gate_peri_pwm_motor,
@@ -154,7 +155,6 @@ enum {
 	pxmxdx_isp_vra,
 	pxmxdx_isp_cam,
 	pxmxdx_isp_isp,
-	pxmxdx_oscclk_aud,
 	vclk_group_pxmxdx_end,
 	num_of_pxmxdx = vclk_group_pxmxdx_end - 0x0A050000,
 

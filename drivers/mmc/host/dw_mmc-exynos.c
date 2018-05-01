@@ -41,12 +41,13 @@ static void dw_mci_exynos_register_dump(struct dw_mci *host)
 			host->sfr_dump->mpsend = mci_readl(host, MPSEND0));
 	dev_err(host->dev, ": MPSCTRL:	0x%08x\n",
 			host->sfr_dump->mpsctrl = mci_readl(host, MPSCTRL0));
+
 	dev_err(host->dev, ": DDR200_RDDQS_EN:  0x%08x\n",
-		host->sfr_dump->ddr200_rdqs_en = mci_readl(host,DDR200_RDDQS_EN));
-		dev_err(host->dev, ": DDR200_ASYNC_FIFO_CTRL:   0x%08x\n",
+			host->sfr_dump->ddr200_rdqs_en = mci_readl(host,DDR200_RDDQS_EN));
+	dev_err(host->dev, ": DDR200_ASYNC_FIFO_CTRL:   0x%08x\n",
 			host->sfr_dump->ddr200_acync_fifo_ctrl =
 			mci_readl(host, DDR200_ASYNC_FIFO_CTRL));
-		dev_err(host->dev, ": DDR200_DLINE_CTRL:        0x%08x\n",
+	dev_err(host->dev, ": DDR200_DLINE_CTRL:        0x%08x\n",
 			host->sfr_dump->ddr200_dline_ctrl =
 			mci_readl(host, DDR200_DLINE_CTRL));
 }
@@ -158,9 +159,11 @@ void dw_mci_reg_dump(struct dw_mci *host)
 		 atomic_read(&host->ciu_en_win));
 	reg = mci_readl(host, CMD);
 	dev_err(host->dev, ": ================= CMD REG =================\n");
-	dev_err(host->dev, ": read/write        : %s\n",
-					(reg & (0x1 << 10)) ? "write" : "read");
-	dev_err(host->dev, ": data expected     : %d\n", (reg >> 9) & 0x1);
+	if((reg >> 9) & 0x1) {
+		dev_err(host->dev, ": read/write        : %s\n",
+				(reg & (0x1 << 10)) ? "write" : "read");
+		dev_err(host->dev, ": data expected     : %d\n", (reg >> 9) & 0x1);
+	}
 	dev_err(host->dev, ": cmd index         : %d\n",
 			host->sfr_dump->cmd_index =((reg >> 0) & 0x3f));
 	reg = mci_readl(host, STATUS);
@@ -234,20 +237,21 @@ void dw_mci_exynos_cfg_smu(struct dw_mci *host)
 	if (!(host->pdata->quirks & DW_MCI_QUIRK_BYPASS_SMU))
 		return;
 #endif
+
 	id = host->channel;
 	switch (id) {
-		case 0:
+	case 0:
 #if defined(CONFIG_MMC_DW_FMP_DM_CRYPT) || defined(CONFIG_MMC_DW_FMP_ECRYPT_FS)
-			ret = exynos_smc(SMC_CMD_FMP, FMP_SECURITY, EMMC0_FMP, FMP_DESC_ON);
+		ret = exynos_smc(SMC_CMD_FMP, FMP_SECURITY, EMMC0_FMP, FMP_DESC_ON);
 #else
-			ret = exynos_smc(SMC_CMD_FMP, FMP_SECURITY, EMMC0_FMP, FMP_DESC_OFF);
+		ret = exynos_smc(SMC_CMD_FMP, FMP_SECURITY, EMMC0_FMP, FMP_DESC_OFF);
 #endif
-			break;
-		case 2:
-			ret = exynos_smc(SMC_CMD_FMP, FMP_SECURITY, EMMC2_FMP, FMP_DESC_OFF);
-			break;
-		default:
-			goto sector_config;
+		break;
+	case 2:
+		ret = exynos_smc(SMC_CMD_FMP, FMP_SECURITY, EMMC2_FMP, FMP_DESC_OFF);
+		break;
+	default:
+		goto sector_config;
 	}
 	if (ret)
 		dev_err(host->dev, "Fail to smc call for FMP SECURITY\n");
@@ -512,6 +516,8 @@ static void dw_mci_exynos_set_ios(struct dw_mci *host, struct mmc_ios *ios)
 			dw_mci_card_int_hwacg_ctrl(host, HWACG_Q_ACTIVE_DIS);
 	}
 
+	host->cclk_in = wanted;
+
 	/* Set clock timing for the requested speed mode*/
 	dw_mci_exynos_set_clksel_timing(host, clksel);
 
@@ -591,11 +597,6 @@ static int dw_mci_exynos_parse_dt(struct dw_mci *host)
 		else
 			priv->sec_sd_slot_type = -1;
 	}
-
-	if (of_get_property(np, "xbootldo-gpio", NULL))
-		priv->xbootldo_gpio = of_get_named_gpio(np, "xbootldo-gpio", 0);
-	else
-		priv->xbootldo_gpio = -1;
 
 	for (idx_ref = 0; idx_ref < ref_clk_size; idx_ref++, ref_clk++, ciu_clkin_values++) {
 		if (*ciu_clkin_values > MHZ)
@@ -1044,7 +1045,7 @@ static int dw_mci_exynos_execute_tuning(struct dw_mci_slot *slot, u32 opcode,
 
 	dev_info(host->dev, "Tuning Abnormal_result 0x%08x.\n", abnormal_result);
 
-	priv->clk_drive_tuning = priv->clk_drive_number - 1;
+	priv->clk_drive_tuning = priv->clk_drive_number-1;
 	drv_str_retries = priv->clk_drive_number;
 
 	do {
@@ -1372,8 +1373,8 @@ static ssize_t sd_data_show(struct device *dev,
 		cur_card = host->cur_slot->mmc->card;
 	else {
 		len = snprintf(buf, PAGE_SIZE,
-				"\"GE\":\"0\",\"CC\":\"0\",\"ECC\":\"0\",\"WP\":\"0\""\
-				",\"OOR\":\"0\",\"CRC\":\"0\",\"TMO\":\"0\"\n");
+			"\"GE\":\"0\",\"CC\":\"0\",\"ECC\":\"0\",\"WP\":\"0\"\
+,\"OOR\":\"0\",\"CRC\":\"0\",\"TMO\":\"0\"\n");
 		goto out;
 	}
 
@@ -1387,8 +1388,8 @@ static ssize_t sd_data_show(struct device *dev,
 	}	
 
 	len = snprintf(buf, PAGE_SIZE,
-			"\"GE\":\"%d\",\"CC\":\"%d\",\"ECC\":\"%d\",\"WP\":\"%d\""\
-			",\"OOR\":\"%d\",\"CRC\":\"%lld\",\"TMO\":\"%lld\"\n",
+			"\"GE\":\"%d\",\"CC\":\"%d\",\"ECC\":\"%d\",\"WP\":\"%d\"\
+,\"OOR\":\"%d\",\"CRC\":\"%lld\",\"TMO\":\"%lld\"\n",
 			err_log[0].ge_cnt, err_log[0].cc_cnt, err_log[0].ecc_cnt, err_log[0].wp_cnt,
 			err_log[0].oor_cnt, total_c_cnt, total_t_cnt); 
 out:
@@ -1407,65 +1408,6 @@ static int dw_mci_exynos_request_ext_irq(struct dw_mci *host,
 {
 	struct dw_mci_exynos_priv_data *priv = host->priv;
 	int ext_cd_irq = 0;
-
-	if (gpio_is_valid(priv->cd_gpio) &&
-			!gpio_request(priv->cd_gpio, "DWMCI_EXT_CD")) {
-		ext_cd_irq = gpio_to_irq(priv->cd_gpio);
-		if (ext_cd_irq &&
-				devm_request_irq(host->dev, ext_cd_irq, func,
-					IRQF_TRIGGER_RISING |
-					IRQF_TRIGGER_FALLING |
-					IRQF_ONESHOT,
-					"tflash_det", host) == 0) {
-			dev_warn(host->dev, "success to request irq for card detect.\n");
-			enable_irq_wake(ext_cd_irq);
-		} else
-			dev_warn(host->dev, "cannot request irq for card detect.\n");
-	}
-	return 0;
-}
-
-static int dw_mci_exynos_check_cd(struct dw_mci *host)
-{
-	int ret = -1;
-	struct dw_mci_exynos_priv_data *priv = host->priv;
-
-	if (gpio_is_valid(priv->cd_gpio)) {
-		if (host->pdata->caps2 & MMC_CAP2_CD_ACTIVE_HIGH)
-			ret = gpio_get_value(priv->cd_gpio) ? 1 : 0;
-		else
-			ret = gpio_get_value(priv->cd_gpio) ? 0 : 1;
-	}
-
-	if (priv->sec_sd_slot_type == SEC_NO_DET_SD_SLOT)
-		ret = 1;
-
-	return ret;
-}
-
-static void dw_mci_exynos_set_etc_gpio(struct dw_mci *host)
-{
-	struct dw_mci_exynos_priv_data *priv = host->priv;
-	bool power_set;
-
-	if (host->cur_slot && host->cur_slot->mmc &&
-			host->cur_slot->mmc->ios.power_mode == MMC_POWER_OFF)
-		power_set = false;
-	else
-		power_set = true;
-
-	if (gpio_is_valid(priv->xbootldo_gpio)) {
-		gpio_direction_output(priv->xbootldo_gpio, power_set);
-		dev_info(host->dev, "xbootldo is %s.\n", gpio_get_value(priv->xbootldo_gpio) ?
-				"high" : "low");
-	}
-	return;
-}
-
-static void dw_mci_exynos_add_sysfs(struct dw_mci *host)
-{
-	struct dw_mci_exynos_priv_data *priv = host->priv;
-
 	if ((priv->sec_sd_slot_type) >= 0) {
 		if (!sd_detection_cmd_dev) {
 			sd_detection_cmd_dev = sec_device_create(host, "sdcard");
@@ -1473,8 +1415,7 @@ static void dw_mci_exynos_add_sysfs(struct dw_mci *host)
 				pr_err("Fail to create sysfs dev\n");
 			if (device_create_file(sd_detection_cmd_dev,
 						&dev_attr_status) < 0)
-				pr_err("Fail to create status sysfs file\n");
-
+				pr_err("Fail to create sysfs file\n");
 			if (device_create_file(sd_detection_cmd_dev,
 						&dev_attr_cd_cnt) < 0)
 				pr_err("Fail to create cd_cnt sysfs file\n");
@@ -1505,6 +1446,36 @@ static void dw_mci_exynos_add_sysfs(struct dw_mci *host)
 				pr_err("Fail to create status sysfs file\n");
 		}
 	}
+
+	if (gpio_is_valid(priv->cd_gpio) &&
+			!gpio_request(priv->cd_gpio, "DWMCI_EXT_CD")) {
+		ext_cd_irq = gpio_to_irq(priv->cd_gpio);
+		if (ext_cd_irq &&
+				devm_request_irq(host->dev, ext_cd_irq, func,
+					IRQF_TRIGGER_RISING |
+					IRQF_TRIGGER_FALLING |
+					IRQF_ONESHOT,
+					"tflash_det", host) == 0) {
+			dev_warn(host->dev, "success to request irq for card detect.\n");
+			enable_irq_wake(ext_cd_irq);
+		} else
+			dev_warn(host->dev, "cannot request irq for card detect.\n");
+	}
+	return 0;
+}
+
+static int dw_mci_exynos_check_cd(struct dw_mci *host)
+{
+	int ret = -1;
+	struct dw_mci_exynos_priv_data *priv = host->priv;
+
+	if (gpio_is_valid(priv->cd_gpio))
+		 ret = gpio_get_value(priv->cd_gpio) ? 0 : 1;
+
+	if (priv->sec_sd_slot_type == SEC_NO_DET_SD_SLOT)
+		ret = 1;
+
+	return ret;
 }
 
 static int dw_mci_exynos_misc_control(struct dw_mci *host,
@@ -1522,12 +1493,6 @@ static int dw_mci_exynos_misc_control(struct dw_mci *host,
 			break;
 		case CTRL_CHECK_CD:
 			ret = dw_mci_exynos_check_cd(host);
-			break;
-		case CTRL_SET_ETC_GPIO:
-			dw_mci_exynos_set_etc_gpio(host);
-			break;
-		case CTRL_ADD_SYSFS:
-			dw_mci_exynos_add_sysfs(host);
 			break;
 		default:
 			dev_err(host->dev, "dw_mmc exynos: wrong case\n");

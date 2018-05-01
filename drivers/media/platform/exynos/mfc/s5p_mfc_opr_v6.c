@@ -98,7 +98,7 @@ static int s5p_mfc_init_decode(struct s5p_mfc_ctx *ctx)
 
 	/* conceal control to specific color */
 	if (FW_HAS_CONCEAL_CONTROL(dev))
-		reg |= (0x4 << S5P_FIMV_D_OPT_CONCEAL_CONTROL);
+		reg |= (0x3 << S5P_FIMV_D_OPT_CONCEAL_CONTROL);
 
 	/* Parsing all including PPS */
 	reg |= (0x1 << S5P_FIMV_D_OPT_SPECIAL_PARSING_SHIFT);
@@ -118,7 +118,6 @@ static int s5p_mfc_init_decode(struct s5p_mfc_ctx *ctx)
 	switch (ctx->dst_fmt->fourcc) {
 	case V4L2_PIX_FMT_NV12M:
 	case V4L2_PIX_FMT_NV12N:
-	case V4L2_PIX_FMT_NV12N_10B:
 	case V4L2_PIX_FMT_NV12MT_16X16:
 		pix_val = 0;
 		break;

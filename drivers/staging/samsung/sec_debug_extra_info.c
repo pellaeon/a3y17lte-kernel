@@ -89,7 +89,7 @@ void sec_debug_clear_extra_info(enum sec_debug_extra_buf_type type)
 /******************************************************************************
  * sec_debug_set_extra_info() - function to set each extra info field
  *
- * This function simply set each filed of sec_debug_panic_extra_info.
+ * This function simply set each field of sec_debug_panic_extra_info.
 ******************************************************************************/
 
 void sec_debug_set_extra_info(enum sec_debug_extra_buf_type type,

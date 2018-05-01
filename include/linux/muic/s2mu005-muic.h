@@ -75,7 +75,6 @@
 
 /* S2MU005 ADC register */
 #define ADC_MASK				(0x1f)
-
 #define ADC_CONVERSION_MASK	(0x1 << 7)
 
 /* S2MU005 Timing Set 1 & 2 register Timing table */
@@ -153,6 +152,7 @@
  */
 #define MANUAL_SW_DM_SHIFT		5
 #define MANUAL_SW_DP_SHIFT		2
+#define MANUAL_SW_CHG_SHIFT		1
 #define MANUAL_SW_DM_DP_MASK	0xFC
 
 #define MANUAL_SW_OPEN			(0x0)
@@ -161,33 +161,18 @@
 #define MANUAL_SW_UART2			(0x3 << MANUAL_SW_DM_SHIFT | 0x3 << MANUAL_SW_DP_SHIFT)
 #define MANUAL_SW_AUDIO		(0x0 << MANUAL_SW_DM_SHIFT | 0x0 << MANUAL_SW_DP_SHIFT) /* Not Used */
 
+#define MANUAL_SW_OTGEN		(0x1)
+#define MANUAL_SW_CHARGER	(0x1 << MANUAL_SW_CHG_SHIFT)
+
 enum s2mu005_reg_manual_sw_value {
 	MANSW_OPEN		=	(MANUAL_SW_OPEN),
-	MANSW_USB		=	(MANUAL_SW_USB),
-	MANSW_AUDIO		=	(MANUAL_SW_AUDIO), /* Not Used */
-	MANSW_UART		=	(MANUAL_SW_UART),
+	MANSW_OPEN_WITH_VBUS	=	(MANUAL_SW_CHARGER),
+	MANSW_USB		=	(MANUAL_SW_USB | MANUAL_SW_CHARGER),
+	MANSW_AUDIO	=	(MANUAL_SW_AUDIO | MANUAL_SW_CHARGER), /* Not Used */
+	MANSW_OTG		=	(MANUAL_SW_USB | MANUAL_SW_OTGEN),
+	MANSW_UART		=	(MANUAL_SW_UART | MANUAL_SW_CHARGER),
+	MANSW_OPEN_RUSTPROOF	=	(MANUAL_SW_OPEN | MANUAL_SW_CHARGER),
 };
-
-#ifndef CONFIG_SEC_FACTORY
-/* S2MU005_REG_LDOADC_VSET register */
-#define LDOADC_VSET_MASK        0x1F
-#define LDOADC_VSET_3V          0x1F
-#define LDOADC_VSET_2_6V        0x0E
-#define LDOADC_VSET_2_0V        0x08
-#define LDOADC_VSET_2_2V        0x0A
-#define LDOADC_VSET_2_4V        0x0C
-#define LDOADC_VSET_1_5V        0x03
-#define LDOADC_VSET_1_4V        0x02
-#define LDOADC_VSET_1_2V        0x00
-
-/* Range of ADC */
-#define IS_WATER_ADC(adc)( ((adc) > (ADC_GND)) && ((adc) < (ADC_OPEN)) ? 1 : 0 )
-#define IS_AUDIO_ADC(adc)( ((adc) >= (ADC_SEND_END)) && ((adc) <= (ADC_REMOTE_S12)) ? 1 : 0 )
-
-#define WATER_TOGGLE_WA_MIN_DURATION_US	20000
-#define WATER_TOGGLE_WA_MAX_DURATION_US	21000
-
-#endif
 
 /* muic chip specific internal data structure
  * that setted at muic-xxxx.c file
@@ -231,8 +216,9 @@ struct s2mu005_muic_data {
 	bool	is_factory_start;
 	bool	is_rustproof;
 	bool	is_otg_test;
-#ifndef CONFIG_SEC_FACTORY
-	bool	is_water_wa;
+
+#if !defined(CONFIG_MUIC_S2MU005_ENABLE_AUTOSW)
+	bool	is_jig_on;
 #endif
 	/* W/A waiting for the charger ic */
 	bool suspended;
@@ -244,6 +230,7 @@ struct s2mu005_muic_data {
 };
 
 
+extern struct device *switch_device;
 extern unsigned int system_rev;
 extern struct muic_platform_data muic_pdata;
 

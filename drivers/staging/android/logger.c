@@ -29,16 +29,16 @@
 #include <linux/time.h>
 #include <linux/vmalloc.h>
 #include <linux/aio.h>
+#include <linux/rtc.h>
 #include "logger.h"
 
 #include <asm/ioctls.h>
 #ifdef CONFIG_SEC_DEBUG
 #include <linux/sec_debug.h>
-#define SUPPORT_GETLOG_TOOL
+#define ANDROID_M_GETLOG_TOOL
 #endif
-
-#ifdef CONFIG_SEC_EXT
-#include <linux/sec_ext.h>
+#ifdef CONFIG_SEC_BSP
+#include <linux/sec_bsp.h>
 #endif
 
 /**
@@ -66,14 +66,6 @@ struct logger_log {
 	size_t			w_off;
 	size_t			head;
 	size_t			size;
-#ifdef CONFIG_EXYNOS_SNAPSHOT_HOOK_LOGGER
-	bool			ess_hook;
-	char			*ess_buf;
-	char			*ess_sync_buf;
-	size_t			ess_size;
-	size_t			ess_sync_size;
-	size_t			header_size;
-#endif
 	struct list_head	logs;
 };
 
@@ -426,91 +418,6 @@ static void fix_up_readers(struct logger_log *log, size_t len)
 			reader->r_off = get_next_entry(log, reader->r_off, len);
 }
 
-#ifdef CONFIG_EXYNOS_SNAPSHOT_HOOK_LOGGER
-#define ESS_MAX_BUF_SIZE	(SZ_4K)
-#define ESS_MAX_SYNC_BUF_SIZE	(SZ_1K)
-#define ESS_MAX_TIMEBUF_SIZE	(20)
-
-static void (*func_hook_logger)(const char *name, const char *buf, size_t size);
-void register_hook_logger_sec(void (*func)(const char *name, const char *buf, size_t size))
-{
-	func_hook_logger = func;
-}
-EXPORT_SYMBOL(register_hook_logger_sec);
-
-static int reparse_hook_logger_header(struct logger_log *log,
-				      struct logger_entry *entry)
-{
-	struct tm tmBuf;
-	char timeBuf[ESS_MAX_TIMEBUF_SIZE];
-	char process[16];
-	u64 tv_kernel;
-	unsigned long rem_nsec;
-
-	tv_kernel = local_clock();
-	rem_nsec = do_div(tv_kernel, 1000000000);
-
-	time_to_tm(entry->sec, 0, &tmBuf);
-
-	strncpy(process, current->comm, sizeof(process));
-
-	snprintf(timeBuf, sizeof(timeBuf), "%02d-%02d %02d:%02d:%02d",
-			tmBuf.tm_mon + 1, tmBuf.tm_mday,
-			tmBuf.tm_hour, tmBuf.tm_min, tmBuf.tm_sec);
-
-	snprintf(log->ess_buf, ESS_MAX_BUF_SIZE, "[%5lu.%06lu][%d:%16s] %s.%03d %5d %5d  ",
-			(unsigned long)tv_kernel, rem_nsec / 1000,
-			raw_smp_processor_id(), process,
-			timeBuf, entry->nsec / 1000000,
-			entry->pid,
-			entry->tid);
-
-	return log->header_size = strlen(log->ess_buf);
-}
-
-static size_t copy_hook_logger(struct logger_log *log, char *buf, size_t count,
-				size_t filled_size, size_t max_size)
-{
-	size_t len = min(count, log->size - log->w_off);
-	size_t m_off = (size_t)buf + filled_size;
-
-	if (max_size <= filled_size) {
-		pr_err("%s: failed to hooking platform log - count: %zu max: %zu, fill: %zu\n",
-			__func__, count, max_size, filled_size);
-		return filled_size;
-	}
-
-	/* Considering count size */
-	if (filled_size + count < max_size) {
-		memcpy((void *)m_off, log->buffer + log->w_off, len);
-		if (count != len)
-			memcpy((void *)m_off + len, log->buffer, count - len);
-		filled_size += count;
-	} else {
-		/* Cut off over max_size in count == len */
-		if (count == len) {
-			memcpy((void *)m_off, log->buffer + log->w_off,
-					max_size - filled_size - 1);
-		} else {
-			/* Considering len size */
-			if (filled_size + len < max_size) {
-				/* Enough to fill len size */
-				memcpy((void *)m_off, log->buffer + log->w_off, len);
-				/* Cut off over max_size */
-				memcpy((void *)(m_off + len), log->buffer,
-						max_size - filled_size - len - 1);
-			} else {
-				/* Cut off over max size */
-				memcpy((void *)m_off, log->buffer + log->w_off,
-						max_size - filled_size - 1);
-			}
-		}
-		filled_size = max_size;
-	}
-	return filled_size;
-}
-#endif
-
 /*
  * do_write_log - writes 'len' bytes from 'buf' to 'log'
  *
@@ -526,11 +433,6 @@ static void do_write_log(struct logger_log *log, const void *buf, size_t count)
 	if (count != len)
 		memcpy(log->buffer, buf + len, count - len);
 
-#ifdef CONFIG_EXYNOS_SNAPSHOT_HOOK_LOGGER
-	if (func_hook_logger && log->ess_buf)
-		log->ess_size = reparse_hook_logger_header(log,
-					(struct logger_entry *)buf);
-#endif
 	log->w_off = logger_offset(log, log->w_off + count);
 }
 
@@ -561,35 +463,36 @@ static ssize_t do_write_log_from_user(struct logger_log *log,
 			 */
 			return -EFAULT;
 
-#ifdef CONFIG_EXYNOS_SNAPSHOT_HOOK_LOGGER
-	/*
-	 *  There are times when log buffer is just 1 bytes
-	 *  for sync with kernel log buffer
-	 */
-	if (log->ess_sync_buf && len > 1 &&
-		log->ess_sync_size < ESS_MAX_SYNC_BUF_SIZE - 1 &&
-		strncmp(log->buffer + log->w_off, "!@", 2) == 0) {
-		log->ess_sync_size = copy_hook_logger(log,
-						      log->ess_sync_buf,
-						      count,
-						      log->ess_sync_size,
-						      ESS_MAX_SYNC_BUF_SIZE);
-#ifdef CONFIG_SEC_BOOTSTAT
-	if (strncmp(log->buffer + log->w_off, "!@Boot", 6) == 0) {
-		sec_bootstat_add(log->buffer + log->w_off);
-	}
+	/* print as kernel log if the log string starts with "!@" */
+	if (count >= 2) {
+		if (log->buffer[log->w_off] == '!'
+		    && log->buffer[logger_offset(log, log->w_off + 1)] == '@') {
+			char tmp[256];
+			size_t i;
+			for (i = 0; i < min(count, sizeof(tmp) - 1); i++)
+				tmp[i] =
+				    log->buffer[logger_offset \
+						(log, log->w_off + i)];
+			tmp[i] = '\0';
+			if (!strstr(tmp, "!@Sync"))
+				printk(KERN_INFO "%s\n", tmp);
+			else {
+				struct timespec ts;
+				struct rtc_time tm;
+				getnstimeofday(&ts);
+				rtc_time_to_tm(ts.tv_sec, &tm);
+				printk(KERN_INFO "[%d-%02d-%02d %02d:%02d:%02d.%09lu]%s\n",
+					tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+					tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec, tmp);
+			}
+#ifdef CONFIG_SEC_BSP
+			if (strncmp(tmp, "!@Boot", 6) == 0) {
+				sec_boot_stat_add(tmp);
+			}
 #endif
-	}
-	if (func_hook_logger && log->ess_hook) {
-		if (log->ess_size < ESS_MAX_BUF_SIZE - 1) {
-			log->ess_size = copy_hook_logger(log,
-							 log->ess_buf,
-							 count,
-							 log->ess_size,
-							 ESS_MAX_BUF_SIZE);
 		}
 	}
-#endif
+
 	log->w_off = logger_offset(log, log->w_off + count);
 
 	return count;
@@ -651,48 +554,14 @@ static ssize_t logger_aio_write(struct kiocb *iocb, const struct iovec *iov,
 		nr = do_write_log_from_user(log, iov->iov_base, len);
 		if (unlikely(nr < 0)) {
 			log->w_off = orig;
-			mutex_unlock(&log->mutex);
+		mutex_unlock(&log->mutex);
 			return nr;
-		}
+	}
 
 		iov++;
 		ret += nr;
 	}
-#ifdef CONFIG_EXYNOS_SNAPSHOT_HOOK_LOGGER
-	if (func_hook_logger && log->ess_hook) {
-		/* it is allowed to hook if ess_size < ESS_MAX_BUF_SIZE */
-		if (log->ess_size < ESS_MAX_BUF_SIZE) {
-			char *eatnl = log->ess_buf + log->ess_size - 1;
 
-			if (log->ess_size > log->header_size) {
-				static const char* kPrioChars = "!.VDIWEFS";
-				unsigned char prio = log->ess_buf[log->header_size];
-
-				log->ess_buf[log->header_size - 1] =
-					prio < strlen(kPrioChars) ? kPrioChars[prio] : '?';
-				log->ess_buf[log->header_size] = ' ';
-			}
-			*eatnl = '\n';
-			while (--eatnl >= log->ess_buf) {
-				if (*eatnl == '\n' || *eatnl == '\0')
-					*eatnl = ' ';
-			};
-			func_hook_logger(log->misc.name, log->ess_buf, log->ess_size);
-		}
-	}
-	/* if it is kernel sync logs */
-	if (log->ess_sync_buf && log->ess_sync_size) {
-		/* save code to prevent overflow during printk */
-		if (log->ess_sync_size < ESS_MAX_SYNC_BUF_SIZE)
-			log->ess_sync_buf[log->ess_sync_size - 1] = '\0';
-		else
-			log->ess_sync_buf[ESS_MAX_SYNC_BUF_SIZE - 1] = '\0';
-		pr_info("%s\n", log->ess_sync_buf);
-		/* clear ess_sync_buf */
-		memset(log->ess_sync_buf, 0, ESS_MAX_SYNC_BUF_SIZE);
-		log->ess_sync_size = 0;
-	}
-#endif
 	mutex_unlock(&log->mutex);
 
 	/* wake up any blocked readers */
@@ -915,62 +784,6 @@ static const struct file_operations logger_fops = {
 	.release = logger_release,
 };
 
-#ifdef SUPPORT_GETLOG_TOOL
-/* Use the old way because the new logger gets log buffers by means of vmalloc().
-    getlog tool considers that log buffers lie on physically contiguous memory area. */
-
-/*
- * Defines a log structure with name 'NAME' and a size of 'SIZE' bytes, which
- * must be a power of two, and greater than
- * (LOGGER_ENTRY_MAX_PAYLOAD + sizeof(struct logger_entry)).
- */
-#define DEFINE_LOGGER_DEVICE(VAR, NAME, SIZE) \
-static unsigned char _buf_ ## VAR[SIZE]; \
-static struct logger_log VAR = { \
-	.buffer = _buf_ ## VAR, \
-	.misc = { \
-		.minor = MISC_DYNAMIC_MINOR, \
-		.name = NAME, \
-		.fops = &logger_fops, \
-		.parent = NULL, \
-	}, \
-	.wq = __WAIT_QUEUE_HEAD_INITIALIZER(VAR .wq), \
-	.readers = LIST_HEAD_INIT(VAR .readers), \
-	.mutex = __MUTEX_INITIALIZER(VAR .mutex), \
-	.w_off = 0, \
-	.head = 0, \
-	.size = SIZE, \
-	.logs = LIST_HEAD_INIT(VAR .logs), \
-};
-
-DEFINE_LOGGER_DEVICE(log_main, LOGGER_LOG_MAIN, 2*1024*1024)
-DEFINE_LOGGER_DEVICE(log_events, LOGGER_LOG_EVENTS,256*1024)
-DEFINE_LOGGER_DEVICE(log_radio, LOGGER_LOG_RADIO, 1024*1024)
-DEFINE_LOGGER_DEVICE(log_system, LOGGER_LOG_SYSTEM, 256*1024)
-
-struct logger_log * log_buffers[]={
-	&log_main,
-	&log_events,
-	&log_radio,
-	&log_system,
-	NULL,
-};
-
-struct logger_log *sec_get_log_buffer(char *log_name, int size)
-{
-	struct logger_log **log_buf=&log_buffers[0];
-
-	while (*log_buf) {
-		if (!strcmp(log_name,(*log_buf)->misc.name)) {
-			return *log_buf;
-		}
-
-		log_buf++;
-	}
-	return NULL;
-}
-#endif
-
 /*
  * Log size must must be a power of two, and greater than
  * (LOGGER_ENTRY_MAX_PAYLOAD + sizeof(struct logger_entry)).
@@ -981,67 +794,7 @@ static int __init create_log(char *log_name, int size)
 	struct logger_log *log;
 	unsigned char *buffer;
 
-#ifdef SUPPORT_GETLOG_TOOL
-	log = sec_get_log_buffer(log_name,size);
-	if (!log) {
-		pr_err("No \"%s\" buffer registered\n",log_name);
-		return -1;
-	}
-
-	list_add_tail(&log->logs, &log_list);
-
-	/* finally, initialize the misc device for this log */
-	ret = misc_register(&log->misc);
-	if (unlikely(ret)) {
-		pr_err("failed to register misc device for log '%s'!\n",
-			log->misc.name);
-		return ret;
-	}
-
-	pr_info("created %luK log '%s'\n",
-		(unsigned long) log->size >> 10, log->misc.name);
-
-#ifdef CONFIG_EXYNOS_SNAPSHOT_HOOK_LOGGER
-	buffer = vmalloc(ESS_MAX_SYNC_BUF_SIZE);
-	if (buffer)
-		log->ess_sync_buf = buffer;
-	else
-		pr_err("failed to vmalloc ess_sync_buf %s log\n",
-				log->misc.name);
-
-	if (exynos_ss_get_enable(log->misc.name, true) == true) {
-		buffer = vmalloc(ESS_MAX_BUF_SIZE);
-		if (buffer)
-			log->ess_buf = buffer;
-		else
-			pr_err("failed to vmalloc ess_buf %s log\n",
-					log->misc.name);
-
-		if (log->ess_sync_buf) {
-			if (log->ess_buf)
-				log->ess_hook = true;
-			else
-				vfree(log->ess_sync_buf);
-		}
-		if (!log->ess_hook)
-			pr_err("failed to use hooking platform %s log\n",
-					log->misc.name);
-		else
-			pr_info("Enable to hook %s, Buffer:%p\n", log->misc.name, buffer);
-	}
-#endif
-
-#ifdef CONFIG_SEC_DEBUG
-	sec_getlog_supply_platform(log->buffer, log->misc.name);
-#endif
-
-	return ret;
-#else /* SUPPORT_GETLOG_TOOL */
-#ifdef CONFIG_SEC_DEBUG
-	buffer = kmalloc(size, GFP_KERNEL);
-#else
-	buffer = vmalloc(size);
-#endif
+	buffer = (unsigned char *)kmalloc(size, GFP_KERNEL);
 	if (buffer == NULL)
 		return -ENOMEM;
 
@@ -1083,30 +836,8 @@ static int __init create_log(char *log_name, int size)
 	pr_info("created %luK log '%s'\n",
 		(unsigned long) log->size >> 10, log->misc.name);
 
-#ifdef CONFIG_EXYNOS_SNAPSHOT_HOOK_LOGGER
-	buffer = vmalloc(ESS_MAX_SYNC_BUF_SIZE);
-	if (buffer)
-		log->ess_sync_buf = buffer;
-	else
-		pr_err("failed to vmalloc ess_sync_buf %s log\n",
-				log->misc.name);
+	sec_getlog_supply_platform(buffer, log->misc.name);
 
-	if (exynos_ss_get_enable(log->misc.name, true) == true) {
-		buffer = vmalloc(ESS_MAX_BUF_SIZE);
-		if (!buffer) {
-			pr_err("failed to use hooking platform %s log\n", log->misc.name);
-		} else {
-			log->ess_buf = buffer;
-			log->ess_hook = true;
-			pr_info("Enable to hook %s, Buffer:%p\n",
-					log->misc.name, log->ess_buf);
-		}
-	}
-#endif
-
-#ifdef CONFIG_SEC_DEBUG
-		sec_getlog_supply_platform(log->buffer, log->misc.name);
-#endif
 	return 0;
 
 out_free_misc_name:
@@ -1116,19 +847,15 @@ out_free_log:
 	kfree(log);
 
 out_free_buffer:
-#ifdef CONFIG_SEC_DEBUG
 	kfree(buffer);
-#else
-	vfree(buffer);
-#endif
+
 	return ret;
-#endif /* SUPPORT_GETLOG_TOOL */
 }
 
 static int __init logger_init(void)
 {
 	int ret;
-	
+
 	ret = create_log(LOGGER_LOG_MAIN, 2*1024*1024);
 	if (unlikely(ret))
 		goto out;
@@ -1137,7 +864,7 @@ static int __init logger_init(void)
 	if (unlikely(ret))
 		goto out;
 
-	ret = create_log(LOGGER_LOG_RADIO, 1024*1024);
+	ret = create_log(LOGGER_LOG_RADIO, 2*1024*1024);
 	if (unlikely(ret))
 		goto out;
 
@@ -1156,7 +883,7 @@ static void __exit logger_exit(void)
 	list_for_each_entry_safe(current_log, next_log, &log_list, logs) {
 		/* we have to delete all the entry inside log_list */
 		misc_deregister(&current_log->misc);
-		vfree(current_log->buffer);
+		kfree(current_log->buffer);
 		kfree(current_log->misc.name);
 		list_del(&current_log->logs);
 		kfree(current_log);

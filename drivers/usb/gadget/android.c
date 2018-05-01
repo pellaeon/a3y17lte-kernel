@@ -23,11 +23,9 @@
 #include <linux/kernel.h>
 #include <linux/utsname.h>
 #include <linux/platform_device.h>
-
 #ifdef CONFIG_USB_NOTIFY_PROC_LOG
 #include <linux/usblog_proc_notify.h>
 #endif
-
 #include <linux/usb/ch9.h>
 #include <linux/usb/composite.h>
 #include <linux/usb/gadget.h>
@@ -115,10 +113,8 @@ struct android_dev {
 	struct list_head enabled_functions;
 	struct usb_composite_dev *cdev;
 	struct device *dev;
-
 	void (*setup_complete)(struct usb_ep *ep,
 				struct usb_request *req);
-
 	bool enabled;
 	int disable_depth;
 	struct mutex mutex;
@@ -127,10 +123,6 @@ struct android_dev {
 	struct work_struct work;
 #ifdef CONFIG_USB_LOCK_SUPPORT_FOR_MDM
 	int usb_lock;
-#endif
-#ifndef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
-	int usb210_count;
-	int usb310_count;
 #endif
 	char ffs_aliases[256];
 };
@@ -202,25 +194,6 @@ static struct usb_configuration android_config_driver = {
 	.bmAttributes	= USB_CONFIG_ATT_ONE | USB_CONFIG_ATT_SELFPOWER,
 	.MaxPower	= 96, /* 96ma */
 };
-#ifndef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
-int microusb_get_usb210_count(void)
-{
-	int ret;
-	ret = _android_dev->usb210_count;
-	_android_dev->usb210_count = 0;
-	return ret;
-}
-EXPORT_SYMBOL(microusb_get_usb210_count);
-
-int microusb_get_usb310_count(void)
-{
-	int ret;
-	ret = _android_dev->usb310_count;
-	_android_dev->usb310_count = 0;
-	return ret;
-}
-EXPORT_SYMBOL(microusb_get_usb310_count);
-#endif
 
 static void android_work(struct work_struct *data)
 {
@@ -258,16 +231,7 @@ static void android_work(struct work_struct *data)
 #ifdef CONFIG_USB_NOTIFY_PROC_LOG
 		store_usblog_notify(NOTIFY_USBSTATE, (void *)uevent_envp[0], NULL);
 #endif
-#ifndef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
-		if (dev->connected && cdev->config) {
-			if (dev->cdev && (dev->cdev->desc.bcdUSB == 0x310)) {
-				dev->usb310_count++;	// Super-Speed	
-			} else {
-				dev->usb210_count++;	// High-Speed
-			}
-		}
-#endif
-		printk(KERN_DEBUG "usb: %s sent uevent %s\n",
+			printk(KERN_DEBUG "usb: %s sent uevent %s\n",
 			 __func__, uevent_envp[0]);
 	} else {
 		printk(KERN_DEBUG "usb: %s did not send uevent (%d %d %p)\n",
@@ -1294,6 +1258,7 @@ static struct android_usb_function mass_storage_function = {
 	.enable		= mass_storage_function_enable,
 };
 
+
 static int accessory_function_init(struct android_usb_function *f,
 					struct usb_composite_dev *cdev)
 {
@@ -1646,9 +1611,9 @@ functions_store(struct device *pdev, struct device_attribute *attr,
 	printk(KERN_DEBUG "usb: %s buff=%s\n", __func__, buff);
 	strlcpy(buf, buff, sizeof(buf));
 	b = strim(buf);
-
+	
 #ifdef CONFIG_USB_NOTIFY_PROC_LOG
-		store_usblog_notify(NOTIFY_USBMODE, (void *)b, NULL);
+	store_usblog_notify(NOTIFY_USBMODE, (void *)b, NULL);
 #endif
 	while (b) {
 		name = strsep(&b, ",");
@@ -1788,7 +1753,7 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 		dev->enabled = true;
 #ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
 		set_usb_enable_state();
-#endif		
+#endif
 	} else if (!enabled && dev->enabled) {
 #ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 		/* avoid sending a disconnect switch event
@@ -2013,10 +1978,8 @@ static int android_bind(struct usb_composite_dev *cdev)
 	int			id, ret;
 
 	printk(KERN_DEBUG "usb: %s disconnect\n", __func__);
-
 	/* Save the default handler */
 	dev->setup_complete = cdev->req->complete;
-
 	/*
 	 * Start disconnected. Userspace will connect the gadget once
 	 * it is done configuring the functions.

@@ -28,7 +28,7 @@
 #include <linux/suspend.h>
 #include <linux/debugfs.h>
 
-#ifdef CONFIG_SOC_EXYNOS7870
+#if defined (CONFIG_SOC_EXYNOS7870) || defined (CONFIG_SOC_EXYNOS7880)
 #define MAX_WAKEUP_REASON_IRQS 24
 #else
 #define MAX_WAKEUP_REASON_IRQS 32

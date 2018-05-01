@@ -34,10 +34,6 @@ enum exynos_pm_event {
 
 	/* CPU is exiting the SICD state */
 	SICD_EXIT,
-
-	/* Dummy power mode for uart */
-	SICD_AUD_ENTER,
-	SICD_AUD_EXIT,
 };
 
 #ifdef CONFIG_CPU_IDLE

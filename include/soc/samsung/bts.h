@@ -64,7 +64,8 @@ enum vpp_bw_type {
 	BW_FULLHD_ROT,
 };
 
-#if defined(CONFIG_EXYNOS8890_BTS) || defined(CONFIG_EXYNOS7870_BTS)
+#if defined(CONFIG_EXYNOS8890_BTS) || defined(CONFIG_EXYNOS7870_BTS) \
+	 || defined(CONFIG_EXYNOS7880_BTS)
 void exynos_update_media_scenario(enum bts_media_type media_type,
 		unsigned int bw, int bw_type);
 #else
@@ -77,11 +78,11 @@ void exynos7_update_media_scenario(enum bts_media_type media_type,
 int exynos7_update_bts_param(int target_idx, int work);
 int exynos7_bts_register_notifier(struct notifier_block *nb);
 int exynos7_bts_unregister_notifier(struct notifier_block *nb);
-#elif defined(CONFIG_EXYNOS7870_BTS)
+#elif defined(CONFIG_EXYNOS7870_BTS) || defined(CONFIG_EXYNOS7880_BTS)
 int exynos_update_bts_param(int target_idx, int work);
 int exynos_bts_register_notifier(struct notifier_block *nb);
 int exynos_bts_unregister_notifier(struct notifier_block *nb);
-int exynos_update_overlay_wincnt(int cnt);
+void bts_update_winlayer(unsigned int layers);
 #else
 #define exynos7_update_media_scenario(a, b, c) do {} while (0)
 #define exynos7_update_bts_param(a, b) do {} while (0)
@@ -90,12 +91,13 @@ int exynos_update_overlay_wincnt(int cnt);
 #define exynos_update_bts_param(a, b) do {} while (0)
 #define exynos_bts_register_notifier(a) do {} while (0)
 #define exynos_bts_unregister_notifier(a, b) do {} while (0)
+#define bts_update_winlayer(a) do {} while (0)
 #endif
 
 #if defined(CONFIG_EXYNOS5430_BTS) || defined(CONFIG_EXYNOS5422_BTS)	\
 	|| defined(CONFIG_EXYNOS5433_BTS)|| defined(CONFIG_EXYNOS7420_BTS) \
 	|| defined(CONFIG_EXYNOS7890_BTS) || defined(CONFIG_EXYNOS8890_BTS) \
-	|| defined(CONFIG_EXYNOS7870_BTS)
+	|| defined(CONFIG_EXYNOS7870_BTS) || defined(CONFIG_EXYNOS7880_BTS)
 void bts_initialize(const char *pd_name, bool on);
 #else
 #define bts_initialize(a, b) do {} while (0)
@@ -121,7 +123,8 @@ void bts_otf_initialize(unsigned int id, bool on);
 
 #if defined(CONFIG_EXYNOS5422_BTS) || defined(CONFIG_EXYNOS5433_BTS)	\
 	|| defined(CONFIG_EXYNOS7420_BTS) || defined(CONFIG_EXYNOS7890_BTS) \
-	|| defined(CONFIG_EXYNOS8890_BTS) || defined(CONFIG_EXYNOS7870_BTS)
+	|| defined(CONFIG_EXYNOS8890_BTS) || defined(CONFIG_EXYNOS7870_BTS) \
+	|| defined(CONFIG_EXYNOS7880_BTS)
 enum bts_scen_type {
 	TYPE_MFC_UD_ENCODING = 0,
 	TYPE_MFC_UD_DECODING,

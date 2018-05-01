@@ -134,10 +134,13 @@ pud_t * __meminit vmemmap_pud_populate(pgd_t *pgd, unsigned long addr, int node)
 	if (pud_none(*pud)) {
 #ifdef CONFIG_TIMA_RKP
 #ifdef CONFIG_KNOX_KAP
-		if (boot_mode_security)  rkp_do = 1;
+		if (boot_mode_security)
 #endif
+			rkp_do = 1;
 		if( rkp_do ){
 			p =  rkp_ro_alloc();
+			if (!p)
+				p = vmemmap_alloc_block(PAGE_SIZE, node);
 		}else{
 			p = vmemmap_alloc_block(PAGE_SIZE, node);
 		}

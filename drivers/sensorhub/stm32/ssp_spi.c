@@ -654,28 +654,18 @@ void set_proximity_threshold(struct ssp_data *data)
 		ssp_errf("failed to alloc memory for ssp_msg");
 		return;
 	}
-
-#ifdef CONFIG_SENSORS_SSP_TMD3700
-	msg->cmd = MSG2SSP_AP_SENSOR_PROXTHRESHOLD;
-	msg->length = 2;
-	msg->options = AP2HUB_WRITE;
-	msg->buffer = (char *)kzalloc(2, GFP_KERNEL);
-	msg->free_buffer = 1;
-
-	msg->buffer[0] = (char) data->uProxHiThresh;
-	msg->buffer[1] = (char) data->uProxLoThresh;
-#else
 	msg->cmd = MSG2SSP_AP_SENSOR_PROXTHRESHOLD;
 	msg->length = 4;
 	msg->options = AP2HUB_WRITE;
 	msg->buffer = (char *)kzalloc(4, GFP_KERNEL);
 	msg->free_buffer = 1;
 
+	ssp_errf("SENSOR_PROXTHRESHOL");
+
 	msg->buffer[0] = (char) data->uProxHiThresh;
 	msg->buffer[1] = (char) data->uProxLoThresh;
 	msg->buffer[2] = (char) data->uProxHiThresh_detect;
 	msg->buffer[3] = (char) data->uProxLoThresh_detect;
-#endif
 
 	ret = ssp_spi_async(data, msg);
 
@@ -684,12 +674,8 @@ void set_proximity_threshold(struct ssp_data *data)
 		return;
 	}
 
-#ifdef CONFIG_SENSORS_SSP_TMD3700
-	ssp_info("Proximity Threshold - %u, %u", data->uProxHiThresh, data->uProxLoThresh);
-#else
 	ssp_info("Proximity Threshold - %u, %u, %u, %u", data->uProxHiThresh, data->uProxLoThresh,
 		data->uProxHiThresh_detect, data->uProxLoThresh_detect);
-#endif
 }
 
 void set_light_coef(struct ssp_data *data)
@@ -731,6 +717,7 @@ void set_light_coef(struct ssp_data *data)
 		data->light_coef[0], data->light_coef[1], data->light_coef[2],
 		data->light_coef[3], data->light_coef[4], data->light_coef[5], data->light_coef[6]);
 }
+
 
 void set_proximity_barcode_enable(struct ssp_data *data, bool bEnable)
 {

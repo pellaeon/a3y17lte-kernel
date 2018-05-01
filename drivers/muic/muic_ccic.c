@@ -221,13 +221,10 @@ void mdev_handle_ccic_detach(muic_data_t *pmuic)
 	/* FIXME : pvendor */
 	/* struct vendor_ops *pvendor = pmuic->regmapdesc->vendorops; */
 
-	pr_info("%s\n", __func__);	
+	pr_info("%s\n", __func__);
 
 #if defined(CONFIG_MUIC_HV)
 	hv_do_detach(pmuic->phv);
-#endif
-#ifdef CONFIG_MUIC_USB_ID_CTR
-	gpio_direction_output(pmuic->usb_id_ctr, 0);
 #endif
 	if (pdesc->ccic_evt_rprd) {
 		/* FIXME : pvendor
@@ -267,6 +264,7 @@ int mdev_continue_for_TA_USB(muic_data_t *pmuic, int mdev)
 	struct mdev_desc_t *pdesc = &mdev_desc;
 	/* FIXME : pvendor */
 	/* struct vendor_ops *pvendor = pmuic->regmapdesc->vendorops; */
+
 	int i;
 	int vbus = mdev_get_vbus(pmuic);
 
@@ -280,6 +278,7 @@ int mdev_continue_for_TA_USB(muic_data_t *pmuic, int mdev)
 			pmuic->dcd_rescan(pmuic->muic_data);
 		return 0;
 	}
+
 	if (vbus == 0) {
 		pdesc->ccic_evt_dcdcnt = 0;
 		pmuic->is_dcdtmr_intr = false;
@@ -318,7 +317,6 @@ int mdev_continue_for_TA_USB(muic_data_t *pmuic, int mdev)
 
 			return 0;
 		}
-
 		msleep(50);
 	}
 
@@ -521,6 +519,13 @@ static int muic_handle_ccic_ATTACH(muic_data_t *pmuic, CC_NOTI_ATTACH_TYPEDEF *p
 			mdev_com_to(pmuic, MUIC_PATH_USB_AP);
 			return 0;
 		}
+		
+		if(pmuic->is_afc_reset) {
+			pr_info("%s: DCD RESCAN after afc reset\n", __func__);
+			pmuic->is_afc_reset = false;
+			if (pmuic->dcd_rescan != NULL)
+				pmuic->dcd_rescan(pmuic->muic_data);
+		}
 
 		if (mdev_is_valid_RID_OPEN(pmuic, vbus))
 			pr_info("%s: Valid VBUS-> handled in irq handler\n", __func__);
@@ -560,6 +565,10 @@ static int muic_handle_ccic_ATTACH(muic_data_t *pmuic, CC_NOTI_ATTACH_TYPEDEF *p
 			pr_info("%s: role swap event\n", __func__);
 			pdesc->ccic_evt_roleswap = 1;
 		} else if (vbus) {
+			if(pmuic->is_dcp_charger) {
+				pr_info("%s: reset afc\n", __func__);
+				pmuic->set_afc_reset(pmuic->muic_data);
+			}
 			pr_info("%s: Valid VBUS, return\n", __func__);
 		} else {
 			/* Detached */
@@ -746,7 +755,7 @@ static int muic_handle_ccic_notification(struct notifier_block *nb,
 	case CCIC_NOTIFY_ID_TA:
 		pr_info("%s: CCIC_NOTIFY_ID_TA\n", __func__);
 		muic_handle_ccic_TA(pmuic, (CC_NOTI_ATTACH_TYPEDEF *)pnoti);
-		break;		
+		break;
 	default:
 		pr_info("%s: Undefined Noti. ID\n", __func__);
 		return NOTIFY_DONE;

@@ -472,7 +472,6 @@ static int spip3_release(struct inode *inode, struct file *filp)
 #endif
 #ifndef CONFIG_ESE_SECURE
 	p3_pinctrl_config(p3_dev->p3_device.parent, false);
-	usleep_range(15000, 15500);
 #endif
 
 	p3_dev->device_opened = false;
@@ -558,7 +557,7 @@ static ssize_t spip3_write(struct file *filp, const char *buf, size_t count,
 	struct p3_data *p3_dev;
 	unsigned char tx_buffer[MAX_BUFFER_SIZE] = {0x0, };
 
-	//P3_DBG_MSG("spip3_write -Enter count %zu\n", count);
+	P3_DBG_MSG("spip3_write -Enter count %zu\n", count);
 
 	p3_dev = filp->private_data;
 
@@ -580,7 +579,7 @@ static ssize_t spip3_write(struct file *filp, const char *buf, size_t count,
 		ret = count;
 
 	mutex_unlock(&p3_dev->buffer_mutex);
-	//P3_DBG_MSG(KERN_ALERT "spip3_write ret %d- Exit\n", ret);
+	P3_DBG_MSG(KERN_ALERT "spip3_write ret %d- Exit\n", ret);
 
 	return ret;
 }
@@ -592,7 +591,7 @@ static ssize_t spip3_read(struct file *filp, char *buf, size_t count,
 	struct p3_data *p3_dev = filp->private_data;
 	unsigned char rx_buffer[MAX_BUFFER_SIZE] = {0x0, };
 
-	//P3_DBG_MSG("spip3_read count %zu - Enter\n", count);
+	P3_DBG_MSG("spip3_read count %zu - Enter\n", count);
 
 	mutex_lock(&p3_dev->buffer_mutex);
 
@@ -612,7 +611,7 @@ static ssize_t spip3_read(struct file *filp, char *buf, size_t count,
 	ret = count;
 
 fail:
-	//P3_DBG_MSG("%s ret %d Exit\n", __func__, ret);
+	P3_DBG_MSG("%s ret %d Exit\n", __func__, ret);
 	mutex_unlock(&p3_dev->buffer_mutex);
 
 	return ret;
@@ -638,6 +637,7 @@ static int p3_parse_dt(struct device *dev, struct p3_data *data)
 {
 	struct device_node *np = dev->of_node;
 	const char *vdd_1p8_str;
+	struct pinctrl *pinctrl = NULL;
 	int ret = 0;
 
 	data->vdd_1p8_gpio = of_get_named_gpio(np, "p3-vdd_1p8-gpio", 0);
@@ -647,6 +647,7 @@ static int p3_parse_dt(struct device *dev, struct p3_data *data)
 		ret = gpio_request(data->vdd_1p8_gpio, "ese_vdd_1p8_gpio");
 		if (ret) {
 			P3_ERR_MSG("%s - failed to request ese_vdd_1p8_gpio\n", __func__);
+			return -EPERM;
 		}
 	}
 
@@ -658,12 +659,20 @@ static int p3_parse_dt(struct device *dev, struct p3_data *data)
 
 		if (IS_ERR(data->regulator_vdd_1p8)) {
 			P3_ERR_MSG("%s - %s regulator_get fail\n", __func__, vdd_1p8_str);
+			return -EPERM;
 		}
 	}
 
 	if (!of_property_read_string(np, "p3-ap_vendor",
 		&data->ap_vendor)) {
 		P3_INFO_MSG("%s: ap_vendor - %s\n", __func__, data->ap_vendor);
+	}
+
+	pinctrl = devm_pinctrl_get_select(dev, "ese_default");
+	if (IS_ERR_OR_NULL(pinctrl)) {
+		P3_ERR_MSG("%s: ese default config is not existed\n", __func__);
+	} else {
+		devm_pinctrl_put(pinctrl);
 	}
 
 	return ret;
@@ -717,7 +726,6 @@ static int spip3_probe(struct spi_device *spi)
 #ifndef CONFIG_ESE_SECURE
 	p3_pinctrl_config(&spi->dev, false);
 #endif
-
 	dev_set_drvdata(&spi->dev, data);
 
 	/* init mutex and queues */

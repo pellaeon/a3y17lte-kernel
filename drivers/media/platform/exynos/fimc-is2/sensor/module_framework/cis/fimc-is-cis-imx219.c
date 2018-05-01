@@ -70,7 +70,7 @@ static void sensor_imx219_cis_data_calculation(const struct sensor_pll_info *pll
 
 	/* 2. pixel rate calculation (Mpps) */
 	pll_voc_a = pll_info->ext_clk / pll_info->pre_pll_clk_div * pll_info->pll_multiplier;
-	vt_pix_clk_hz = pll_voc_a /(pll_info->vt_sys_clk_div * pll_info->vt_pix_clk_div) * NUMBER_OF_PIPELINE;
+	vt_pix_clk_hz = (pll_voc_a / pll_info->vt_pix_clk_div) * 2;
 
 	dbg_sensor("ext_clock(%d) / pre_pll_clk_div(%d) * pll_multiplier(%d) = pll_voc_a(%d)\n",
 						pll_info->ext_clk, pll_info->pre_pll_clk_div,
@@ -129,7 +129,6 @@ static void sensor_imx219_cis_data_calculation(const struct sensor_pll_info *pll
 	cis_data->max_margin_coarse_integration_time = SENSOR_IMX219_COARSE_INTEGRATION_TIME_MAX_MARGIN;
 }
 
-#if 0
 static int sensor_imx219_wait_stream_off_status(cis_shared_data *cis_data)
 {
 	int ret = 0;
@@ -154,7 +153,6 @@ static int sensor_imx219_wait_stream_off_status(cis_shared_data *cis_data)
 
 	return ret;
 }
-#endif
 
 /* CIS OPS */
 int sensor_imx219_cis_init(struct v4l2_subdev *subdev)
@@ -163,11 +161,6 @@ int sensor_imx219_cis_init(struct v4l2_subdev *subdev)
 	struct fimc_is_cis *cis;
 	u32 setfile_index = 0;
 	cis_setting_info setinfo;
-#ifdef USE_CAMERA_HW_BIG_DATA
-	struct cam_hw_param *hw_param = NULL;
-	struct fimc_is_device_sensor_peri *sensor_peri = NULL;
-#endif
-
 	setinfo.param = NULL;
 	setinfo.return_value = 0;
 
@@ -186,15 +179,6 @@ int sensor_imx219_cis_init(struct v4l2_subdev *subdev)
 
 	ret = sensor_cis_check_rev(cis);
 	if (ret < 0) {
-#ifdef USE_CAMERA_HW_BIG_DATA
-		sensor_peri = container_of(cis, struct fimc_is_device_sensor_peri, cis);
-		if (sensor_peri && sensor_peri->module->position == SENSOR_POSITION_REAR)
-			fimc_is_sec_get_rear_hw_param(&hw_param);
-		else if (sensor_peri && sensor_peri->module->position == SENSOR_POSITION_FRONT)
-			fimc_is_sec_get_front_hw_param(&hw_param);
-		if (hw_param)
-			hw_param->i2c_sensor_err_cnt++;
-#endif
 		warn("sensor_imx219_check_rev is fail when cis init");
 		cis->rev_flag = true;
 		ret = 0;
@@ -262,24 +246,10 @@ int sensor_imx219_cis_log_status(struct v4l2_subdev *subdev)
 	pr_err("[SEN:DUMP] *******************************\n");
 	ret = fimc_is_sensor_read16(client, 0x0000, &data16);
 	if (unlikely(!ret)) printk("[SEN:DUMP] model_id(%x)\n", data16);
-	ret = fimc_is_sensor_read8(client, 0x0004, &data8);
-	if (unlikely(!ret)) printk("[SEN:DUMP] Lot_ID1(%x)\n", data8);
+	ret = fimc_is_sensor_read8(client, 0x0002, &data8);
+	if (unlikely(!ret)) printk("[SEN:DUMP] revision_number(%x)\n", data8);
 	ret = fimc_is_sensor_read8(client, 0x0005, &data8);
-	if (unlikely(!ret)) printk("[SEN:DUMP] Lot_ID2(%x)\n", data8);
-	ret = fimc_is_sensor_read8(client, 0x0006, &data8);
-	if (unlikely(!ret)) printk("[SEN:DUMP] Lot_ID3(%x)\n", data8);
-	ret = fimc_is_sensor_read8(client, 0x0007, &data8);
-	if (unlikely(!ret)) printk("[SEN:DUMP] Wafer_Num(%x)\n", data8);
-	ret = fimc_is_sensor_read16(client, 0x000D, &data16);
-	if (unlikely(!ret)) printk("[SEN:DUMP] Chip_Number(%x)\n", data16);
-	ret = fimc_is_sensor_read8(client, 0x0018, &data8);
-	if (unlikely(!ret)) printk("[SEN:DUMP] Frame Count(%x)\n", data8);
-	ret = fimc_is_sensor_read8(client, 0x0019, &data8);
-	if (unlikely(!ret)) printk("[SEN:DUMP] PX_ORDER(%x)\n", data8);
-	ret = fimc_is_sensor_read8(client, 0x001A, &data8);
-	if (unlikely(!ret)) printk("[SEN:DUMP] DT_PEDESTAL1(%x)\n", data8);
-	ret = fimc_is_sensor_read8(client, 0x001B, &data8);
-	if (unlikely(!ret)) printk("[SEN:DUMP] DT_PEDESTAL2(%x)\n", data8);
+	if (unlikely(!ret)) printk("[SEN:DUMP] frame_count(%x)\n", data8);
 	ret = fimc_is_sensor_read8(client, 0x0100, &data8);
 	if (unlikely(!ret)) printk("[SEN:DUMP] mode_select(%x)\n", data8);
 
@@ -385,6 +355,7 @@ int sensor_imx219_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 		}
 	}
 
+
 	sensor_imx219_cis_data_calculation(sensor_imx219_pllinfos[mode], cis->cis_data);
 
 	ret = sensor_cis_set_registers(subdev, sensor_imx219_setfiles[mode], sensor_imx219_setfile_sizes[mode]);
@@ -393,6 +364,7 @@ int sensor_imx219_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 		goto p_err;
 	}
 
+	//dbg_sensor("[%s] mode changed(%d)\n", __func__, mode);
 	info("[%s] mode changed(%d)\n", __func__, mode);
 
 p_err:
@@ -403,7 +375,6 @@ p_err:
 int sensor_imx219_cis_set_size(struct v4l2_subdev *subdev, cis_shared_data *cis_data)
 {
 	int ret = 0;
-#if 0 // not use
 	bool binning = false;
 	u32 ratio_w = 0, ratio_h = 0, start_x = 0, start_y = 0, end_x = 0, end_y = 0;
 	u32 even_x= 0, odd_x = 0, even_y = 0, odd_y = 0;
@@ -461,7 +432,12 @@ int sensor_imx219_cis_set_size(struct v4l2_subdev *subdev, cis_shared_data *cis_
 		goto p_err;
 	}
 
-	/* 1. pixel address region setting */
+	/* 1. page_select */
+	ret = fimc_is_sensor_write16(client, 0x6028, 0x2000);
+	if (ret < 0)
+		 goto p_err;
+
+	/* 2. pixel address region setting */
 	start_x = ((SENSOR_IMX219_MAX_WIDTH - cis_data->cur_width * ratio_w) / 2) & (~0x1);
 	start_y = ((SENSOR_IMX219_MAX_HEIGHT - cis_data->cur_height * ratio_h) / 2) & (~0x1);
 	end_x = start_x + (cis_data->cur_width * ratio_w - 1);
@@ -473,24 +449,24 @@ int sensor_imx219_cis_set_size(struct v4l2_subdev *subdev, cis_shared_data *cis_
 		goto p_err;
 	}
 
-	ret = fimc_is_sensor_write16(client, 0x0164, start_x);
+	ret = fimc_is_sensor_write16(client, 0x0344, start_x);
 	if (ret < 0)
 		 goto p_err;
-	ret = fimc_is_sensor_write16(client, 0x0168, start_y);
+	ret = fimc_is_sensor_write16(client, 0x0346, start_y);
 	if (ret < 0)
 		 goto p_err;
-	ret = fimc_is_sensor_write16(client, 0x0166, end_x);
+	ret = fimc_is_sensor_write16(client, 0x0348, end_x);
 	if (ret < 0)
 		 goto p_err;
-	ret = fimc_is_sensor_write16(client, 0x016A, end_y);
+	ret = fimc_is_sensor_write16(client, 0x034A, end_y);
 	if (ret < 0)
 		 goto p_err;
 
-	/* 2. output address setting */
-	ret = fimc_is_sensor_write16(client, 0x016C, cis_data->cur_width);
+	/* 3. output address setting */
+	ret = fimc_is_sensor_write16(client, 0x034C, cis_data->cur_width);
 	if (ret < 0)
 		 goto p_err;
-	ret = fimc_is_sensor_write16(client, 0x016E, cis_data->cur_height);
+	ret = fimc_is_sensor_write16(client, 0x034E, cis_data->cur_height);
 	if (ret < 0)
 		 goto p_err;
 
@@ -500,7 +476,7 @@ int sensor_imx219_cis_set_size(struct v4l2_subdev *subdev, cis_shared_data *cis_
 		goto p_err;
 	}
 
-	/* 3. sub sampling setting */
+	/* 4. sub sampling setting */
 	even_x = 1;	/* 1: not use to even sampling */
 	even_y = 1;
 	odd_x = (ratio_w * 2) - even_x;
@@ -519,7 +495,7 @@ int sensor_imx219_cis_set_size(struct v4l2_subdev *subdev, cis_shared_data *cis_
 	if (ret < 0)
 		 goto p_err;
 
-	/* 4. binnig setting */
+	/* 5. binnig setting */
 	ret = fimc_is_sensor_write8(client, 0x0900, binning);	/* 1:  binning enable, 0: disable */
 	if (ret < 0)
 		goto p_err;
@@ -527,7 +503,7 @@ int sensor_imx219_cis_set_size(struct v4l2_subdev *subdev, cis_shared_data *cis_
 	if (ret < 0)
 		goto p_err;
 
-	/* 5. scaling setting: but not use */
+	/* 6. scaling setting: but not use */
 	/* scaling_mode (0: No scaling, 1: Horizontal, 2: Full) */
 	ret = fimc_is_sensor_write16(client, 0x0400, 0x0000);
 	if (ret < 0)
@@ -548,7 +524,6 @@ int sensor_imx219_cis_set_size(struct v4l2_subdev *subdev, cis_shared_data *cis_
 #endif
 
 p_err:
-#endif
 	return ret;
 }
 
@@ -618,6 +593,9 @@ int sensor_imx219_cis_stream_on(struct v4l2_subdev *subdev)
 #endif
 
 	/* Sensor stream on */
+	ret = fimc_is_sensor_write16(client, 0x6028, 0x4000);
+	if (ret < 0)
+		err("i2c transfer fail addr(%x), val(%x), ret = %d\n", 0x6028, 0x4000, ret);
 	ret = fimc_is_sensor_write8(client, 0x0100, 0x01);
 	if (ret < 0)
 		err("i2c transfer fail addr(%x), val(%x), ret = %d\n", 0x0100, 0x01, ret);
@@ -679,6 +657,9 @@ int sensor_imx219_cis_stream_off(struct v4l2_subdev *subdev)
 		err("[%s] sensor_imx219_cis_group_param_hold_func fail\n", __func__);
 
 	/* Sensor stream off */
+	ret = fimc_is_sensor_write16(client, 0x6028, 0x4000);
+	if (ret < 0)
+		err("i2c transfer fail addr(%x), val(%x), ret = %d\n", 0x6028, 0x4000, ret);
 	ret = fimc_is_sensor_write8(client, 0x0100, 0x00);
 	if (ret < 0)
 		err("i2c transfer fail addr(%x), val(%x), ret = %d\n", 0x0100, 0x00, ret);
@@ -778,18 +759,16 @@ int sensor_imx219_cis_set_exposure_time(struct v4l2_subdev *subdev, struct ae_pa
 	}
 
 	/* Short exposure */
-	ret = fimc_is_sensor_write16(client, 0x015A, short_coarse_int);
+	ret = fimc_is_sensor_write16(client, 0x0202, short_coarse_int);
 	if (ret < 0)
 		goto p_err;
 
-#if 0
 	/* Long exposure */
 	if (cis_data->companion_data.enable_wdr == true) {
 		ret = fimc_is_sensor_write16(client, 0x021E, long_coarse_int);
 		if (ret < 0)
 			goto p_err;
 	}
-#endif
 
 	dbg_sensor("[MOD:D:%d] %s, vsync_cnt(%d), vt_pic_clk_freq_mhz (%d), line_length_pck(%d), min_fine_int (%d)\n", cis->id, __func__,
 		cis_data->sen_vsync_count, vt_pic_clk_freq_mhz, line_length_pck, min_fine_int);
@@ -1024,7 +1003,7 @@ int sensor_imx219_cis_set_frame_duration(struct v4l2_subdev *subdev, u32 frame_d
 		goto p_err;
 	}
 
-	ret = fimc_is_sensor_write16(client, 0x0160, frame_length_lines);
+	ret = fimc_is_sensor_write16(client, 0x0340, frame_length_lines);
 	if (ret < 0)
 		goto p_err;
 
@@ -1105,22 +1084,6 @@ p_err:
 	return ret;
 }
 
-u32 sensor_imx219_cis_calc_again_code(u32 permile)
-{
-	if (permile > 0)
-		return 256 - (256 * 1000 / permile);
-	else
-		return 0;
-}
-
-u32 sensor_imx219_cis_calc_again_permile(u32 code)
-{
-	if (code < 256)
-		return ((256 * 1000) / (256 - code));
-	else
-		return 1000;
-}
-
 int sensor_imx219_cis_adjust_analog_gain(struct v4l2_subdev *subdev, u32 input_again, u32 *target_permile)
 {
 	int ret = 0;
@@ -1145,7 +1108,7 @@ int sensor_imx219_cis_adjust_analog_gain(struct v4l2_subdev *subdev, u32 input_a
 
 	cis_data = cis->cis_data;
 
-	again_code = sensor_imx219_cis_calc_again_code(input_again);
+	again_code = sensor_cis_calc_again_code(input_again);
 
 	if (again_code > cis_data->max_analog_gain[0]) {
 		again_code = cis_data->max_analog_gain[0];
@@ -1153,7 +1116,7 @@ int sensor_imx219_cis_adjust_analog_gain(struct v4l2_subdev *subdev, u32 input_a
 		again_code = cis_data->min_analog_gain[0];
 	}
 
-	again_permile = sensor_imx219_cis_calc_again_permile(again_code);
+	again_permile = sensor_cis_calc_again_permile(again_code);
 
 	dbg_sensor("[%s] min again(%d), max(%d), input_again(%d), code(%d), permile(%d)\n", __func__,
 			cis_data->max_analog_gain[0],
@@ -1174,7 +1137,7 @@ int sensor_imx219_cis_set_analog_gain(struct v4l2_subdev *subdev, struct ae_para
 	struct fimc_is_cis *cis;
 	struct i2c_client *client;
 
-	u8 analog_gain = 0;
+	u16 analog_gain = 0;
 
 #ifdef DEBUG_SENSOR_TIME
 	struct timeval st, end;
@@ -1195,19 +1158,13 @@ int sensor_imx219_cis_set_analog_gain(struct v4l2_subdev *subdev, struct ae_para
 		goto p_err;
 	}
 
-	analog_gain = (u8)sensor_imx219_cis_calc_again_code(again->val);
+	analog_gain = (u16)sensor_cis_calc_again_code(again->val);
 
 	if (analog_gain < cis->cis_data->min_analog_gain[0]) {
 		analog_gain = cis->cis_data->min_analog_gain[0];
 	}
 
 	if (analog_gain > cis->cis_data->max_analog_gain[0]) {
-#ifndef CAMERA_IGNORE_CIS_GAIN_ERROR_LOG
-		err("wrong analog gain, input (x%d, %d), max (x%d, %d)",
-			again->val, analog_gain,
-			cis->cis_data->max_analog_gain[1],
-			cis->cis_data->max_analog_gain[0]);
-#endif
 		analog_gain = cis->cis_data->max_analog_gain[0];
 	}
 
@@ -1220,7 +1177,7 @@ int sensor_imx219_cis_set_analog_gain(struct v4l2_subdev *subdev, struct ae_para
 		goto p_err;
 	}
 
-	ret = fimc_is_sensor_write8(client, 0x0157, analog_gain);
+	ret = fimc_is_sensor_write16(client, 0x0204, analog_gain);
 	if (ret < 0)
 		goto p_err;
 
@@ -1246,7 +1203,7 @@ int sensor_imx219_cis_get_analog_gain(struct v4l2_subdev *subdev, u32 *again)
 	struct fimc_is_cis *cis;
 	struct i2c_client *client;
 
-	u8 analog_gain = 0;
+	u16 analog_gain = 0;
 
 #ifdef DEBUG_SENSOR_TIME
 	struct timeval st, end;
@@ -1273,11 +1230,11 @@ int sensor_imx219_cis_get_analog_gain(struct v4l2_subdev *subdev, u32 *again)
 		goto p_err;
 	}
 
-	ret = fimc_is_sensor_read8(client, 0x0157, &analog_gain);
+	ret = fimc_is_sensor_read16(client, 0x0204, &analog_gain);
 	if (ret < 0)
 		goto p_err;
 
-	*again = sensor_imx219_cis_calc_again_permile((u16)analog_gain);
+	*again = sensor_cis_calc_again_permile(analog_gain);
 
 	dbg_sensor("[MOD:D:%d] %s, cur_again = %d us, analog_gain(%#x)\n",
 			cis->id, __func__, *again, analog_gain);
@@ -1327,16 +1284,14 @@ int sensor_imx219_cis_get_min_analog_gain(struct v4l2_subdev *subdev, u32 *min_a
 	}
 
 	cis_data = cis->cis_data;
-/*
+
 	ret = fimc_is_sensor_read16(client, 0x0084, &read_value);
 	if (ret < 0)
 		err("i2c transfer fail addr(%x), val(%x), ret = %d\n", 0x0084, read_value, ret);
-*/
-	read_value = 0; /* imx219 again range 0(x1) ~ 232(x10.66) */
 
 	cis_data->min_analog_gain[0] = read_value;
 
-	cis_data->min_analog_gain[1] = sensor_imx219_cis_calc_again_permile(read_value);
+	cis_data->min_analog_gain[1] = sensor_cis_calc_again_permile(read_value);
 
 	*min_again = cis_data->min_analog_gain[1];
 
@@ -1381,16 +1336,14 @@ int sensor_imx219_cis_get_max_analog_gain(struct v4l2_subdev *subdev, u32 *max_a
 	}
 
 	cis_data = cis->cis_data;
-/*
+
 	ret = fimc_is_sensor_read16(client, 0x0086, &read_value);
 	if (ret < 0)
 		err("i2c transfer fail addr(%x), val(%x), ret = %d\n", 0x0086, read_value, ret);
-*/
-	read_value = 232; /* imx219 again range 0(x1) ~ 232(x10.66) */
 
 	cis_data->max_analog_gain[0] = read_value;
 
-	cis_data->max_analog_gain[1] = sensor_imx219_cis_calc_again_permile(read_value);
+	cis_data->max_analog_gain[1] = sensor_cis_calc_again_permile(read_value);
 
 	*max_again = cis_data->max_analog_gain[1];
 
@@ -1415,6 +1368,7 @@ int sensor_imx219_cis_set_digital_gain(struct v4l2_subdev *subdev, struct ae_par
 
 	u16 long_gain = 0;
 	u16 short_gain = 0;
+	u16 dgains[4] = {0};
 
 #ifdef DEBUG_SENSOR_TIME
 	struct timeval st, end;
@@ -1445,12 +1399,6 @@ int sensor_imx219_cis_set_digital_gain(struct v4l2_subdev *subdev, struct ae_par
 		long_gain = cis->cis_data->min_digital_gain[0];
 	}
 	if (long_gain > cis->cis_data->max_digital_gain[0]) {
-#ifndef CAMERA_IGNORE_CIS_GAIN_ERROR_LOG
-		err("wrong digital long gain, input (x%d, %d), max (x%d, %d)\n",
-			dgain->long_val, long_gain,
-			cis->cis_data->max_digital_gain[1],
-			cis->cis_data->max_digital_gain[0]);
-#endif
 		long_gain = cis->cis_data->max_digital_gain[0];
 	}
 
@@ -1458,12 +1406,6 @@ int sensor_imx219_cis_set_digital_gain(struct v4l2_subdev *subdev, struct ae_par
 		short_gain = cis->cis_data->min_digital_gain[0];
 	}
 	if (short_gain > cis->cis_data->max_digital_gain[0]) {
-#ifndef CAMERA_IGNORE_CIS_GAIN_ERROR_LOG
-		err("wrong digital short gain, input (x%d, %d), max (x%d, %d)",
-			dgain->short_val, short_gain,
-			cis->cis_data->max_digital_gain[1],
-			cis->cis_data->max_digital_gain[0]);
-#endif
 		short_gain = cis->cis_data->max_digital_gain[0];
 	}
 
@@ -1476,10 +1418,19 @@ int sensor_imx219_cis_set_digital_gain(struct v4l2_subdev *subdev, struct ae_par
 		goto p_err;
 	}
 
-	/* Long digital gain */
-	ret = fimc_is_sensor_write16(client, 0x0158, long_gain);
+	dgains[0] = dgains[1] = dgains[2] = dgains[3] = short_gain;
+	/* Short digital gain */
+	ret = fimc_is_sensor_write16_array(client, 0x020E, dgains, 4);
 	if (ret < 0)
 		goto p_err;
+
+	/* Long digital gain */
+	if (cis_data->companion_data.enable_wdr == true) {
+		dgains[0] = dgains[1] = dgains[2] = dgains[3] = long_gain;
+		ret = fimc_is_sensor_write16_array(client, 0x3062, dgains, 4);
+		if (ret < 0)
+			goto p_err;
+	}
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
@@ -1530,7 +1481,7 @@ int sensor_imx219_cis_get_digital_gain(struct v4l2_subdev *subdev, u32 *dgain)
 		goto p_err;
 	}
 
-	ret = fimc_is_sensor_read16(client, 0x0158, &digital_gain);
+	ret = fimc_is_sensor_read16(client, 0x020E, &digital_gain);
 	if (ret < 0)
 		goto p_err;
 
@@ -1614,9 +1565,9 @@ int sensor_imx219_cis_get_max_digital_gain(struct v4l2_subdev *subdev, u32 *max_
 	cis_data = cis->cis_data;
 
 	/* IMX219 cannot read min/max digital gain */
-	cis_data->max_digital_gain[0] = 0x0FD9;
+	cis_data->max_digital_gain[0] = 0x1000;
 
-	cis_data->max_digital_gain[1] = 15850;
+	cis_data->max_digital_gain[1] = 16000;
 
 	*max_dgain = cis_data->max_digital_gain[1];
 
@@ -1729,8 +1680,19 @@ int cis_imx219_probe(struct i2c_client *client,
 	cis->cis_ops = &cis_ops;
 
 	/* belows are depend on sensor cis. MUST check sensor spec */
-	cis->bayer_order = OTF_INPUT_ORDER_BAYER_RG_GB;
-	cis->aperture_num = F1_9;
+	cis->bayer_order = OTF_INPUT_ORDER_BAYER_GR_BG;
+
+	if (of_property_read_bool(dnode, "sensor_f_number")) {
+		ret = of_property_read_u32(dnode, "sensor_f_number", &cis->aperture_num);
+		if (ret) {
+			warn("f-number read is fail(%d)",ret);
+		}
+	} else {
+		cis->aperture_num = F2_2;
+	}
+
+	probe_info("%s f-number %d\n", __func__, cis->aperture_num);
+
 	cis->use_dgain = true;
 	cis->hdr_ctrl_by_again = false;
 

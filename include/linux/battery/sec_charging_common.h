@@ -127,9 +127,11 @@ enum sec_siop_event_mode {
 enum sec_wireless_pad_mode {
 	SEC_WIRELESS_PAD_NONE = 0,
 	SEC_WIRELESS_PAD_WPC,
+	SEC_WIRELESS_PAD_WPC_HV,
 	SEC_WIRELESS_PAD_WPC_PACK,
 	SEC_WIRELESS_PAD_WPC_PACK_TA,
-	SEC_WIRELESS_PAD_WPC_HV,
+	SEC_WIRELESS_PAD_WPC_STAND,
+	SEC_WIRELESS_PAD_WPC_STAND_HV,
 	SEC_WIRELESS_PAD_PMA,
 };
 
@@ -507,7 +509,7 @@ struct sec_battery_platform_data {
 	bool (*fg_gpio_init)(void);
 	bool (*chg_gpio_init)(void);
 	bool (*is_lpm)(void);
-	bool (*check_jig_status) (void);
+	bool (*check_jig_status)(void);
 	bool (*is_interrupt_cable_check_possible)(int);
 	int (*check_cable_callback)(void);
 	int (*get_cable_from_extended_cable_type)(int);
@@ -573,20 +575,14 @@ struct sec_battery_platform_data {
 	/* battery swelling */
 	int swelling_high_temp_block;
 	int swelling_high_temp_recov;
-	int swelling_low_temp_block_1st;
-	int swelling_low_temp_recov_1st;
-	int swelling_low_temp_block_2nd;
-	int swelling_low_temp_recov_2nd;
-	int swelling_low_temp_2step_mode;
-	int swelling_low_temp_additional;
+	int swelling_low_temp_block;
+	int swelling_low_temp_recov;
 	unsigned int swelling_low_temp_current;
-	unsigned int swelling_low_temp_additional_current;
 	unsigned int swelling_low_temp_topoff;
 	unsigned int swelling_high_temp_current;
 	unsigned int swelling_high_temp_topoff;
 	unsigned int swelling_normal_float_voltage;
 	unsigned int swelling_drop_float_voltage;
-	unsigned int swelling_offset_voltage;
 	unsigned int swelling_high_rechg_voltage;
 	unsigned int swelling_low_rechg_voltage;
 
@@ -599,25 +595,6 @@ struct sec_battery_platform_data {
 	/* step charging */
 	unsigned int *step_charging_condition;
 	unsigned int *step_charging_current;
-#endif
-
-	bool factory_store_mode_en;
-	/* self discharging */
-	bool self_discharging_en;
-	unsigned int discharging_adc_max;
-	unsigned int discharging_adc_min;
-	unsigned int self_discharging_voltage_limit;
-	unsigned int discharging_ntc_limit;
-	int force_discharging_limit;
-	int force_discharging_recov;
-	int factory_discharging;
-	unsigned int self_discharging_type;
-#if defined(CONFIG_SW_SELF_DISCHARGING)
-	/* sw self discharging */
-	int self_discharging_temp_block;
-	int self_discharging_volt_block;
-	int self_discharging_temp_recov;
-	int self_discharging_temp_pollingtime;
 #endif
 
 	/* Monitor setting */
@@ -742,11 +719,6 @@ struct sec_battery_platform_data {
 	unsigned long recharging_total_time;
 	/* reset charging for abnormal malfunction (0: not use) */
 	unsigned long charging_reset_time;
-#if defined(CONFIG_CONDITIONAL_SAFETY_TIMER)
-	unsigned int hv_charging_total_time;
-	unsigned int normal_charging_total_time;
-	unsigned int usb_charging_total_time;
-#endif
 
 	/* fuel gauge */
 	char *fuelgauge_name;

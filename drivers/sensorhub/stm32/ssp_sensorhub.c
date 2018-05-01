@@ -268,7 +268,7 @@ static struct file_operations ssp_sensorhub_fops = {
 	.open = nonseekable_open,
 	.write = ssp_sensorhub_write,
 	.read = ssp_sensorhub_read,
-	.compat_ioctl = ssp_sensorhub_ioctl,
+	.unlocked_ioctl = ssp_sensorhub_ioctl,
 };
 
 void ssp_sensorhub_report_notice(struct ssp_data *ssp_data, char notice)
@@ -291,7 +291,7 @@ void ssp_sensorhub_report_notice(struct ssp_data *ssp_data, char notice)
 			input_report_rel(hub_data->sensorhub_input_dev, NOTICE,RESET_REASON_MCU_CRASHED);
 	}
 	else
-	input_report_rel(hub_data->sensorhub_input_dev, NOTICE, notice);
+		input_report_rel(hub_data->sensorhub_input_dev, NOTICE, notice);
 	input_sync(hub_data->sensorhub_input_dev);
 
 	if (notice == MSG2SSP_AP_STATUS_WAKEUP)
@@ -582,7 +582,7 @@ void ssp_sensorhub_remove(struct ssp_data *ssp_data)
 
 	ssp_sensorhub_fops.write = NULL;
 	ssp_sensorhub_fops.read = NULL;
-	ssp_sensorhub_fops.compat_ioctl = NULL;
+	ssp_sensorhub_fops.unlocked_ioctl = NULL;
 
 	kthread_stop(hub_data->sensorhub_task);
 	kfifo_free(&hub_data->fifo);

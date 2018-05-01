@@ -17,7 +17,7 @@ YMD=		`date +%Y%m%d%H%M`
 # n: NO DEBUG
 # 1: PRINTM(MSG,...), PRINTM(FATAL,...), PRINTM(WARN,...) and PRINTM(INFO,...)
 # 2: All PRINTM()
-CONFIG_DEBUG=1
+CONFIG_DEBUG=2
 
 # SDIO suspend/resume
 CONFIG_SDIO_SUSPEND_RESUME=y

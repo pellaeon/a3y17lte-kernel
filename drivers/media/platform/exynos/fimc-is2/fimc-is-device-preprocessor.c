@@ -38,6 +38,9 @@
 #include "fimc-is-device-preprocessor.h"
 #include "fimc-is-core.h"
 #include "fimc-is-dvfs.h"
+#ifdef CONFIG_COMPANION_FACTORY_VALIDATION
+#include "fimc-is-companion.h"
+#endif
 
 extern struct pm_qos_request exynos_isp_qos_int;
 extern struct pm_qos_request exynos_isp_qos_mem;
@@ -73,6 +76,8 @@ static int fimc_is_preproc_mclk_on(struct fimc_is_device_preproc *device)
 	int ret = 0;
 	struct fimc_is_core *core;
 	struct exynos_platform_fimc_is_preproc *pdata;
+	struct exynos_platform_fimc_is_sensor *pdata_sensor;
+	struct fimc_is_device_sensor *device_sensor;
 	struct fimc_is_module_enum *module;
 
 	BUG_ON(!device);
@@ -80,6 +85,12 @@ static int fimc_is_preproc_mclk_on(struct fimc_is_device_preproc *device)
 	BUG_ON(!device->pdata);
 
 	pdata = device->pdata;
+	core = device->private_data;
+	device_sensor = &core->sensor[pdata->id];
+
+	BUG_ON(!device_sensor);
+	BUG_ON(!device_sensor->pdev);
+	BUG_ON(!device_sensor->pdata);
 
 	if (test_bit(FIMC_IS_PREPROC_MCLK_ON, &device->state)) {
 		err("%s : already clk on", __func__);
@@ -105,12 +116,27 @@ static int fimc_is_preproc_mclk_on(struct fimc_is_device_preproc *device)
 		goto p_err;
 	}
 
-	/* preprocessor initialization need together with sensor init */
-	ret = fimc_is_sensor_mclk_on(&core->sensor[pdata->id], pdata->scenario, module->pdata->mclk_ch);
-	if (ret) {
-		err("fimc_is_sensor_mclk_on is fail(%d)", ret);
-		goto p_err;
+	pdata_sensor = device_sensor->pdata;
+	if (test_bit(FIMC_IS_SENSOR_MCLK_ON, &device_sensor->state)) {
+		minfo("%s : already clk on", device_sensor, __func__);
+		goto p_preproc_mclk_on;
 	}
+
+	if (!pdata_sensor->mclk_on) {
+		merr("mclk_on is NULL", device);
+		ret = -EINVAL;
+		goto p_preproc_mclk_on;
+	}
+
+	ret = pdata_sensor->mclk_on(&device_sensor->pdev->dev, pdata->scenario, module->pdata->mclk_ch);
+	if (ret) {
+		merr("mclk_on is fail(%d)", device, ret);
+		goto p_preproc_mclk_on;
+	}
+
+	set_bit(FIMC_IS_SENSOR_MCLK_ON, &device_sensor->state);
+
+p_preproc_mclk_on:
 
 	if (!pdata->mclk_on) {
 		err("mclk_on is NULL");
@@ -135,13 +161,22 @@ static int fimc_is_preproc_mclk_off(struct fimc_is_device_preproc *device)
 	int ret = 0;
 	struct fimc_is_core *core;
 	struct exynos_platform_fimc_is_preproc *pdata;
+	struct exynos_platform_fimc_is_sensor *pdata_sensor;
+	struct fimc_is_device_sensor *device_sensor;
 	struct fimc_is_module_enum *module;
 
 	BUG_ON(!device);
 	BUG_ON(!device->pdev);
 	BUG_ON(!device->pdata);
+	BUG_ON(!device->private_data);
 
 	pdata = device->pdata;
+	core = device->private_data;
+	device_sensor = &core->sensor[pdata->id];
+
+	BUG_ON(!device_sensor);
+	BUG_ON(!device_sensor->pdev);
+	BUG_ON(!device_sensor->pdata);
 
 	if (!test_bit(FIMC_IS_PREPROC_MCLK_ON, &device->state)) {
 		err("%s : already clk off", __func__);
@@ -167,12 +202,27 @@ static int fimc_is_preproc_mclk_off(struct fimc_is_device_preproc *device)
 		goto p_err;
 	}
 
-	/* preprocessor initialization need together with sensor init */
-	ret = fimc_is_sensor_mclk_off(&core->sensor[pdata->id], pdata->scenario, module->pdata->mclk_ch);
-	if (ret) {
-		err("fimc_is_sensor_mclk_off is fail(%d)", ret);
-		goto p_err;
+	pdata_sensor = device_sensor->pdata;
+	if (!test_bit(FIMC_IS_SENSOR_MCLK_ON, &device_sensor->state)) {
+		minfo("%s : already clk off", device_sensor, __func__);
+		goto p_preproc_mclk_off;
 	}
+
+	if (!pdata_sensor->mclk_off) {
+		merr("mclk_off is NULL", device);
+		ret = -EINVAL;
+		goto p_preproc_mclk_off;
+	}
+
+	ret = pdata_sensor->mclk_off(&device_sensor->pdev->dev, pdata->scenario, module->pdata->mclk_ch);
+	if (ret) {
+		merr("mclk_off is fail(%d)", device, ret);
+		goto p_preproc_mclk_off;
+	}
+
+	clear_bit(FIMC_IS_SENSOR_MCLK_ON, &device_sensor->state);
+
+p_preproc_mclk_off:
 
 	if (!pdata->mclk_off) {
 		err("mclk_off is NULL");
@@ -339,7 +389,7 @@ static int fimc_is_preproc_gpio_on(struct fimc_is_device_preproc *device)
 			goto p_err;
 		}
 
-		ret = pdata->gpio_cfg(module->dev, scenario, gpio_scenario);
+		ret = pdata->gpio_cfg(module, scenario, gpio_scenario);
 		if (ret) {
 			clear_bit(FIMC_IS_MODULE_GPIO_ON, &module->state);
 			merr("gpio_cfg is fail(%d)", device, ret);
@@ -397,7 +447,11 @@ static int fimc_is_preproc_gpio_off(struct fimc_is_device_preproc *device)
 		fimc_is_sensor_deinit_module(module);
 
 		ret = fimc_is_vender_preprocessor_gpio_off_sel(vender,
-			scenario, &gpio_scenario);
+			scenario, &gpio_scenario
+#if defined(CONFIG_OIS_USE)
+			, module
+#endif
+			);
 		if (ret) {
 			set_bit(FIMC_IS_MODULE_GPIO_ON, &module->state);
 			merr("fimc_is_vender_preprocessor_gpio_off_sel is fail(%d)",
@@ -420,7 +474,7 @@ static int fimc_is_preproc_gpio_off(struct fimc_is_device_preproc *device)
 			goto p_err;
 		}
 
-		ret = pdata->gpio_cfg(module->dev, scenario, gpio_scenario);
+		ret = pdata->gpio_cfg(module, scenario, gpio_scenario);
 		if (ret) {
 			set_bit(FIMC_IS_MODULE_GPIO_ON, &module->state);
 			merr("gpio_cfg is fail(%d)", device, ret);
@@ -501,6 +555,20 @@ int fimc_is_preproc_close(struct fimc_is_device_preproc *device)
 	if (!test_bit(FIMC_IS_PREPROC_OPEN, &device->state)) {
 		err("already close");
 		ret = -EMFILE;
+		goto p_err;
+	}
+
+	/* gpio uninit */
+	ret = fimc_is_preproc_gpio_off(device);
+	if (ret) {
+		err("fimc_is_preproc_gpio_off is fail(%d)", ret);
+		goto p_err;
+	}
+
+	/* master clock off */
+	ret = fimc_is_preproc_mclk_off(device);
+	if (ret) {
+		err("fimc_is_preproc_mclk_off is fail(%d)", ret);
 		goto p_err;
 	}
 
@@ -637,24 +705,10 @@ int fimc_is_preproc_runtime_suspend(struct device *dev)
 		goto p_err;
 	}
 
-	/* gpio uninit */
-	ret = fimc_is_preproc_gpio_off(device);
-	if (ret) {
-		err("fimc_is_preproc_gpio_off is fail(%d)", ret);
-		goto p_err;
-	}
-
 	/* periperal internal clock off */
 	ret = fimc_is_preproc_iclk_off(device);
 	if (ret) {
 		err("fimc_is_preproc_iclk_off is fail(%d)", ret);
-		goto p_err;
-	}
-
-	/* master clock off */
-	ret = fimc_is_preproc_mclk_off(device);
-	if (ret) {
-		err("fimc_is_preproc_mclk_off is fail(%d)", ret);
 		goto p_err;
 	}
 
@@ -753,6 +807,75 @@ p_err:
 	minfo("[PRE:D] %s(%d, %d):%d\n", device, __func__, scenario, input, ret);
 	return ret;
 }
+
+#ifdef CONFIG_COMPANION_FACTORY_VALIDATION
+int fimc_is_preproc_fac_valid_check(struct fimc_is_device_preproc *device,
+	u32 input,
+	u32 scenario)
+{
+	int ret = 0;
+	struct fimc_is_core *core;
+	struct fimc_is_vender *vender;
+	struct fimc_is_device_sensor *device_sensor;
+
+	BUG_ON(!device);
+	BUG_ON(!device->pdata);
+	BUG_ON(!device->private_data);
+	BUG_ON(input >= SENSOR_NAME_END);
+
+	core = device->private_data;
+	vender = &core->vender;
+	device_sensor = &core->sensor[device->pdata->id];
+
+	ret = fimc_is_search_sensor_module(device_sensor, input, &device->module);
+	if (ret) {
+		err("fimc_is_search_sensor_module is fail(%d)", ret);
+		goto p_err;
+	}
+
+	core->current_position = device->module->position;
+
+	ret = fimc_is_preproc_mclk_on(device);
+	if (ret) {
+		err("fimc_is_preproc_mclk_on is fail(%d)", ret);
+		goto p_err;
+	}
+
+	ret = fimc_is_preproc_gpio_on(device);
+	if (ret) {
+		err("fimc_is_preproc_gpio_on is fail(%d)", ret);
+		fimc_is_preproc_mclk_off(device);
+		goto p_err;
+	}
+
+	msleep(150);
+
+	ret = fimc_is_comp_is_valid_fac(core);
+	if (ret) {
+		err("fimc_is_comp_is_valid is fail(%d)", ret);
+		fimc_is_preproc_gpio_off(device);
+		fimc_is_preproc_mclk_off(device);
+		goto p_err;
+	}
+    
+	ret = fimc_is_preproc_gpio_off(device);
+	if (ret) {
+		err("fimc_is_preproc_gpio_off is fail(%d)", ret);
+		fimc_is_preproc_mclk_off(device);
+		goto p_err;
+	}
+    
+	ret = fimc_is_preproc_mclk_off(device);
+	if (ret) {
+		err("fimc_is_preproc_mclk_off is fail(%d)", ret);
+		goto p_err;
+	}
+
+p_err:
+	minfo("[PRE:D] %s(%d, %d):%d\n", device, __func__, scenario, input, ret);
+	return ret;
+}
+#endif
 
 static const struct dev_pm_ops fimc_is_preproc_pm_ops = {
 	.suspend		= fimc_is_preproc_suspend,

@@ -62,7 +62,6 @@ enum decon_idma_type {
 
 enum decon_output_type {
 	DECON_OUT_DSI = 0,
-	DECON_OUT_TUI,
 };
 
 struct decon_psr_info {

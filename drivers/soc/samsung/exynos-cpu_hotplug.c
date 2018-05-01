@@ -16,9 +16,26 @@
 #include <linux/pm_qos.h>
 #include <linux/suspend.h>
 
+static volatile bool hp_in_progress = false;
+
+static void update_in_progress_flag(bool flag)
+{
+	hp_in_progress = flag;
+}
+
+bool exynos_hotplug_in_progress(void)
+{
+	bool hp_in;
+
+	hp_in = hp_in_progress;
+	return hp_in;
+}
+
 static int cpu_hotplug_in(const struct cpumask *mask)
 {
 	int cpu, ret = 0;
+
+	update_in_progress_flag(true);
 
 	for_each_cpu(cpu, mask) {
 		ret = cpu_up(cpu);
@@ -40,6 +57,7 @@ static int cpu_hotplug_in(const struct cpumask *mask)
 		}
 	}
 
+	update_in_progress_flag(false);
 	return ret;
 }
 
@@ -388,7 +406,7 @@ static ssize_t store_cpu_hotplug_enable(struct kobject *kobj,
 }
 
 static struct kobj_attribute cpu_hotplug_enabled =
-__ATTR(enable, 0644, show_cpu_hotplug_enable, store_cpu_hotplug_enable);
+__ATTR(enabled, 0644, show_cpu_hotplug_enable, store_cpu_hotplug_enable);
 
 static struct attribute *cpu_hotplug_attrs[] = {
 	&control_online_cpus.attr,

@@ -122,8 +122,7 @@ typedef enum {
 
 #ifdef TIMA_ON_MC20
 
-#include <../drivers/gud/gud-exynos7870/MobiCoreDriver/public/mobicore_driver_api.h>
-//#include <../drivers/gud/gud-exynos7420/MobiCoreKernelApi/public/mobicore_driver_cmd.h>
+#include <../drivers/gud/gud-exynos7880/MobiCoreDriver/public/mobicore_driver_api.h>
 
 #include <linux/fs.h>
 #include <linux/delay.h>

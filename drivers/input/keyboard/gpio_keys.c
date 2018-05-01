@@ -29,11 +29,10 @@
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/of_gpio.h>
+#include <linux/of_irq.h>
 #include <linux/spinlock.h>
 #include <linux/exynos-ss.h>
-
 #include <linux/sec_sysfs.h>
-#include <linux/sec_debug.h>
 
 struct device *sec_key;
 EXPORT_SYMBOL(sec_key);
@@ -51,18 +50,14 @@ bool wakeup_by_key(void) {
 	}
 	return false;
 }
-
 EXPORT_SYMBOL(wakeup_by_key);
-
-#if defined(CONFIG_FB) && defined(CONFIG_SENSORS_VFS7XXX)
-extern void vfsspi_fp_homekey_ev(void);
-#endif
 
 struct gpio_button_data {
 	struct gpio_keys_button *button;
 	struct input_dev *input;
 	struct timer_list timer;
 	struct work_struct work;
+	struct workqueue_struct *workqueue;
 	unsigned int timer_debounce;	/* in msecs */
 	unsigned int irq;
 	spinlock_t lock;
@@ -416,8 +411,10 @@ static ssize_t wakeup_enable(struct device *dev,
 		struct gpio_button_data *bdata = &ddata->data[i];
 		if (test_bit(bdata->button->code, bits))
 			bdata->button->wakeup = 1;
-		else
-			bdata->button->wakeup = 0;
+		else {
+			if (!bdata->button->always_wakeup)
+				bdata->button->wakeup = 0;
+		}
 	}
 
 out:
@@ -446,14 +443,10 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 	struct input_dev *input = bdata->input;
 	unsigned int type = button->type ?: EV_KEY;
 	int state = (gpio_get_value_cansleep(button->gpio) ? 1 : 0) ^ button->active_low;
-	struct irq_desc *desc = irq_to_desc(gpio_to_irq(button->gpio));
 
-	if (!desc) {
-		pr_err("%s: irq_desc is null!! (gpio=%d)\n", __func__, button->gpio);
-		return;
-	}
-
+#ifndef CONFIG_SEC_DEBUG
 	exynos_ss_check_crash_key(button->code, state);
+#endif
 
 	switch (button->code) {
 	case KEY_POWER:
@@ -478,13 +471,9 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 			input_event(input, type, button->code, button->value);
 	} else {
 		bdata->key_state = !!state;
-		input_event(input, type, button->code,
-				irqd_is_wakeup_set(&desc->irq_data) ? 1 : !!state);
-#if defined(CONFIG_FB) && defined(CONFIG_SENSORS_VFS7XXX)
-		if(button->code == KEY_HOMEPAGE && !!state == 1)
-			vfsspi_fp_homekey_ev();
-#endif
+		input_event(input, type, button->code, !!state);
 	}
+
 	input_sync(input);
 }
 
@@ -503,12 +492,20 @@ static void gpio_keys_gpio_timer(unsigned long _data)
 {
 	struct gpio_button_data *bdata = (struct gpio_button_data *)_data;
 
-	schedule_work(&bdata->work);
+	if (bdata->workqueue)
+		queue_work(bdata->workqueue, &bdata->work);
+	else
+		schedule_work(&bdata->work);
 }
 
 static irqreturn_t gpio_keys_gpio_isr(int irq, void *dev_id)
 {
 	struct gpio_button_data *bdata = dev_id;
+	int state = (gpio_get_value(bdata->button->gpio) ? 1 : 0) ^ bdata->button->active_low;
+
+#ifdef CONFIG_SEC_DEBUG
+	exynos_ss_check_crash_key(bdata->button->code, state);
+#endif
 
 	BUG_ON(irq != bdata->irq);
 
@@ -633,6 +630,10 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 			return error;
 		}
 		bdata->irq = irq;
+
+		bdata->workqueue = alloc_workqueue("gpio-keys/highpri", WQ_HIGHPRI, 0);
+		if (!bdata->workqueue)
+			dev_err(dev, "failed to alloc own workqueue\n");
 
 		INIT_WORK(&bdata->work, gpio_keys_gpio_work_func);
 		setup_timer(&bdata->timer,
@@ -810,11 +811,12 @@ gpio_keys_get_devtree_pdata(struct device *dev)
 		if (of_property_read_u32(pp, "linux,input-type", &button->type))
 			button->type = EV_KEY;
 
-		button->wakeup = !!of_get_property(pp, "gpio-key,wakeup", NULL);
+		button->always_wakeup = !!of_get_property(pp, "gpio-key,wakeup", NULL);
+		button->wakeup = button->always_wakeup;
 
 		if (of_property_read_u32(pp, "debounce-interval",
 					 &button->debounce_interval))
-			button->debounce_interval = 5;
+			button->debounce_interval = 10;
 	}
 
 	if (pdata->nbuttons == 0)
@@ -838,16 +840,6 @@ gpio_keys_get_devtree_pdata(struct device *dev)
 }
 
 #endif
-
-static void gpio_remove_key(struct gpio_button_data *bdata)
-{
-	free_irq(bdata->irq, bdata);
-	if (bdata->timer_debounce)
-		del_timer_sync(&bdata->timer);
-	cancel_work_sync(&bdata->work);
-	if (gpio_is_valid(bdata->button->gpio))
-		gpio_free(bdata->button->gpio);
-}
 
 static int gpio_keys_probe(struct platform_device *pdev)
 {
@@ -931,7 +923,7 @@ static int gpio_keys_probe(struct platform_device *pdev)
 	if (error) {
 		dev_err(dev, "Unable to export keys/switches, error: %d\n",
 			error);
-		goto fail2;
+		return error;
 	}
 
 	error = input_register_device(input);
@@ -947,18 +939,6 @@ static int gpio_keys_probe(struct platform_device *pdev)
 
 err_remove_group:
 	sysfs_remove_group(&pdev->dev.kobj, &gpio_keys_attr_group);
-fail2:
-	while (--i >= 0)
-		gpio_remove_key(&ddata->data[i]);
-
-	platform_set_drvdata(pdev, NULL);
-//fail1:
-	input_free_device(input);
-	kfree(ddata);
-	/* If we have no platform data, we allocated pdata dynamically. */
-	if (!dev_get_platdata(&pdev->dev))
-		kfree(pdata);
-
 	return error;
 }
 
@@ -981,7 +961,6 @@ static int gpio_keys_suspend(struct device *dev)
 	suspend_state = true;
 	irq_in_suspend = false;
 	wakeup_reason = 0;
-
 	if (device_may_wakeup(dev)) {
 		for (i = 0; i < ddata->pdata->nbuttons; i++) {
 			struct gpio_button_data *bdata = &ddata->data[i];

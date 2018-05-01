@@ -18,16 +18,7 @@
 
 #include "ssp.h"
 
-#ifdef CONFIG_SENSORS_SSP_A3XPREMIUM
-#define SSP_FIRMWARE_REVISION_STM	17032800
-#define BL_FW_NAME			"ssp_stmf410_a3p.fw"
-#define BL_UMS_FW_NAME		"ssp_stmf410_a3p.bin"
-#else //CONFIG_SENSORS_SSP_2017A3
-#define SSP_FIRMWARE_REVISION_STM	17052200
-#define BL_FW_NAME			"ssp_stmf410_a2017.fw"
-#define BL_UMS_FW_NAME		"ssp_stmf410_a2017.bin"
-#endif
-#define BL_CRASHED_FW_NAME		"ssp_crashed.fw"
+#define SSP_FIRMWARE_REVISION_STM	17061200
 
 #define SSP_INVALID_REVISION            99999
 #define SSP_INVALID_REVISION2           0xFFFFFF
@@ -36,6 +27,10 @@
 #define NORM_SPI_HZ			4800000
 
 /* Bootload mode cmd */
+#define BL_FW_NAME			"ssp_stmf410_a2017.fw"
+#define BL_UMS_FW_NAME		"ssp_stmf410_a2017.bin"
+#define BL_CRASHED_FW_NAME		"ssp_crashed.fw"
+
 #define BL_UMS_FW_PATH			255
 
 #define APP_SLAVE_ADDR			0x18

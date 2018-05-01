@@ -93,8 +93,17 @@
 #include <linux/vmm.h>
 #include <linux/rkp_entry.h> 
 #endif //CONFIG_TIMA_RKP
-#ifdef CONFIG_SEC_EXT
+
+#ifdef CONFIG_SEC_BSP
+#include <linux/sec_bsp.h>
+#endif
+#ifdef CONFIG_SEC_INITCALL_DEBUG
 #include <linux/sec_ext.h>
+#endif
+
+#ifdef CONFIG_KNOX_KAP
+int boot_mode_security;
+EXPORT_SYMBOL(boot_mode_security);
 #endif
 
 static int kernel_init(void *);
@@ -105,10 +114,7 @@ extern void radix_tree_init(void);
 #ifndef CONFIG_DEBUG_RODATA
 static inline void mark_rodata_ro(void) { }
 #endif
-#ifdef CONFIG_KNOX_KAP
-int boot_mode_security;
-EXPORT_SYMBOL(boot_mode_security);
-#endif
+
 /*
  * Debug helper: via this flag we know that we are in 'early bootup code'
  * where only the boot processor is running with IRQ disabled.  This means
@@ -447,10 +453,10 @@ static int __init do_early_param(char *param, char *val, const char *unused)
 #ifdef CONFIG_KNOX_KAP
 	if ((strncmp(param, "androidboot.security_mode", 26) == 0)) {
 		pr_warn("val = %d\n",*val);
-	        if ((strncmp(val, "1526595585", 10) == 0)) {
-				pr_info("Security Boot Mode \n");
-				boot_mode_security = 1;
-			}
+		if ((strncmp(val, "1526595585", 10) == 0)) {
+			pr_info("Security Boot Mode \n");
+			boot_mode_security = 1;
+		}
 	}
 #endif
 	return 0;
@@ -516,6 +522,7 @@ static void __init mm_init(void)
 	pgtable_init();
 	vmalloc_init();
 }
+
 #ifdef	CONFIG_TIMA_RKP
 extern void* vmm_extra_mem;
 u8 rkp_started = 0;
@@ -595,7 +602,6 @@ asmlinkage __visible void __init start_kernel(void)
 
 	pr_notice("Kernel command line: %s\n", boot_command_line);
 	parse_early_param();
-
 	after_dashes = parse_args("Booting kernel",
 				  static_command_line, __start___param,
 				  __stop___param - __start___param,
@@ -603,6 +609,7 @@ asmlinkage __visible void __init start_kernel(void)
 	if (!IS_ERR_OR_NULL(after_dashes))
 		parse_args("Setting init args", after_dashes, NULL, 0, -1, -1,
 			   set_init_arg);
+
 
 #ifdef CONFIG_TIMA_RKP
 #ifdef CONFIG_KNOX_KAP
@@ -627,7 +634,9 @@ asmlinkage __visible void __init start_kernel(void)
 	sort_main_extable();
 	trap_init();
 	mm_init();
-
+#ifdef CONFIG_SEC_BSP
+	sec_boot_stat_get_start_kernel();
+#endif
 	/*
 	 * Set up the scheduler prior starting any interrupts (such as the
 	 * timer interrupt). Full topology setup happens at smp_init()
@@ -715,6 +724,7 @@ asmlinkage __visible void __init start_kernel(void)
 	init_espfix_bsp();
 #endif
 	thread_info_cache_init();
+
 #ifdef CONFIG_TIMA_RKP
 
 #ifdef CONFIG_KNOX_KAP
@@ -839,13 +849,13 @@ static int __init_or_module do_one_initcall_debug(initcall_t fn)
 	unsigned long long duration;
 	int ret;
 
-	pr_debug("calling  %pF @ %i\n", fn, task_pid_nr(current));
+	printk(KERN_DEBUG "calling  %pF @ %i\n", fn, task_pid_nr(current));
 	calltime = ktime_get();
 	ret = fn();
 	rettime = ktime_get();
 	delta = ktime_sub(rettime, calltime);
 	duration = (unsigned long long) ktime_to_ns(delta) >> 10;
-	pr_debug("initcall %pF returned %d after %lld usecs\n",
+	printk(KERN_DEBUG "initcall %pF returned %d after %lld usecs\n",
 		 fn, ret, duration);
 
 #ifdef CONFIG_SEC_INITCALL_DEBUG
@@ -938,8 +948,8 @@ static void __init do_initcall_level(int level)
 	for (fn = initcall_levels[level]; fn < initcall_levels[level+1]; fn++)
 		do_one_initcall(*fn);
 
-#ifdef CONFIG_SEC_BOOTSTAT
-	sec_bootstat_add_initcall(initcall_level_names[level]);
+#ifdef CONFIG_SEC_BSP
+	sec_boot_stat_add_initcall(initcall_level_names[level]);
 #endif
 }
 
@@ -998,6 +1008,34 @@ static int run_init_process(const char *init_filename)
 		(const char __user *const __user *)envp_init);
 }
 
+#ifdef CONFIG_DEFERRED_INITCALLS
+extern initcall_t __deferred_initcall_start[], __deferred_initcall_end[];
+
+/* call deferred init routines */
+void __ref do_deferred_initcalls(void)
+{
+	initcall_t *call;
+	static int already_run=0;
+
+	if (already_run) {
+		printk("do_deferred_initcalls() has already run\n");
+		return;
+	}
+
+	already_run=1;
+
+	printk("Running do_deferred_initcalls()\n");
+
+	for(call = __deferred_initcall_start;
+	    call < __deferred_initcall_end; call++)
+		do_one_initcall(*call);
+
+	flush_scheduled_work();
+
+	free_initmem();
+}
+#endif
+
 static int try_to_run_init_process(const char *init_filename)
 {
 	int ret;
@@ -1034,7 +1072,9 @@ static int __ref kernel_init(void *unused)
 #endif
 	/* need to finish all async __init code before freeing the memory */
 	async_synchronize_full();
+#ifndef CONFIG_DEFERRED_INITCALLS
 	free_initmem();
+#endif
 	mark_rodata_ro();
 	system_state = SYSTEM_RUNNING;
 	numa_default_policy();

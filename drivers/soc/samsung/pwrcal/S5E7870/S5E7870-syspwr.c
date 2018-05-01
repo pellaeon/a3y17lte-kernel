@@ -31,9 +31,6 @@ struct exynos_pmu_conf {
 	unsigned int val[NUM_SYS_POWERDOWN];
 };
 
-/* set_pmu_lpi_mask */
-#define TIMEOUT_ENABLE		(0x1 << 0)
-
 /* init_pmu_l2_option */
 #define MANUAL_ACINACTM_VALUE		(0x1 << 3)
 #define MANUAL_ACINACTM_CONTROL		(0x1 << 2)
@@ -91,73 +88,27 @@ static unsigned int *pmu_cpuoption_sfrlist[] = {
 	PMU_CPUCL1_CPU3_OPTION,
 };
 
-static unsigned int *pmu_cpuduration_sfrlist[] = {
-	PMU_CPUCL0_CPU0_DURATION0,
-	PMU_CPUCL0_CPU1_DURATION0,
-	PMU_CPUCL0_CPU2_DURATION0,
-	PMU_CPUCL0_CPU3_DURATION0,
-	PMU_CPUCL1_CPU0_DURATION0,
-	PMU_CPUCL1_CPU1_DURATION0,
-	PMU_CPUCL1_CPU2_DURATION0,
-	PMU_CPUCL1_CPU3_DURATION0,
-};
-
-static unsigned int *pmu_noncpuoption_sfrlist[] = {
-	PMU_CPUCL0_NONCPU_OPTION,
-	PMU_CPUCL1_NONCPU_OPTION,
-};
-
-static unsigned int *pmu_noncpuduration_sfrlist[] = {
-	PMU_CPUCL0_NONCPU_DURATION0,
-	PMU_CPUCL1_NONCPU_DURATION0,
-};
-
 static void init_pmu_cpu_option(void)
 {
 	int cpu;
 	unsigned int tmp;
 
-	/* Joshua use sc_counter */
 	/* enable to wait for low SMP-bit at sys power down */
 	for (cpu = 0; cpu < sizeof(pmu_cpuoption_sfrlist) / sizeof(pmu_cpuoption_sfrlist[0]); cpu++) {
 		tmp = pwrcal_readl(pmu_cpuoption_sfrlist[cpu]);
-		tmp |= USE_SC_COUNTER;
+		tmp |= USE_SC_FEEDBACK;
 		tmp |= USE_SMPEN;
 		tmp |= USE_STANDBYWFI;
 		tmp |= USE_MEMPWRDOWN_FEEDBACK;
 		tmp &= ~USE_STANDBYWFE;
-		tmp &= ~USE_SC_FEEDBACK;
+		tmp &= ~USE_SC_COUNTER;
 		pwrcal_writel(pmu_cpuoption_sfrlist[cpu], tmp);
-
-		pwrcal_setf(pmu_cpuduration_sfrlist[cpu], 0x8, 0xf, 0x3);
-		pwrcal_setf(pmu_cpuduration_sfrlist[cpu], 0x4, 0xf, 0x3);
-	}
-}
-
-static void init_pmu_noncpu_option(void)
-{
-
-	int i;
-	unsigned int tmp;
-
-	/* Joshua use sc_counter */
-	for (i = 0; i < sizeof(pmu_noncpuoption_sfrlist) / sizeof(pmu_noncpuoption_sfrlist[0]); i++) {
-		tmp = pwrcal_readl(pmu_noncpuoption_sfrlist[i]);
-		tmp |= USE_SC_COUNTER;
-		tmp &= ~USE_SC_FEEDBACK;
-		pwrcal_writel(pmu_noncpuoption_sfrlist[i], tmp);
-
-		pwrcal_setf(pmu_noncpuduration_sfrlist[i], 0x8, 0xf, 0x3);
-		pwrcal_setf(pmu_noncpuduration_sfrlist[i], 0x4, 0xf, 0x3);
 	}
 }
 
 static void set_pmu_lpi_mask(void)
 {
-	unsigned int tmp;
-	tmp = pwrcal_readl(PMU_RESET_LPI_TIMEOUT);
-	tmp |= TIMEOUT_ENABLE;
-	pwrcal_writel(PMU_RESET_LPI_TIMEOUT, tmp);
+
 }
 
 static void init_pmu_l2_option(void)
@@ -179,11 +130,15 @@ static void init_pmu_l2_option(void)
 	pwrcal_writel(PMU_CPUCL1_L2_OPTION, tmp);
 }
 
+static void init_pmu_cpuseq_option(void)
+{
+}
+
 static void init_pmu_up_scheduler(void)
 {
 	unsigned int tmp;
 
-	/* limit in-rush current for CPUs local power up */
+	/* limit in-rush current for ATLAS local power up */
 	tmp = pwrcal_readl(PMU_UP_SCHEDULER);
 	tmp |= ENABLE_CPUCL0_CPU | ENABLE_CPUCL1_CPU;
 	pwrcal_writel(PMU_UP_SCHEDULER, tmp);
@@ -191,15 +146,14 @@ static void init_pmu_up_scheduler(void)
 
 /* init_pmu_feedback */
 static unsigned int *pmu_feedback_sfrlist[] = {
+	PMU_CPUCL0_NONCPU_OPTION,
+	PMU_CPUCL1_NONCPU_OPTION,
 	PMU_TOP_PWR_OPTION,
 	PMU_TOP_PWR_MIF_OPTION,
 	PMU_DISPAUD_OPTION,
 	PMU_MFCMSCL_OPTION,
 	PMU_ISP_OPTION,
-	PMU_G3D_OPTION,
-	PMU_MEMORY_G3D_OPTION
 };
-
 
 /* init_set_duration */
 #define XXTI_DUR_STABLE				0x658 /* 1ms @ 26MHz */
@@ -213,8 +167,6 @@ static void init_set_duration(void)
 	pwrcal_writel(PMU_TCXO_DURATION3, TCXO_DUR_STABLE);
 	pwrcal_writel(PMU_EXT_REGULATOR_DURATION3, EXT_REGULATOR_DUR_STABLE);
 	pwrcal_writel(PMU_EXT_REGULATOR_MIF_DURATION3, EXT_REGULATOR_MIF_DUR_STABLE);
-
-	pwrcal_setf(PMU_G3D_DURATION0, 4, 0xff, 0x00);
 }
 
 static void init_pmu_feedback(void)
@@ -249,13 +201,13 @@ static void disable_armidleclockdown(void)
 
 static void syspwr_init(void)
 {
-	set_pmu_lpi_mask();
 	init_pmu_feedback();
 	init_pmu_l2_option();
 	init_pmu_cpu_option();
-	init_pmu_noncpu_option();
+	init_pmu_cpuseq_option();
 	init_pmu_up_scheduler();
 	init_set_duration();
+	set_pmu_lpi_mask();
 	init_ps_hold_setting();
 	enable_armidleclockdown();
 }
@@ -780,30 +732,6 @@ static struct cmu_backup cmu_backup_topmux_list[] = {
 	{CLK_CON_MUX_CLKCMU_ISP_SENSOR2,	0x00200000,	NULL,	0,	0},
 };
 
-static struct cmu_backup cmu_backup_lpd_list[] = {
-	{CLK_CON_DIV_CLKCMU_DISPAUD_BUS,	0xFFFFFFFF,	NULL,	0,	0},
-	{CLK_CON_DIV_CLKCMU_DISPAUD_DECON_INT_VCLK,	0xFFFFFFFF,	NULL,	0,	0},
-	{CLK_CON_DIV_CLKCMU_DISPAUD_DECON_INT_ECLK,	0xFFFFFFFF,	NULL,	0,	0},
-	{CLK_CON_MUX_CLKCMU_DISPAUD_BUS,	0xFFFFFFFF,	NULL,	0,	0},
-	{CLK_CON_MUX_CLKCMU_DISPAUD_DECON_INT_VCLK,	0xFFFFFFFF,	NULL,	0,	0},
-	{CLK_CON_MUX_CLKCMU_DISPAUD_DECON_INT_ECLK,	0xFFFFFFFF,	NULL,	0,	0},
-	{MEM_PLL_CON0,	0xFFFFFFFF,	NULL,	0,	0},
-	{BUS_PLL_CON0,	0xFFFFFFFF,	NULL,	0,	0},
-	{CLK_CON_MUX_MEM_PLL,	0xFFFFFFFF,	NULL,	0,	0},
-	{CLK_CON_MUX_BUS_PLL,	0xFFFFFFFF,	NULL,	0,	0},
-	{CLK_CON_DIV_CLK_MIF_BUSD,	0xFFFFFFFF,	NULL,	0,	0},
-	{CLK_CON_DIV_CLK_MIF_CCI,	0xFFFFFFFF,	NULL,	0,	0},
-	{CLK_CON_MUX_CLK_MIF_BUSD,	0xFFFFFFFF,	NULL,	0,	0},
-	{CLK_CON_MUX_CLK_MIF_CCI,	0xFFFFFFFF,	NULL,	0,	0},
-	{CLK_CON_MUX_CLK_MIF_PHY_CLK2X,	0xFFFFFFFF,	NULL,	0,	0},
-	{CLK_ENABLE_CLKCMU_PERI_SPI_FRONTFROM,	0xFFFFFFFF,	NULL,	0,	0},
-	{CLK_ENABLE_CLKCMU_PERI_SPI_REARFROM,	0xFFFFFFFF,	NULL,	0,	0},
-	{CLK_ENABLE_CLKCMU_PERI_SPI_ESE,	0xFFFFFFFF,	NULL,	0,	0},
-	{CLK_ENABLE_CLKCMU_PERI_SPI_VOICEPROCESSOR,	0xFFFFFFFF,	NULL,	0,	0},
-	{CLK_ENABLE_CLKCMU_PERI_SPI_SENSORHUB,	0xFFFFFFFF,	NULL,	0,	0},
-	{MIF_ROOTCLKEN,	0xFFFFFFFF,	NULL,	0,	0},
-};
-
 static void save_cmusfr(int mode)
 {
 	int i;
@@ -875,87 +803,63 @@ static void restore_topmuxgate(void)
 	}
 }
 
-static void save_lpd(void)
+static void topmux_enable(void)
 {
-	int i;
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_ISP_VRA,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_ISP_CAM,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_ISP_ISP,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_DISPAUD_BUS,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_DISPAUD_DECON_INT_VCLK,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_DISPAUD_DECON_INT_ECLK,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_MFCMSCL_MSCL,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_MFCMSCL_MFC,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_FSYS_BUS,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_FSYS_MMC0,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_FSYS_MMC1,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_FSYS_MMC2,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_FSYS_UFSUNIPRO,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_FSYS_UFSUNIPRO_CFG,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_FSYS_USB20DRD_REFCLK,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_PERI_BUS,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_PERI_UART_BTWIFIFM,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_PERI_UART_DEBUG,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_PERI_UART_SENSOR,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_PERI_SPI_FRONTFROM,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_PERI_SPI_REARFROM,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_PERI_SPI_ESE,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_PERI_SPI_VOICEPROCESSOR,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_PERI_SPI_SENSORHUB,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_ISP_SENSOR0,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_ISP_SENSOR1,	21,	1);
+	pwrcal_setbit(CLK_CON_MUX_CLKCMU_ISP_SENSOR2,	21,	1);
 
-	for (i = 0; i < ARRAY_SIZE(cmu_backup_lpd_list); i++) {
-		cmu_backup_lpd_list[i].backup = pwrcal_readl(cmu_backup_lpd_list[i].sfr);
-		cmu_backup_lpd_list[i].backup_valid = 1;
-	}
-}
-
-static void restore_lpd(void)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(cmu_backup_lpd_list); i++) {
-		if (cmu_backup_lpd_list[i].backup_valid == 0)
-			continue;
-
-		pwrcal_setf(cmu_backup_lpd_list[i].sfr, 0, cmu_backup_lpd_list[i].mask, cmu_backup_lpd_list[i].backup);
-	}
-}
-
-static void topmux_enable(int mode)
-{
-	if (mode != SYS_AFTR) {
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_ISP_VRA,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_ISP_CAM,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_ISP_ISP,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_DISPAUD_BUS,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_DISPAUD_DECON_INT_VCLK,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_DISPAUD_DECON_INT_ECLK,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_MFCMSCL_MSCL,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_MFCMSCL_MFC,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_FSYS_BUS,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_FSYS_MMC0,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_FSYS_MMC1,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_FSYS_MMC2,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_FSYS_UFSUNIPRO,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_FSYS_UFSUNIPRO_CFG,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_FSYS_USB20DRD_REFCLK,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_PERI_BUS,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_PERI_UART_BTWIFIFM,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_PERI_UART_DEBUG,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_PERI_UART_SENSOR,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_PERI_SPI_FRONTFROM,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_PERI_SPI_REARFROM,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_PERI_SPI_ESE,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_PERI_SPI_VOICEPROCESSOR,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_PERI_SPI_SENSORHUB,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_ISP_SENSOR0,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_ISP_SENSOR1,	21,	1);
-		pwrcal_setbit(CLK_CON_MUX_CLKCMU_ISP_SENSOR2,	21,	1);
-
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_ISP_VRA,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_ISP_CAM,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_ISP_ISP,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_DISPAUD_BUS,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_DISPAUD_DECON_INT_VCLK,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_DISPAUD_DECON_INT_ECLK,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_MFCMSCL_MSCL,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_MFCMSCL_MFC,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_BUS,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_MMC0,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_MMC1,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_MMC2,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_UFSUNIPRO,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_UFSUNIPRO_CFG,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_USB20DRD_REFCLK,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_BUS,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_UART_BTWIFIFM,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_UART_DEBUG,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_UART_SENSOR,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_SPI_FRONTFROM,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_SPI_REARFROM,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_SPI_ESE,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_SPI_VOICEPROCESSOR,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_SPI_SENSORHUB,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_ISP_SENSOR0,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_ISP_SENSOR1,	0,	1);
-		pwrcal_setbit(CLK_ENABLE_CLKCMU_ISP_SENSOR2,	0,	1);
-	}
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_ISP_VRA,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_ISP_CAM,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_ISP_ISP,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_DISPAUD_BUS,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_DISPAUD_DECON_INT_VCLK,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_DISPAUD_DECON_INT_ECLK,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_MFCMSCL_MSCL,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_MFCMSCL_MFC,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_BUS,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_MMC0,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_MMC1,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_MMC2,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_UFSUNIPRO,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_UFSUNIPRO_CFG,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_USB20DRD_REFCLK,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_BUS,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_UART_BTWIFIFM,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_UART_DEBUG,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_UART_SENSOR,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_SPI_FRONTFROM,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_SPI_REARFROM,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_SPI_ESE,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_SPI_VOICEPROCESSOR,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_SPI_SENSORHUB,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_ISP_SENSOR0,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_ISP_SENSOR1,	0,	1);
+	pwrcal_setbit(CLK_ENABLE_CLKCMU_ISP_SENSOR2,	0,	1);
 }
 
 static void syspwr_clock_config(int mode)
@@ -975,7 +879,6 @@ static void syspwr_clock_config(int mode)
 		pwrcal_setbit(CLK_CON_MUX_CLKPHY_ISP_S_RXBYTECLKHS0_S4S_USER,	27,	1);
 	}
 	if (mode == SYS_LPD) {
-		save_lpd();
 		pwrcal_setf(CLK_CON_DIV_CLKCMU_DISPAUD_BUS, 0, 0xF, 0x3);
 		pwrcal_setf(CLK_CON_DIV_CLKCMU_DISPAUD_DECON_INT_VCLK, 0, 0xF, 0x3);
 		pwrcal_setf(CLK_CON_DIV_CLKCMU_DISPAUD_DECON_INT_ECLK, 0, 0xF, 0x3);
@@ -1001,14 +904,6 @@ static void syspwr_clock_config(int mode)
 		pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_SPI_VOICEPROCESSOR,	0,	0);
 		pwrcal_setbit(CLK_ENABLE_CLKCMU_PERI_SPI_SENSORHUB,	0,	0);
 	}
-
-	pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_BUS,	0,	1);
-	pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_MMC0,	0,	1);
-	pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_MMC1,	0,	1);
-	pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_MMC2,	0,	1);
-	pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_UFSUNIPRO,	0,	1);
-	pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_UFSUNIPRO_CFG,	0,	1);
-	pwrcal_setbit(CLK_ENABLE_CLKCMU_FSYS_USB20DRD_REFCLK,	0,	1);
 }
 
 static int syspwr_clkpwr_optimize(unsigned int power_mode)
@@ -1020,8 +915,13 @@ static int syspwr_clkpwr_optimize(unsigned int power_mode)
 
 static void syspwr_set_additional_config(const enum sys_powerdown eMode)
 {
-	pwrcal_setbit(PMU_WAKEUP_MASK, 30, 1);
-	pwrcal_setbit(PMU_WAKEUP_MASK_MIF, 30, 1);
+//	pwrcal_setf(GPIO_GPB0_CON, 16, 0xf, 0x2);	/* SCALL__G3D__ALO : GPB0[4] */
+	pwrcal_setf(PMU_G3D_OPTION, 1, 0x1, 0x0);
+	pwrcal_setf(PMU_G3D_OPTION, 0, 0x1, 0x1);
+	pwrcal_setf(PMU_MEMORY_G3D_OPTION, 1, 0x1, 0x0);
+	pwrcal_setf(PMU_MEMORY_G3D_OPTION, 0, 0x1, 0x1);
+	pwrcal_setf(PMU_G3D_DURATION0, 8, 0xff, 0x00);
+	pwrcal_setf(PMU_G3D_DURATION0, 0, 0xff, 0xC0);
 }
 
 
@@ -1029,7 +929,7 @@ static void syspwr_prepare(int mode)
 {
 	save_cmusfr(mode);
 	save_topmuxgate();
-	topmux_enable(mode);
+	topmux_enable();
 	syspwr_clock_config(mode);
 	syspwr_clkpwr_optimize(mode);
 
@@ -1039,39 +939,44 @@ static void syspwr_prepare(int mode)
 
 	switch (mode) {
 	case SYS_SICD:
+		pwrcal_setbit(PMU_TOP_BUS_MIF_OPTION, 2, 0);
+		pwrcal_setbit(PMU_TOP_BUS_MIF_OPTION, 1, 1);
+		pwrcal_setbit(PMU_TOP_BUS_MIF_OPTION, 0, 1);
 		set_pmu_central_seq_mif(true);
-
-		if (is_sicd_factory())
-			pwrcal_setbit(MIF_SFR_IGNORE_REQ_SYSCLK,	2,	1);
-		else
-			pwrcal_setbit(MIF_SFR_IGNORE_REQ_SYSCLK,	2,	0);
-
 		break;
 	case SYS_AFTR:
+		pwrcal_setbit(PMU_TOP_BUS_MIF_OPTION, 2, 0);
+		pwrcal_setbit(PMU_TOP_BUS_MIF_OPTION, 1, 0);
+		pwrcal_setbit(PMU_TOP_BUS_MIF_OPTION, 0, 0);
 		set_pmu_central_seq_mif(false);
 		break;
 	case SYS_STOP:
+		pwrcal_setbit(PMU_TOP_BUS_MIF_OPTION, 2, 0);
+		pwrcal_setbit(PMU_TOP_BUS_MIF_OPTION, 1, 0);
+		pwrcal_setbit(PMU_TOP_BUS_MIF_OPTION, 0, 0);
 		set_pmu_central_seq_mif(true);
 		break;
 	case SYS_LPD:
+		pwrcal_setbit(PMU_TOP_BUS_MIF_OPTION, 2, 0);
+		pwrcal_setbit(PMU_TOP_BUS_MIF_OPTION, 1, 0);
+		pwrcal_setbit(PMU_TOP_BUS_MIF_OPTION, 0, 0);
 		set_pmu_central_seq_mif(false);
 		break;
 	case SYS_SLEEP:
+		pwrcal_setbit(PMU_TOP_BUS_MIF_OPTION, 2, 0);
+		pwrcal_setbit(PMU_TOP_BUS_MIF_OPTION, 1, 0);
+		pwrcal_setbit(PMU_TOP_BUS_MIF_OPTION, 0, 0);
 		set_pmu_central_seq_mif(true);
-		pwrcal_mux_set_src(CLK(MIF_MUX_BUS_PLL), 0);
-		pwrcal_pll_disable(CLK(BUS_PLL));
-		pwrcal_div_set_ratio(CLK(MIF_DIV_CLKCMU_FSYS_BUS), 1);
-		pwrcal_mux_set_src(CLK(MIF_MUX_CLKCMU_DISPAUD_DECON_INT_VCLK), 0);
 		break;
 	default:
 		break;
 	}
 
+	pwrcal_setbit(PMU_WAKEUP_MASK, 30, 1);
 }
 
 static void set_pmu_pad_retention_release(void)
 {
-	pwrcal_writel(PMU_PAD_RETENTION_BOOTLDO_OPTION, PAD_INITIATE_WAKEUP);
 	pwrcal_writel(PMU_PAD_RETENTION_AUD_OPTION, PAD_INITIATE_WAKEUP);
 	pwrcal_writel(PMU_PAD_RETENTION_TOP_OPTION, PAD_INITIATE_WAKEUP);
 	pwrcal_writel(PMU_PAD_RETENTION_UART_OPTION, PAD_INITIATE_WAKEUP);
@@ -1093,27 +998,16 @@ static void syspwr_post(int mode)
 	pwrcal_setbit(PMU_WAKEUP_MASK, 30, 0);
 
 	enable_armidleclockdown();
-	if (mode == SYS_LPD)
-		restore_lpd();
 	restore_cmusfr(mode);
 	restore_topmuxgate();
 }
 
 static void syspwr_earlywakeup(int mode)
 {
-	if (mode == SYS_SLEEP)
-	{
-		pwrcal_mux_set_src(CLK(MIF_MUX_CLKCMU_DISPAUD_DECON_INT_VCLK), 1);
-		pwrcal_div_set_ratio(CLK(MIF_DIV_CLKCMU_FSYS_BUS), 6);
-		pwrcal_pll_enable(CLK(BUS_PLL));
-		pwrcal_mux_set_src(CLK(MIF_MUX_BUS_PLL), 1);
-	}
 	set_pmu_central_seq(false);
 	set_pmu_central_seq_mif(false);
 
 	enable_armidleclockdown();
-	if (mode == SYS_LPD)
-		restore_lpd();
 
 	pwrcal_writel(PMU_TOP_BUS_MIF_OPTION, 0);
 	pwrcal_setbit(PMU_WAKEUP_MASK, 30, 0);

@@ -619,16 +619,16 @@ void netif_tx_flowctl(struct modem_shared *msd, bool tx_stop)
 	spin_lock(&msd->active_list_lock);
 	list_for_each_entry(iod, &msd->activated_ndev_list, node_ndev) {
 		if (tx_stop) {
-			netif_stop_subqueue(iod->ndev, 0);
+			netif_stop_queue(iod->ndev);
 #ifdef DEBUG_MODEM_IF_FLOW_CTRL
-			mif_info("tx_stop:%s, iod->ndev->name:%s\n",
+			mif_err("tx_stop:%s, iod->ndev->name:%s\n",
 				tx_stop ? "suspend" : "resume",
 				iod->ndev->name);
 #endif
 		} else {
-			netif_wake_subqueue(iod->ndev, 0);
+			netif_wake_queue(iod->ndev);
 #ifdef DEBUG_MODEM_IF_FLOW_CTRL
-			mif_info("tx_stop:%s, iod->ndev->name:%s\n",
+			mif_err("tx_stop:%s, iod->ndev->name:%s\n",
 				tx_stop ? "suspend" : "resume",
 				iod->ndev->name);
 #endif
@@ -644,7 +644,7 @@ static void iodev_set_tx_link(struct io_device *iod, void *args)
 	struct link_device *ld = (struct link_device *)args;
 	if (iod->format == IPC_RAW && IS_CONNECTED(iod, ld)) {
 		set_current_link(iod, ld);
-		mif_info("%s -> %s\n", iod->name, ld->name);
+		mif_err("%s -> %s\n", iod->name, ld->name);
 	}
 }
 
@@ -791,7 +791,7 @@ void mif_print_data(const u8 *data, int len)
 
 	for (i = 0; i < words; i++) {
 		b = (char *)data + (i << 4);
-		mif_info("%04X: "
+		mif_err("%04X: "
 			"%02x %02x %02x %02x  %02x %02x %02x %02x  "
 			"%02x %02x %02x %02x  %02x %02x %02x %02x\n",
 			(i << 4),
@@ -801,7 +801,7 @@ void mif_print_data(const u8 *data, int len)
 
 	/* Print the last line */
 	if (residue > 0)
-		mif_info("%s\n", last);
+		mif_err("%s\n", last);
 }
 
 void mif_dump2format16(const u8 *data, int len, char *buff, char *tag)
@@ -1358,3 +1358,4 @@ void mif_set_snapshot(bool enable)
 {
 	exynos_ss_set_enable("log_kevents", enable);
 }
+

@@ -85,9 +85,9 @@
 #include <linux/msg.h>
 #include <linux/shm.h>
 
-// [ SEC_SELINUX_PORTING_COMMON
+// [ SEC_SELINUX_PORTING COMMON
 #include <linux/delay.h>
-// ] SEC_SELINUX_PORTING_COMMON
+// ] SEC_SELINUX_PORTING COMMON
 
 #include "avc.h"
 #include "objsec.h"
@@ -111,11 +111,7 @@ static int __init enforcing_setup(char *str)
 {
 	unsigned long enforcing;
 	if (!kstrtoul(str, 0, &enforcing))
-#ifdef CONFIG_ALWAYS_ENFORCE
-		selinux_enforcing = 1;
-#else
 		selinux_enforcing = enforcing ? 1 : 0;
-#endif
 	return 1;
 }
 __setup("enforcing=", enforcing_setup);
@@ -128,11 +124,7 @@ static int __init selinux_enabled_setup(char *str)
 {
 	unsigned long enabled;
 	if (!kstrtoul(str, 0, &enabled))
-#ifdef CONFIG_ALWAYS_ENFORCE
-		selinux_enabled = 1;
-#else
 		selinux_enabled = enabled ? 1 : 0;
-#endif
 	return 1;
 }
 __setup("selinux=", selinux_enabled_setup);
@@ -745,7 +737,9 @@ static int selinux_set_mnt_opts(struct super_block *sb,
 	if (strcmp(sb->s_type->name, "proc") == 0)
 		sbsec->flags |= SE_SBPROC | SE_SBGENFS;
 
-	if (strcmp(sb->s_type->name, "debugfs") == 0)
+	if (!strcmp(sb->s_type->name, "debugfs") ||
+	    !strcmp(sb->s_type->name, "sysfs") ||
+	    !strcmp(sb->s_type->name, "pstore"))
 		sbsec->flags |= SE_SBGENFS;
 
 	if (!sbsec->behavior) {
@@ -2925,7 +2919,7 @@ static int selinux_inode_permission(struct inode *inode, int mask)
 	sid = cred_sid(cred);
 	isec = inode->i_security;
 
-// [ SEC_SELINUX_PORTING_COMMON
+// [ SEC_SELINUX_PORTING COMMON
 	/* skip sid == 1(kernel), it means first boot time */
 	if(isec->initialized != 1 && sid != 1) {
 		int count = 5;
@@ -2942,7 +2936,7 @@ static int selinux_inode_permission(struct inode *inode, int mask)
 			printk(KERN_ERR "SELinux : inode->i_security is not initialized. not fixed.\n"); 
 		}
 	}
-// ] SEC_SELINUX_PORTING_COMMON
+// ] SEC_SELINUX_PORTING COMMON
 
 	rc = avc_has_perm_noaudit(sid, isec->sid, isec->sclass, perms, 0, &avd);
 	audited = avc_audit_required(perms, &avd, rc,
@@ -2975,7 +2969,8 @@ static int selinux_inode_setattr(struct dentry *dentry, struct iattr *iattr)
 			ATTR_ATIME_SET | ATTR_MTIME_SET | ATTR_TIMES_SET))
 		return dentry_has_perm(cred, dentry, FILE__SETATTR);
 
-	if (selinux_policycap_openperm && (ia_valid & ATTR_SIZE))
+	if (selinux_policycap_openperm && (ia_valid & ATTR_SIZE)
+			&& !(ia_valid & ATTR_FILE))
 		av |= FILE__OPEN;
 
 	return dentry_has_perm(cred, dentry, av);
@@ -3280,6 +3275,8 @@ int ioctl_has_perm(const struct cred *cred, struct file *file,
 	struct lsm_ioctlop_audit ioctl;
 	u32 ssid = cred_sid(cred);
 	int rc;
+	u8 driver = cmd >> 8;
+	u8 xperm = cmd & 0xff;
 
 	ad.type = LSM_AUDIT_DATA_IOCTL_OP;
 	ad.u.op = &ioctl;
@@ -3298,8 +3295,8 @@ int ioctl_has_perm(const struct cred *cred, struct file *file,
 	if (unlikely(IS_PRIVATE(inode)))
 		return 0;
 
-	rc = avc_has_operation(ssid, isec->sid, isec->sclass,
-			requested, cmd, &ad);
+	rc = avc_has_extended_perms(ssid, isec->sid, isec->sclass,
+			requested, driver, xperm, &ad);
 out:
 	return rc;
 }
@@ -4847,11 +4844,7 @@ static int selinux_nlmsg_perm(struct sock *sk, struct sk_buff *skb)
 			       "SELinux: unrecognized netlink message:"
 			       " protocol=%hu nlmsg_type=%hu sclass=%hu\n",
 			       sk->sk_protocol, nlh->nlmsg_type, sksec->sclass);
-#ifdef CONFIG_ALWAYS_ENFORCE
-			if (security_get_allow_unknown())
-#else
 			if (!selinux_enforcing || security_get_allow_unknown())
-#endif
 				err = 0;
 		}
 
@@ -6144,11 +6137,7 @@ static struct security_operations selinux_ops = {
 static __init int selinux_init(void)
 {
 	if (!security_module_enable(&selinux_ops)) {
-#ifdef CONFIG_ALWAYS_ENFORCE
-		selinux_enabled = 1;
-#else
 		selinux_enabled = 0;
-#endif
 		return 0;
 	}
 
@@ -6174,9 +6163,7 @@ static __init int selinux_init(void)
 
 	if (avc_add_callback(selinux_netcache_avc_callback, AVC_CALLBACK_RESET))
 		panic("SELinux: Unable to register AVC netcache callback\n");
-#ifdef CONFIG_ALWAYS_ENFORCE
-		selinux_enforcing = 1;
-#endif
+
 	if (selinux_enforcing)
 		printk(KERN_DEBUG "SELinux:  Starting in enforcing mode\n");
 	else
@@ -6248,10 +6235,6 @@ static struct nf_hook_ops selinux_nf_ops[] = {
 static int __init selinux_nf_ip_init(void)
 {
 	int err;
-
-#ifdef CONFIG_ALWAYS_ENFORCE
-		selinux_enabled = 1;
-#endif
 
 	if (!selinux_enabled)
 		return 0;

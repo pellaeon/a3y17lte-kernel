@@ -781,10 +781,6 @@ copy_failed:
 				break;
 			}
 
-			if(kbdev->vendor_callbacks->mem_profile_check_kctx)
-				if (!kbdev->vendor_callbacks->mem_profile_check_kctx(kctx))
-					break;
-
 #ifndef CONFIG_MALI_COH_USER
 			if (kbase_sync_now(kctx, &sn->sset) != 0)
 				ukh->ret = MALI_ERROR_FUNCTION_FAILED;
@@ -1410,7 +1406,7 @@ static long kbase_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	u32 size = _IOC_SIZE(cmd);
 	struct kbase_context *kctx = filp->private_data;
 
-	if (size > CALL_MAX_SIZE || size <= 0)
+	if (size > CALL_MAX_SIZE)
 		return -ENOTTY;
 
 	if (0 != copy_from_user(&msg, (void __user *)arg, size)) {

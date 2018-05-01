@@ -1720,7 +1720,7 @@ static int samsung_i2s_probe(struct platform_device *pdev)
 	struct resource *res;
 	u32 regs_base, quirks = 0;
 	u32 amixer = 0;
-	int slotnum;
+	int slotnum = 0;
 #ifdef CONFIG_SND_SAMSUNG_IDMA
 	u32 idma_addr;
 #endif
@@ -2007,7 +2007,8 @@ static int samsung_i2s_probe(struct platform_device *pdev)
 #endif
 	return 0;
 err:
-	release_mem_region(regs_base, resource_size(res));
+	if(res)
+		release_mem_region(regs_base, resource_size(res));
 
 	return ret;
 }

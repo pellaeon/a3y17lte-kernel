@@ -75,8 +75,9 @@ static int fimc_is_ischain_mxp_cfg(struct fimc_is_subdev *subdev,
 		mcs_output = fimc_is_itf_g_param(device, frame, PARAM_MCS_OUTPUT4);
 		break;
 	default:
-		mswarn("vid(%d) is not matched", device, subdev, subdev->vid);
-		break;
+		mserr("vid(%d) is not matched", device, subdev, subdev->vid);
+		ret = -EINVAL;
+		goto p_err;
 	}
 
 	mcs_output->otf_format = OTF_OUTPUT_FORMAT_YUV422;
@@ -266,18 +267,12 @@ static int fimc_is_ischain_mxp_start(struct fimc_is_device_ischain *device,
 		mcs_output->hwfc = 0; /* TODO: enum */
 #endif
 
-	if (!frame->shot_ext->fd_bypass &&
-		(device->group_mcs.junction == subdev))
-		mcs_output->otf_cmd = OTF_OUTPUT_COMMAND_ENABLE;
-	else
-		mcs_output->otf_cmd = OTF_OUTPUT_COMMAND_DISABLE;
-
 	*lindex |= LOWBIT_OF(index);
 	*hindex |= HIGHBIT_OF(index);
 	(*indexes)++;
 
 #ifdef SOC_VRA
-	if (mcs_output->otf_cmd == OTF_OUTPUT_COMMAND_ENABLE) {
+	if (device->group_mcs.junction == subdev) {
 		otf_input = fimc_is_itf_g_param(device, frame, PARAM_FD_OTF_INPUT);
 		otf_input->width = otcrop->w;
 		otf_input->height = otcrop->h;
@@ -386,9 +381,9 @@ static int fimc_is_ischain_mxp_tag(struct fimc_is_subdev *subdev,
 		target_addr = ldr_frame->shot->uctl.scalerUd.sc4TargetAddress;
 		break;
 	default:
-		target_addr = NULL;
-		mswarn("vid(%d) is not matched", device, subdev, node->vid);
-		break;
+		mserr("vid(%d) is not matched", device, subdev, node->vid);
+		ret = -EINVAL;
+		goto p_err;
 	}
 
 	mcs_output = fimc_is_itf_g_param(device, ldr_frame, index);
@@ -416,8 +411,6 @@ static int fimc_is_ischain_mxp_tag(struct fimc_is_subdev *subdev,
 		if (!COMPARE_CROP(incrop, &inparm) ||
 			!COMPARE_CROP(otcrop, &otparm) ||
 			!test_bit(FIMC_IS_SUBDEV_RUN, &subdev->state) ||
-			((device->group_mcs.junction == subdev) &&
-			(!ldr_frame->shot_ext->fd_bypass != mcs_output->otf_cmd)) ||
 			test_bit(FIMC_IS_SUBDEV_FORCE_SET, &leader->state)) {
 			ret = fimc_is_ischain_mxp_start(device,
 				subdev,

@@ -521,6 +521,9 @@ static int psci_suspend_finisher(unsigned long index)
  * Ideally, we hope that PSCI framework cover the all power states, but it
  * is not correspond on some platforms. Below function supports extra power
  * state that PSCI cannot be handled.
+ * ID : indicates system power mode. if id is not 0, it is system power mode(SICD)
+ * TYPE : None
+ * AFFINITY_LEVEL : powre off scope of power mode. (0 -> core, 1 -> cluster, 3 -> system)
  */
 static int psci_suspend_customized_finisher(unsigned long index)
 {
@@ -541,11 +544,11 @@ static int psci_suspend_customized_finisher(unsigned long index)
 		state.id = 1;
 		state.affinity_level = 1;
 		break;
+	case PSCI_SYSTEM_CP_CALL:
+		state.affinity_level = 2;
+		break;
 	case PSCI_SYSTEM_SLEEP:
 		state.affinity_level = 3;
-		break;
-	case PSCI_SYSTEM_CP_CALL:
-		state.affinity_level = 1;
 		break;
 	default:
 		panic("Unsupported psci state, index = %ld\n", index);

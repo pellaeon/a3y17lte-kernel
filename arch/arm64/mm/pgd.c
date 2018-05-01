@@ -32,9 +32,11 @@
 #include <linux/rkp_entry.h>
 extern u8 rkp_started;
 #endif /* CONFIG_TIMA_RKP */
+
 #define PGD_SIZE	(PTRS_PER_PGD * sizeof(pgd_t))
 
 static struct kmem_cache *pgd_cache;
+
 #ifndef CONFIG_TIMA_RKP
 pgd_t *pgd_alloc(struct mm_struct *mm)
 {
@@ -96,6 +98,7 @@ void pgd_free(struct mm_struct *mm, pgd_t *pgd)
 	}
 }
 #endif
+
 static int __init pgd_cache_init(void)
 {
 	/*

@@ -15,10 +15,6 @@
 #include <linux/slab.h>
 #include <linux/sort.h>
 #include <linux/cputime.h>
-#ifdef CONFIG_LOAD_BASED_CORE_CURRENT_CAL
-#include <soc/samsung/cpufreq.h>
-extern unsigned int get_cpu_load(int cpu);
-#endif
 
 static spinlock_t cpufreq_stats_lock;
 
@@ -45,9 +41,6 @@ struct all_cpufreq_stats {
 struct all_freq_table {
 	unsigned int *freq_table;
 	unsigned int table_size;
-#ifdef CONFIG_LOAD_BASED_CORE_CURRENT_CAL
-	u64 *time_for_clust0;
-#endif
 };
 
 static struct all_freq_table *all_freq_table;
@@ -65,11 +58,7 @@ static int cpufreq_stats_update(unsigned int cpu)
 	struct cpufreq_stats *stat;
 	struct all_cpufreq_stats *all_stat;
 	unsigned long long cur_time;
-#ifdef CONFIG_LOAD_BASED_CORE_CURRENT_CAL
-	int i;
-	unsigned int curr_cpu_load;
-	unsigned long long update_highload_time;
-#endif
+
 	cur_time = get_jiffies_64();
 	spin_lock(&cpufreq_stats_lock);
 	stat = per_cpu(cpufreq_stats_table, cpu);
@@ -84,18 +73,6 @@ static int cpufreq_stats_update(unsigned int cpu)
 		if (all_stat)
 			all_stat->time_in_state[stat->last_index] +=
 					cur_time - stat->last_time;
-#ifdef CONFIG_LOAD_BASED_CORE_CURRENT_CAL
-		if (all_freq_table->time_for_clust0) {
-			for (i = cpu; i < cpu + NR_CLUST0_CPUS; i++) {
-				curr_cpu_load = get_cpu_load(i);
-				if (curr_cpu_load == 0)
-					continue;
-				update_highload_time = (cur_time - stat->last_time) * curr_cpu_load;
-				do_div(update_highload_time, 100);
-				all_freq_table->time_for_clust0[all_freq_table->table_size-stat->last_index-1] += (update_highload_time);
-			}
-		}
-#endif
 	}
 	stat->last_time = cur_time;
 	spin_unlock(&cpufreq_stats_lock);
@@ -139,33 +116,6 @@ static int get_index_all_cpufreq_stat(struct all_cpufreq_stats *all_stat,
 	}
 	return -1;
 }
-
-#ifdef CONFIG_LOAD_BASED_CORE_CURRENT_CAL
-static ssize_t show_cpu_time_for_clust0(struct kobject *kobj,
-		struct kobj_attribute *attr, char *buf)
-{
-	ssize_t len = 0;
-	unsigned int cpu = 0;
-	int i;
-
-	for_each_possible_cpu(cpu) {
-		if (cpu_online(cpu))
-			cpufreq_stats_update(cpu);
-	}
-
-	if (!all_freq_table) {
-		pr_info("%s: all_freq_table is null!\n", __func__);
-		return len;
-	}
-
-	for (i = all_freq_table->table_size-1; i >= 0; i--) {
-		len += sprintf(buf + len, "%u %llu\n", all_freq_table->freq_table[i],
-			(unsigned long long) jiffies_64_to_clock_t(all_freq_table->time_for_clust0[i]));
-	}
-
-	return len;
-}
-#endif
 
 static ssize_t show_all_time_in_state(struct kobject *kobj,
 		struct kobj_attribute *attr, char *buf)
@@ -273,10 +223,6 @@ static struct attribute_group stats_attr_group = {
 	.name = "stats"
 };
 
-#ifdef CONFIG_LOAD_BASED_CORE_CURRENT_CAL
-static struct kobj_attribute _attr_cpu_time_for_clust0 = __ATTR(time_in_load_state0,
-		0444, show_cpu_time_for_clust0, NULL);
-#endif
 static struct kobj_attribute _attr_all_time_in_state = __ATTR(all_time_in_state,
 		0444, show_all_time_in_state, NULL);
 
@@ -335,10 +281,6 @@ static void cpufreq_allstats_free(void)
 		per_cpu(all_cpufreq_stats, cpu) = NULL;
 	}
 	if (all_freq_table) {
-#ifdef CONFIG_LOAD_BASED_CORE_CURRENT_CAL
-		sysfs_remove_file(cpufreq_global_kobject, &_attr_cpu_time_for_clust0.attr);
-		kfree(all_freq_table->time_for_clust0);
-#endif
 		kfree(all_freq_table->freq_table);
 		kfree(all_freq_table);
 		all_freq_table = NULL;
@@ -478,17 +420,6 @@ static void add_all_freq_table(unsigned int freq)
 		all_freq_table->freq_table = NULL;
 		return;
 	}
-#ifdef CONFIG_LOAD_BASED_CORE_CURRENT_CAL
-	size = sizeof(unsigned long long) * (all_freq_table->table_size + 1);
-	all_freq_table->time_for_clust0 = krealloc(all_freq_table->time_for_clust0,
-			size, GFP_ATOMIC);
-	if (IS_ERR(all_freq_table->time_for_clust0)) {
-		pr_warn("Could not reallocate memory for freq_table time_for_clust0\n");
-		all_freq_table->time_for_clust0 = NULL;
-		return;
-	}
-	all_freq_table->time_for_clust0[all_freq_table->table_size] = 0ULL;
-#endif
 	all_freq_table->freq_table[all_freq_table->table_size++] = freq;
 }
 
@@ -645,12 +576,6 @@ static int __init cpufreq_stats_init(void)
 	if (ret)
 		pr_warn("Error creating sysfs file for cpufreq stats\n");
 
-#ifdef CONFIG_LOAD_BASED_CORE_CURRENT_CAL
-	ret = sysfs_create_file(cpufreq_global_kobject,
-		&_attr_cpu_time_for_clust0.attr);
-	if (ret)
-		pr_warn("Error creating sysfs file for time_for_clust0\n");
-#endif
 	return 0;
 }
 static void __exit cpufreq_stats_exit(void)

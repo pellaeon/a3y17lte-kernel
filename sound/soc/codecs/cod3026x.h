@@ -33,10 +33,6 @@ struct cod3026x_jack_det {
 	bool jack_det;
 	bool mic_det;
 	bool button_det;
-#ifdef CONFIG_SND_SOC_COD30XX_EXT_ANT
-	bool ant_det;
-	bool ant_irq;
-#endif
 	unsigned int button_code;
 	int privious_button_state;
 	int adc_val;
@@ -68,10 +64,9 @@ struct cod3026x_priv {
 
 	int num_inputs;
 	int int_gpio;
-#ifdef CONFIG_SND_SOC_COD30XX_EXT_ANT
-	int ant_det_gpio;
-	int ant_adc_range;
-#endif
+
+	int main_mic_bias_gpio;
+	int digital_mic_mode;
 	struct pinctrl *pinctrl;
 	unsigned int spk_ena:2;
 
@@ -112,17 +107,17 @@ struct cod3026x_priv {
 	struct iio_channel *jack_adc;
 	unsigned int use_det_adc_mode;
 	unsigned int use_det_gdet_adc_mode;
-	struct delayed_work jack_det_work;
+	struct work_struct jack_det_work;
 	struct workqueue_struct *jack_det_wq;
-	struct delayed_work jack_det_adc_work;
+	struct work_struct jack_det_adc_work;
 	struct workqueue_struct *jack_det_adc_wq;
+	struct work_struct adc_mute_work;
+	struct mutex adc_mute_lock;
+	struct workqueue_struct *adc_mute_wq;
 	struct delayed_work water_det_adc_work;
 	struct workqueue_struct *water_det_adc_wq;
 	struct delayed_work water_det_polling_work;
 	struct workqueue_struct *water_det_polling_wq;
-	struct work_struct adc_mute_work;
-	struct mutex adc_mute_lock;
-	struct workqueue_struct *adc_mute_wq;
 	int adc_pin;
 };
 
@@ -186,6 +181,8 @@ struct cod3026x_priv {
 #define COD3026X_42_ADC1			0x42
 #define COD3026X_43_ADC_L_VOL			0x43
 #define COD3026X_44_ADC_R_VOL			0x44
+#define COD3026X_45_DMIC1			0X45
+#define COD3026X_46_DMIC2			0x46
 
 #define COD3026X_50_DAC1			0x50
 #define COD3026X_51_DAC_L_VOL			0x51
@@ -682,23 +679,6 @@ struct cod3026x_priv {
 #define EN_MIX_LNRL_SHIFT       6
 #define EN_MIX_LNRL_MASK        BIT(EN_MIX_LNRL_SHIFT)
 
-#define EN_MIX_PGA_MIC1L_SHIFT       5
-#define EN_MIX_PGA_MIC1L_MASK        BIT(EN_MIX_PGA_MIC1L_SHIFT)
-
-#define EN_MIX_PGA_MIC1R_SHIFT       4
-#define EN_MIX_PGA_MIC1R_MASK        BIT(EN_MIX_PGA_MIC1R_SHIFT)
-
-#define EN_MIX_PGA_MIC2L_SHIFT       3
-#define EN_MIX_PGA_MIC2L_MASK        BIT(EN_MIX_PGA_MIC2L_SHIFT)
-
-#define EN_MIX_PGA_MIC2R_SHIFT       2
-#define EN_MIX_PGA_MIC2R_MASK        BIT(EN_MIX_PGA_MIC2R_SHIFT)
-
-#define EN_MIX_PGA_MIC3L_SHIFT       1
-#define EN_MIX_PGA_MIC3L_MASK        BIT(EN_MIX_PGA_MIC3L_SHIFT)
-
-#define EN_MIX_PGA_MIC3R_SHIFT       0
-#define EN_MIX_PGA_MIC3R_MASK        BIT(EN_MIX_PGA_MIC3R_SHIFT)
 
 /* COD3026X_30_VOL_HPL */
 /* COD3026X_31_VOL_HPR */
@@ -796,23 +776,11 @@ struct cod3026x_priv {
 #define EN_EP_MIX_DCTR_SHIFT	6
 #define EN_EP_MIX_DCTR_MASK	BIT(EN_EP_MIX_DCTR_SHIFT)
 
-#define EN_EP_MIX_MIXL_SHIFT	5
-#define EN_EP_MIX_MIXL_MASK	BIT(EN_EP_MIX_MIXL_SHIFT)
-
-#define EN_EP_MIX_MIXR_SHIFT	4
-#define EN_EP_MIX_MIXR_MASK	BIT(EN_EP_MIX_MIXR_SHIFT)
-
 #define EN_SPK_MIX_DCTL_SHIFT	3
 #define EN_SPK_MIX_DCTL_MASK	BIT(EN_SPK_MIX_DCTL_SHIFT)
 
 #define EN_SPK_MIX_DCTR_SHIFT	2
 #define EN_SPK_MIX_DCTR_MASK	BIT(EN_SPK_MIX_DCTR_SHIFT)
-
-#define EN_SPK_MIX_MIXL_SHIFT	1
-#define EN_SPK_MIX_MIXL_MASK	BIT(EN_SPK_MIX_MIXL_SHIFT)
-
-#define EN_SPK_MIX_MIXR_SHIFT	0
-#define EN_SPK_MIX_MIXR_MASK	BIT(EN_SPK_MIX_MIXR_SHIFT)
 
 /* COD3026X_40_DIGITAL_POWER */
 #define PDB_ADCDIG_SHIFT	7
@@ -896,6 +864,42 @@ struct cod3026x_priv {
 #define ADC1_MUTE_AD_EN_SHIFT	0
 #define ADC1_MUTE_AD_EN_MASK	BIT(ADC1_MUTE_AD_EN_SHIFT)
 
+/* COD3026X_45_DMIC1 */
+#define SEL_DMIC_L_SHIFT	4
+#define SEL_DMIC_L_WIDTH	3
+#define SEL_DMIC_L_MASK		MASK(SEL_DMIC_L_WIDTH, SEL_DMIC_L_SHIFT)
+
+#define SEL_DMIC_R_SHIFT	0
+#define SEL_DMIC_R_WIDTH	3
+#define SEL_DMIC_R_MASK		MASK(SEL_DMIC_R_WIDTH, SEL_DMIC_R_SHIFT)
+
+#define DMIC1L	4
+#define DMIC1R	5
+#define DMIC2L	6
+#define DMIC2R	7
+
+/* COD3026X_46_DMIC2 */
+#define DMIC_GAIN_SHIFT	4
+#define DMIC_GAIN_WIDTH	3
+#define DMIC_GAIN_MASK		MASK(DMIC_GAIN_WIDTH, DMIC_GAIN_SHIFT)
+
+#define LEVEL1	1
+#define LEVEL2	2
+#define LEVEL3	3
+#define LEVEL4	4
+#define LEVEL5	5
+#define LEVEL6	6
+#define LEVEL7	7
+
+#define DMIC_OSR_SHIFT	2
+#define DMIC_OSR_WIDTH	2
+#define DMIC_OSR_MASK		MASK(DMIC_OSR_WIDTH, DMIC_OSR_SHIFT)
+
+#define OSR128	0
+#define OSR64	1
+#define OSR32	2
+#define OSR16	3
+
 /* COD3026X_50_DAC1 */
 #define DAC1_MONOMIX_SHIFT	4
 #define DAC1_MONOMIX_WIDTH	3
@@ -922,7 +926,6 @@ struct cod3026x_priv {
 #define NORMQS_GN_WIDTH 2
 #define NORMQS_GN_MASK  MASK(NORMQS_GN_WIDTH, NORMQS_GN_SHIFT)
 
-/** COD3026X_53_MQS **/
 #define MQS_MODE_SHIFT		0
 #define MQS_MODE_MASK		BIT(MQS_MODE_SHIFT)
 
@@ -984,17 +987,6 @@ struct cod3026x_priv {
 #define DNC_ZCD_TIMEOUT_WIDTH	7
 #define DNC_ZCD_TIMEOUT_MASK	MASK(DNC_ZCD_TIMEOUT_WIDTH, \
 				DNC_ZCD_TIMEOUT_SHIFT)
-
-
-/** COD3026X_70_CLK1_AD  **/
-#define SEL_CHCLK_AD_SHIFT	4
-#define SEL_CHCLK_AD_WIDTH	2
-#define SEL_CHCLK_AD_MASK	MASK(SEL_CHCLK_AD_WIDTH, SEL_CHCLK_AD_SHIFT)
-
-#define CHOPPING_CLK_1_BY_4	0
-#define CHOPPING_CLK_1_BY_8	1
-#define CHOPPING_CLK_1_BY_16	2
-#define CHOPPING_CLK_1_BY_32	3
 
 /** COD3026X_71_CLK1_DA **/
 #define CLK_DA_INV_SHIFT	7
@@ -1070,6 +1062,28 @@ struct cod3026x_priv {
 #define TEST_LOOPBACK_FULL_SHIFT	0
 #define TEST_LOOPBACK_FULL_MASK		BIT(TEST_LOOPBACK_FULL_SHIFT)
 
+/* COD3026X_75_CHOP_AD */
+#define EN_LN_CHOP_SHIFT	6		//cod3026 design should be fixed
+#define EN_LN_CHOP_MASK	BIT(EN_LN_CHOP_SHIFT)
+
+#define EN_MIC3_CHOP_SHIFT	5
+#define EN_MIC3_CHOP_MASK	BIT(EN_MIC3_CHOP_SHIFT)
+
+#define EN_MIC_CHOP_SHIFT	4
+#define EN_MIC_CHOP_MASK	BIT(EN_MIC_CHOP_SHIFT)
+
+#define EN_DSM_CHOP_SHIFT	3
+#define EN_DSM_CHOP_MASK	BIT(EN_DSM_CHOP_SHIFT)
+
+#define EN_MIX_CHOP_SHIFT	2
+#define EN_MIX_CHOP_MASK	BIT(EN_MIX_CHOP_SHIFT)
+
+#define EN_MCB1_CHOP_SHIFT	1
+#define EN_MCB1_CHOP_MASK	BIT(EN_MCB1_CHOP_SHIFT)
+
+#define EN_MCB2_CHOP_SHIFT	0
+#define EN_MCB2_CHOP_MASK	BIT(EN_MCB2_CHOP_SHIFT)
+
 /** COD3026X_76_CHOP_DA **/
 #define EN_DCT_CHOP_SHIFT	5
 #define EN_DCT_CHOP_MASK	BIT(EN_DCT_CHOP_SHIFT)
@@ -1101,6 +1115,13 @@ struct cod3026x_priv {
 
 #define EN_MIC1_SHIFT	4
 #define EN_MIC1_MASK	BIT(EN_MIC1_SHIFT)
+
+#define EN_DMIC2_SHIFT	3
+#define EN_DMIC2_MASK	BIT(EN_DMIC2_SHIFT)
+
+#define EN_DMIC1_SHIFT	2
+#define EN_DMIC1_MASK	BIT(EN_DMIC1_SHIFT)
+
 
 /** COD3026X_80_DET_PDB **/
 #define DET_EN_TEST_DET_SHIFT   0
@@ -1310,8 +1331,16 @@ struct cod3026x_priv {
 #define CTMI_MIC3_4U		0x6
 #define CTMI_MIC3_4_5U		0x7
 
-/* COD3026X_D7_CTRL_EP */
+/* COD3026X_D7_CTRL_CP1 */
+#define CTRV_CP_POSREF_SHIFT	4
+#define CTRV_CP_POSREF_WIDTH	4
+#define CTRV_CP_POSREF_MASK	MASK(CTRV_CP_POSREF_WIDTH, \
+					CTRV_CP_POSREF_SHIFT)
 
+#define CTRV_CP_NEGREF_SHIFT	0
+#define CTRV_CP_NEGREF_WIDTH	4
+#define CTRV_CP_NEGREF_MASK	MASK(CTRV_CP_NEGREF_WIDTH, \
+					CTRV_CP_NEGREF_SHIFT)
 
 /* COD3026X_D8_CTRL_CP2 */
 #define CTMD_CP_H2L_SHIFT	2

@@ -200,8 +200,6 @@ const char *event_string(enum otg_notify_events event)
 		return virt ? "hmt(virtual)" : "hmt";
 	case NOTIFY_EVENT_GAMEPAD:
 		return virt ? "gamepad(virtual)" : "gamepad";
-	case NOTIFY_EVENT_POGO:
-		return virt ? "pogo(virtual)" : "pogo";
 	case NOTIFY_EVENT_DRIVE_VBUS:
 		return "drive_vbus";
 	case NOTIFY_EVENT_ALL_DISABLE:
@@ -578,7 +576,6 @@ int do_notify_blockstate(struct otg_notify *n, unsigned long event,
 	case NOTIFY_EVENT_SMARTDOCK_TA:
 	case NOTIFY_EVENT_AUDIODOCK:
 	case NOTIFY_EVENT_GAMEPAD:
-	case NOTIFY_EVENT_POGO:
 		if (n->unsupport_host) {
 			pr_err("This model doesn't support usb host\n");
 			goto skip;
@@ -799,7 +796,6 @@ static void otg_notify_state(struct otg_notify *n,
 		if (enable)
 			host_state_notify(&u_notify->ndev,
 							NOTIFY_HOST_NONE);
-	case NOTIFY_EVENT_POGO:
 	case NOTIFY_EVENT_SMARTDOCK_TA:
 	case NOTIFY_EVENT_AUDIODOCK:
 		if (n->unsupport_host) {

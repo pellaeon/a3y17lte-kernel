@@ -18,8 +18,7 @@
 /* 4:3 16x10 margin, EXTCLK 26Mhz */
 const u32 sensor_3p3_setfile_A_4624x3466_30fps[] = {
 	0xFCFC, 0x4000, 0x02,
-	0x6010, 0x0001, 0x02, /* SW Reset */
-	0xFFFF, 0x0003, 0x02, /* delay 3ms */
+	0x6010, 0x0001, 0x02,
 
 	0x6214, 0x7971, 0x02,
 	0x6218, 0x0100, 0x02,
@@ -127,8 +126,7 @@ const u32 sensor_3p3_setfile_A_4624x3466_30fps[] = {
 /* 4:3 16x10 margin, EXTCLK 26Mhz */
 const u32 sensor_3p3_setfile_A_4624x3466_24fps[] = {
 	0xFCFC, 0x4000, 0x02,
-	0x6010, 0x0001, 0x02, /* SW Reset */
-	0xFFFF, 0x0003, 0x02, /* delay 3ms */
+	0x6010, 0x0001, 0x02,
 
 	0x6214, 0x7971, 0x02,
 	0x6218, 0x0100, 0x02,
@@ -236,8 +234,7 @@ const u32 sensor_3p3_setfile_A_4624x3466_24fps[] = {
 /* 16:9 16x10 margin, EXTCLK 26Mhz */
 const u32 sensor_3p3_setfile_A_4624x2602_30fps[] = {
 	0xFCFC, 0x4000, 0x02,
-	0x6010, 0x0001, 0x02, /* SW Reset */
-	0xFFFF, 0x0003, 0x02, /* delay 3ms */
+	0x6010, 0x0001, 0x02,
 
 	0x6214, 0x7971, 0x02,
 	0x6218, 0x0100, 0x02,
@@ -345,8 +342,7 @@ const u32 sensor_3p3_setfile_A_4624x2602_30fps[] = {
 /* 16:9 16x10 margin, EXTCLK 26Mhz */
 const u32 sensor_3p3_setfile_A_4624x2602_24fps[] = {
 	0xFCFC, 0x4000, 0x02,
-	0x6010, 0x0001, 0x02, /* SW Reset */
-	0xFFFF, 0x0003, 0x02, /* delay 3ms */
+	0x6010, 0x0001, 0x02,
 
 	0x6214, 0x7971, 0x02,
 	0x6218, 0x0100, 0x02,
@@ -454,8 +450,7 @@ const u32 sensor_3p3_setfile_A_4624x2602_24fps[] = {
 /* 11:9 16x10 margin, EXTCLK 26Mhz */
 const u32 sensor_3p3_setfile_A_4240x3466_30fps[] = {
 	0xFCFC, 0x4000, 0x02,
-	0x6010, 0x0001, 0x02, /* SW Reset */
-	0xFFFF, 0x0003, 0x02, /* delay 3ms */
+	0x6010, 0x0001, 0x02,
 
 	0x6214, 0x7971, 0x02,
 	0x6218, 0x0100, 0x02,
@@ -564,8 +559,7 @@ const u32 sensor_3p3_setfile_A_4240x3466_30fps[] = {
 /* 3:2 16x10 margin, EXTCLK 26Mhz */
 const u32 sensor_3p3_setfile_A_4624x3082_30fps[] = {
 	0xFCFC, 0x4000, 0x02,
-	0x6010, 0x0001, 0x02, /* SW Reset */
-	0xFFFF, 0x0003, 0x02, /* delay 3ms */
+	0x6010, 0x0001, 0x02,
 
 	0x6214, 0x7971, 0x02,
 	0x6218, 0x0100, 0x02,
@@ -673,8 +667,7 @@ const u32 sensor_3p3_setfile_A_4624x3082_30fps[] = {
 /* 5:4 16x10 margin, EXTCLK 26Mhz */
 const u32 sensor_3p3_setfile_A_4336x3466_30fps[] = {
 	0xFCFC, 0x4000, 0x02,
-	0x6010, 0x0001, 0x02, /* SW Reset */
-	0xFFFF, 0x0003, 0x02, /* delay 3ms */
+	0x6010, 0x0001, 0x02,
 
 	0x6214, 0x7971, 0x02,
 	0x6218, 0x0100, 0x02,
@@ -782,8 +775,7 @@ const u32 sensor_3p3_setfile_A_4336x3466_30fps[] = {
 /* 5:3 16x10 margin, EXTCLK 26Mhz */
 const u32 sensor_3p3_setfile_A_4624x2778_30fps[] = {
 	0xFCFC, 0x4000, 0x02,
-	0x6010, 0x0001, 0x02, /* SW Reset */
-	0xFFFF, 0x0003, 0x02, /* delay 3ms */
+	0x6010, 0x0001, 0x02,
 
 	0x6214, 0x7971, 0x02,
 	0x6218, 0x0100, 0x02,
@@ -889,10 +881,9 @@ const u32 sensor_3p3_setfile_A_4624x2778_30fps[] = {
 };
 
 /* 16:9 16x10 margin, EXTCLK 26Mhz */
-const u32 sensor_3p3_setfile_A_2312x1300_60fps[] = {
+const u32 sensor_3p3_setfile_A_2320x1306_60fps[] = {
 	0xFCFC, 0x4000, 0x02,
-	0x6010, 0x0001, 0x02, /* SW Reset */
-	0xFFFF, 0x0003, 0x02, /* delay 3ms */
+	0x6010, 0x0001, 0x02,
 
 	0x6214, 0x7971, 0x02,
 	0x6218, 0x0100, 0x02,
@@ -977,12 +968,12 @@ const u32 sensor_3p3_setfile_A_2312x1300_60fps[] = {
 	0x0200, 0x0200, 0x02,
 	0x021E, 0x0100, 0x02,
 	0x021C, 0x0200, 0x02,
-	0x0344, 0x0018, 0x02,
-	0x0348, 0x1227, 0x02,
-	0x0346, 0x01BA, 0x02,
-	0x034A, 0x0BE1, 0x02,
-	0x034C, 0x0908, 0x02,
-	0x034E, 0x0514, 0x02,
+	0x0344, 0x0010, 0x02,
+	0x0348, 0x122F, 0x02,
+	0x0346, 0x01B4, 0x02,
+	0x034A, 0x0BE7, 0x02,
+	0x034C, 0x0910, 0x02,
+	0x034E, 0x051A, 0x02,
 	0x0342, 0x141C, 0x02,
 	0x0340, 0x0711, 0x02,
 	0x3552, 0x00D0, 0x02,
@@ -1000,8 +991,7 @@ const u32 sensor_3p3_setfile_A_2312x1300_60fps[] = {
 /* 4:3 4x4 margin, EXTCLK 26Mhz */
 const u32 sensor_3p3_setfile_A_1152x864_120fps[] = {
 	0xFCFC, 0x4000, 0x02,
-	0x6010, 0x0001, 0x02, /* SW Reset */
-	0xFFFF, 0x0003, 0x02, /* delay 3ms */
+	0x6010, 0x0001, 0x02,
 
 	0x6214, 0x7971, 0x02,
 	0x6218, 0x0100, 0x02,
@@ -1109,8 +1099,7 @@ const u32 sensor_3p3_setfile_A_1152x864_120fps[] = {
 /* 16:9 4x4 margin, EXTCLK 26Mhz */
 const u32 sensor_3p3_setfile_A_1152x648_120fps[] = {
 	0xFCFC, 0x4000, 0x02,
-	0x6010, 0x0001, 0x02, /* SW Reset */
-	0xFFFF, 0x0003, 0x02, /* delay 3ms */
+	0x6010, 0x0001, 0x02,
 
 	0x6214, 0x7971, 0x02,
 	0x6218, 0x0100, 0x02,
@@ -1335,7 +1324,7 @@ const struct sensor_pll_info sensor_3p3_pllinfo_A_4624x2778_30fps = {
 	0x141C, /* line_length_pck	(0x0343) */
 };
 
-const struct sensor_pll_info sensor_3p3_pllinfo_A_2312x1300_60fps = {
+const struct sensor_pll_info sensor_3p3_pllinfo_A_2320x1306_60fps = {
 	EXT_CLK_Mhz * 1000 * 1000, /* ext_clk */
 	0x04, /* vt_pix_clk_div	(0x0301) */
 	0x01, /* vt_sys_clk_div	(0x0303) */
@@ -1391,7 +1380,7 @@ static const u32 *sensor_3p3_setfiles_A[] = {
 	sensor_3p3_setfile_A_4624x3082_30fps,
 	sensor_3p3_setfile_A_4336x3466_30fps,
 	sensor_3p3_setfile_A_4624x2778_30fps,
-	sensor_3p3_setfile_A_2312x1300_60fps,
+	sensor_3p3_setfile_A_2320x1306_60fps,
 	sensor_3p3_setfile_A_1152x864_120fps,
 	sensor_3p3_setfile_A_1152x648_120fps,
 };
@@ -1406,7 +1395,7 @@ static const u32 sensor_3p3_setfile_A_sizes[] = {
 	sizeof(sensor_3p3_setfile_A_4624x3082_30fps) / sizeof(sensor_3p3_setfile_A_4624x3082_30fps[0]),
 	sizeof(sensor_3p3_setfile_A_4336x3466_30fps) / sizeof(sensor_3p3_setfile_A_4336x3466_30fps[0]),
 	sizeof(sensor_3p3_setfile_A_4624x2778_30fps) / sizeof(sensor_3p3_setfile_A_4624x2778_30fps[0]),
-	sizeof(sensor_3p3_setfile_A_2312x1300_60fps) / sizeof(sensor_3p3_setfile_A_2312x1300_60fps[0]),
+	sizeof(sensor_3p3_setfile_A_2320x1306_60fps) / sizeof(sensor_3p3_setfile_A_2320x1306_60fps[0]),
 	sizeof(sensor_3p3_setfile_A_1152x864_120fps) / sizeof(sensor_3p3_setfile_A_1152x864_120fps[0]),
 	sizeof(sensor_3p3_setfile_A_1152x648_120fps) / sizeof(sensor_3p3_setfile_A_1152x648_120fps[0]),
 };
@@ -1421,7 +1410,7 @@ static const struct sensor_pll_info *sensor_3p3_pllinfos_A[] = {
 	&sensor_3p3_pllinfo_A_4624x3082_30fps,
 	&sensor_3p3_pllinfo_A_4336x3466_30fps,
 	&sensor_3p3_pllinfo_A_4624x2778_30fps,
-	&sensor_3p3_pllinfo_A_2312x1300_60fps,
+	&sensor_3p3_pllinfo_A_2320x1306_60fps,
 	&sensor_3p3_pllinfo_A_1152x864_120fps,
 	&sensor_3p3_pllinfo_A_1152x648_120fps,
 };

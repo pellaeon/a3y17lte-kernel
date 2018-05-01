@@ -551,7 +551,7 @@ void samsung_exynos_cal_usb3phy_tune_dev(struct exynos_usbphy_info *usbphy_info)
 		writel(phyparam0, regs_base + EXYNOS_USBCON_PHYPARAM0);
 	}
 
-	printk("usb: device_phytune: 0x%x\n", readl(regs_base + EXYNOS_USBCON_PHYPARAM0));
+	printk("usb: dev phy tune : 0x%x\n", readl(regs_base + EXYNOS_USBCON_PHYPARAM0));
 
 	/* Tuning the SS Block of phy */
 	if (usbphy_info->ss_tune) {
@@ -646,7 +646,6 @@ void samsung_exynos_cal_usb3phy_tune_host(
 		phyparam0 |= PHYPARAM0_COMPDISTUNE(tune->compdis);
 
 		writel(phyparam0, regs_base + EXYNOS_USBCON_PHYPARAM0);
-		printk("usb: host_phytune: 0x%x\n", readl(regs_base + EXYNOS_USBCON_PHYPARAM0));
 	}
 
 	/* Tuning the SS Block of phy */

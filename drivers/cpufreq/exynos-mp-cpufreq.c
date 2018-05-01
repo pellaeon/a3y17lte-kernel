@@ -46,9 +46,10 @@
 #include <soc/samsung/asv-exynos.h>
 #include <soc/samsung/tmu.h>
 #include <soc/samsung/ect_parser.h>
+#include <trace/events/exynos.h>
 
-#ifdef CONFIG_SEC_EXT
-#include <linux/sec_ext.h>
+#ifdef CONFIG_SEC_BSP
+#include <linux/sec_bsp.h>
 #endif
 
 #define VOLT_RANGE_STEP		25000
@@ -124,7 +125,7 @@ static unsigned int clk_get_freq(cluster_type cl)
 	return 0;
 }
 
-#ifdef CONFIG_SEC_BOOTSTAT
+#ifdef CONFIG_SEC_BSP
 void sec_bootstat_get_cpuinfo(int *freq, int *online)
 {
 	int cpu;
@@ -153,7 +154,7 @@ void sec_bootstat_get_cpuinfo(int *freq, int *online)
 
 static unsigned int get_freq_volt(int cluster, unsigned int target_freq, int *idx)
 {
-	int index;
+	int index = 0;
 	int i;
 
 	struct cpufreq_frequency_table *table = exynos_info[cluster]->freq_table;
@@ -198,34 +199,6 @@ static unsigned int get_boot_volt(int cluster)
 	return get_freq_volt(cluster, boot_freq, NULL);
 }
 
-#ifdef CONFIG_CPU_IDLE
-static void exynos_qos_nop(void *info)
-{
-}
-#endif
-
-static int exynos_change_freq_nocpd(struct cpufreq_policy *policy, int cpu,
-					unsigned int freq)
-{
-	int ret;
-
-#ifdef CONFIG_CPU_IDLE
-	if (cpu >= NR_CLUST0_CPUS)
-		block_cpd();
-
-	if (check_cluster_idle_state(cpu))
-		smp_call_function_single(cpu, exynos_qos_nop, NULL, 0);
-#endif
-
-	ret = __cpufreq_driver_target(policy, freq, CPUFREQ_RELATION_H);
-
-#ifdef CONFIG_CPU_IDLE
-	if (cpu >= NR_CLUST0_CPUS)
-		release_cpd();
-#endif
-
-	return ret;
-}
 
 /********************************************************************************
  *                         Scaling frequency and voltage                        *
@@ -531,6 +504,27 @@ static unsigned int exynos_verify_pm_qos_limit(struct cpufreq_policy *policy,
 	return target_freq;
 }
 
+static void exynos_qos_nop(void *info)
+{
+}
+
+static int exynos_enable_cpd(int cpu)
+{
+	release_cpd();
+
+	return 1;
+}
+
+static int exynos_disable_cpd(int cpu)
+{
+	block_cpd();
+
+	if (check_cluster_idle_state(cpu))
+		smp_call_function_single(cpu, exynos_qos_nop, NULL, 0);
+
+	return 1;
+}
+
 /* Set clock frequency */
 static int exynos_target(struct cpufreq_policy *policy,
 			  unsigned int target_freq,
@@ -582,13 +576,26 @@ static int exynos_target(struct cpufreq_policy *policy,
 
 	target_freq = freq_table[index].frequency;
 
+	/* disable cluster power down during scale */
+	if (cur == CL_ONE)
+		exynos_disable_cpd(policy->cpu);
+
 	pr_debug("%s[%d]: new_freq[%d], index[%d]\n",
 				__func__, cur, target_freq, index);
 
 	exynos_ss_freq(cur, freqs[cur]->old, target_freq, ESS_FLAG_IN);
+	trace_exynos_cpufreq_in(cur, freqs[cur]->old, target_freq);
+
 	/* frequency and volt scaling */
 	ret = exynos_cpufreq_scale(target_freq, policy->cpu);
+
 	exynos_ss_freq(cur, freqs[cur]->old, target_freq, ESS_FLAG_OUT);
+	trace_exynos_cpufreq_out(cur, freqs[cur]->old, target_freq);
+
+	/* enable cluster power down  */
+	if (cur == CL_ONE)
+		exynos_enable_cpd(policy->cpu);
+
 	if (ret < 0)
 		goto out;
 
@@ -799,7 +806,7 @@ void ipa_set_clamp(int cpu, unsigned int clamp_freq, unsigned int gov_target)
 		     __PRETTY_FUNCTION__, __LINE__, cpu, clamp_freq, freq);
 #endif
 
-	exynos_change_freq_nocpd(policy, cpu, new_freq);
+	__cpufreq_driver_target(policy, new_freq, CPUFREQ_RELATION_H);
 	cpufreq_cpu_put(policy);
 }
 
@@ -1361,7 +1368,7 @@ static bool suspend_prepared = false;
 static int __cpuinit exynos_cpufreq_cpu_up_notifier(struct notifier_block *notifier,
 					unsigned long action, void *hcpu)
 {
-	unsigned int cpu = (unsigned long)hcpu;
+	unsigned long cpu = (unsigned long) hcpu;
 	struct device *dev;
 	struct cpumask mask;
 	int cluster;
@@ -1386,7 +1393,7 @@ static int __cpuinit exynos_cpufreq_cpu_up_notifier(struct notifier_block *notif
 static int __cpuinit exynos_cpufreq_cpu_down_notifier(struct notifier_block *notifier,
 					unsigned long action, void *hcpu)
 {
-	unsigned int cpu = (unsigned long)hcpu;
+	unsigned long cpu = (unsigned long) hcpu;
 	struct device *dev;
 	struct cpumask mask;
 	int cluster;
@@ -1477,6 +1484,11 @@ static int exynos_cpufreq_pm_notifier(struct notifier_block *notifier,
 
 	switch (pm_event) {
 	case PM_SUSPEND_PREPARE:
+                /* Set boot cluster to boot freq and non-boot cluster to its min freq */
+		pm_qos_update_request(&boot_min_qos[CL_ZERO],
+					exynos_info[CL_ZERO]->boot_freq);
+		pm_qos_update_request(&boot_max_qos[CL_ZERO],
+					exynos_info[CL_ZERO]->boot_freq);
 		pm_qos_update_request(&boot_max_qos[CL_ONE], freq_min[CL_ONE]);
 
 		mutex_lock(&cpufreq_lock);
@@ -1549,7 +1561,10 @@ static int exynos_cpufreq_pm_notifier(struct notifier_block *notifier,
 			mutex_unlock(&cpufreq_lock);
 		}
 
-		pm_qos_update_request(&boot_max_qos[CL_ONE], INT_MAX);
+		/* Reset frequency thresholds post suspend */
+		pm_qos_update_request(&boot_min_qos[CL_ZERO], freq_min[CL_ZERO]);
+		pm_qos_update_request(&boot_max_qos[CL_ZERO], freq_max[CL_ZERO]);
+		pm_qos_update_request(&boot_max_qos[CL_ONE], freq_max[CL_ONE]);
 
 		suspend_prepared = false;
 
@@ -1756,7 +1771,7 @@ static int exynos_cluster0_min_qos_handler(struct notifier_block *b,
 	}
 #endif
 
-	ret = exynos_change_freq_nocpd(policy, cpu, val);
+	ret = __cpufreq_driver_target(policy, val, CPUFREQ_RELATION_H);
 	cpufreq_cpu_put(policy);
 
 	if (ret < 0)
@@ -1810,7 +1825,7 @@ static int exynos_cluster1_min_qos_handler(struct notifier_block *b,
 	}
 #endif
 
-	ret = exynos_change_freq_nocpd(policy, cpu, val);
+	ret = __cpufreq_driver_target(policy, val, CPUFREQ_RELATION_H);
 	cpufreq_cpu_put(policy);
 
 	if (ret < 0)
@@ -1857,7 +1872,7 @@ static int exynos_cluster0_max_qos_handler(struct notifier_block *b,
 	}
 #endif
 
-	ret = exynos_change_freq_nocpd(policy, cpu, val);
+	ret = __cpufreq_driver_target(policy, val, CPUFREQ_RELATION_H);
 	cpufreq_cpu_put(policy);
 
 	if (ret < 0)
@@ -1904,7 +1919,7 @@ static int exynos_cluster1_max_qos_handler(struct notifier_block *b,
 	}
 #endif
 
-	ret = exynos_change_freq_nocpd(policy, cpu, val);
+	ret = __cpufreq_driver_target(policy, val, CPUFREQ_RELATION_H);
 	cpufreq_cpu_put(policy);
 
 	if (ret < 0)
@@ -2342,7 +2357,10 @@ static int exynos_mp_cpufreq_driver_init(void)
 	}
 
 #if !defined(CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE) && !defined(CONFIG_CPU_FREQ_DEFAULT_GOV_USERSPACE)
-	exynos_change_freq_nocpd(policy, NR_CLUST0_CPUS, policy->min);
+	ret = __cpufreq_driver_target(policy, policy->min, CPUFREQ_RELATION_H);
+	if (ret < 0 ) {
+		pr_warn("%s: failed to set frequency=%d\n",__func__,policy->min);
+	}
 #endif
 	cpufreq_cpu_put(policy);
 
@@ -2389,6 +2407,7 @@ static int exynos_mp_cpufreq_driver_init(void)
 err_cpufreq_self_discharging:
 	sysfs_remove_file(power_kobj, &cpufreq_max_limit.attr);
 #endif
+
 #ifdef CONFIG_PM
 err_cpufreq_max_limit:
 	sysfs_remove_file(power_kobj, &cpufreq_min_limit.attr);

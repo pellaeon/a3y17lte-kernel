@@ -31,37 +31,147 @@
 
 #include <soc/samsung/exynos-pmu.h>
 
-#include <linux/reboot.h>
+#include <linux/ftrace_event.h>
+#include "../../../kernel/trace/trace.h"
+
+
+#define GPIO_ALIVE_PA_ADDR	(0x139F0000)
+#define	GPA1_DAT		(0x64)
+#define	HOMEKEY_BIT		(7)
+#define RELEASED		(1)
 
 #ifdef CONFIG_SEC_DEBUG
 
-extern void (*mach_restart)(int reboot_mode, const char *cmd);
-
-/* enable/disable sec_debug feature
- * level = 0 when enable = 0 && enable_user = 0
- * level = 1 when enable = 1 && enable_user = 0
- * level = 0x10001 when enable = 1 && enable_user = 1
- * The other cases are not considered
+/*
+ * level = 0       | when enable = 0 && enable_user = 0
+ * level = 1       | when enable = 1 && enable_user = 0
+ * level = 0x10001 | when enable = 1 && enable_user = 1
  */
-union sec_debug_level_t {
-	struct {
-		u16 kernel_fault;
-		u16 user_fault;
-	} en;
-	u32 uint_val;
-} sec_debug_level = { .en.kernel_fault = 1, };
+union sec_debug_level_t sec_debug_level = { .en.kernel_fault = 1, };
 module_param_named(enable, sec_debug_level.en.kernel_fault, ushort, 0644);
 module_param_named(enable_user, sec_debug_level.en.user_fault, ushort, 0644);
 module_param_named(level, sec_debug_level.uint_val, uint, 0644);
 
-#ifdef CONFIG_SEC_DEBUG_MDM_SEPERATE_CRASH
-static unsigned int enable_cp_debug = 1;
-module_param_named(enable_cp_debug, enable_cp_debug, uint, 0644);
+int dbglv_mid;
 
-int sec_debug_is_enabled_for_ssr(void)
+static int __init dynsyslog_level(char *str)
 {
-	return enable_cp_debug;
+	int level;
+
+	if (get_option(&str, &level)) {
+		dbglv_mid = level;
+		pr_info("%s: dbglv_mid: %d\n", __func__, dbglv_mid);
+
+		return 0;
+	}
+
+	return -EINVAL;
 }
+early_param("DynSysLog", dynsyslog_level);
+
+static int __init sec_bl_mem_setup(char *str)
+{
+	unsigned size = memparse(str, &str);
+	unsigned long base = 0;
+
+	if (!dbglv_mid)
+		return 0;
+
+	/* If we encounter any problem parsing str ... */
+	if (!size ||  *str != '@' || kstrtoul(str + 1, 0, &base))
+		goto out;
+
+	if (memblock_is_region_reserved(base, size) ||
+			memblock_reserve(base, size)) {
+		pr_err("%s: failed reserving size %d " \
+			"at base 0x%lx\n", __func__, size, base);
+		goto out;
+	}
+
+	pr_info("%s: Reserved 0x%x at 0x%lx\n", __func__, size, base);
+
+	return 1;
+out:
+	return 0;
+}
+__setup("sec_bl_mem=", sec_bl_mem_setup);
+
+#ifdef CONFIG_SEC_DEBUG_FTRACE_ON
+static void ftrace_events_enable(int enable)
+{
+	if (enable) {
+		trace_set_clr_event(NULL, "sched_switch", 1);
+		trace_set_clr_event(NULL, "sched_wakeup", 1);
+		trace_set_clr_event(NULL, "sched_wakeup_new", 1);
+#ifdef CONFIG_SMP
+		trace_set_clr_event(NULL, "sched_migrate_task", 1);
+#endif
+
+		trace_set_clr_event(NULL, "irq_handler_entry", 1);
+		trace_set_clr_event(NULL, "irq_handler_exit", 1);
+		trace_set_clr_event(NULL, "tasklet_entry", 1);
+		trace_set_clr_event(NULL, "tasklet_exit", 1);
+		trace_set_clr_event(NULL, "softirq_entry", 1);
+		trace_set_clr_event(NULL, "softirq_exit", 1);
+		trace_set_clr_event(NULL, "softirq_raise", 1);
+		trace_set_clr_event("ipi", NULL, 1);
+		trace_set_clr_event(NULL, "timer_expire_entry", 1);
+		trace_set_clr_event(NULL, "timer_expire_exit", 1);
+
+		trace_set_clr_event(NULL, "workqueue_execute_start", 1);
+		trace_set_clr_event(NULL, "workqueue_execute_end", 1);
+
+		trace_set_clr_event(NULL, "block_bio_frontmerge", 1);
+		trace_set_clr_event(NULL, "block_bio_backmerge", 1);
+		trace_set_clr_event(NULL, "block_rq_issue", 1);
+		trace_set_clr_event(NULL, "block_rq_insert", 1);
+		trace_set_clr_event(NULL, "block_rq_complete", 1);
+		trace_set_clr_event(NULL, "debug_allocate_large_pages", 1);
+		trace_set_clr_event(NULL, "dump_allocate_large_pages", 1);
+
+		trace_set_clr_event(NULL, "cpu_idle", 1);
+		trace_set_clr_event(NULL, "device_pm_callback_start", 1);
+		trace_set_clr_event(NULL, "device_pm_callback_end", 1);
+		trace_set_clr_event(NULL, "suspend_resume", 1);
+		trace_set_clr_event(NULL, "notifier_pm_suspend", 1);
+
+		trace_set_clr_event("exynos", NULL, 1);
+		trace_set_clr_event("printk", NULL, 1);
+
+		trace_set_clr_event("met_bio", NULL, 1);
+		trace_set_clr_event("met_fuse", NULL, 1);
+
+		tracing_on();
+	} else {
+		tracing_off();
+		trace_set_clr_event(NULL, NULL, 0);
+	}
+}
+
+static __init int enable_ftrace(void)
+{
+	unsigned int homekey_val;
+	struct trace_array *tr;
+	void __iomem *gpio_alive_base = ioremap(GPIO_ALIVE_PA_ADDR, SZ_4K);
+
+	homekey_val = (__raw_readl(gpio_alive_base + GPA1_DAT) >> HOMEKEY_BIT) & 1;
+	printk(KERN_INFO "%s homekey_val:%d\n", __func__, homekey_val);
+	iounmap(gpio_alive_base);
+
+	if (!dbglv_mid || homekey_val == RELEASED)
+		return 0;
+	else {
+		exynos_ss_set_enable("log_kevents", false);
+		printk(KERN_INFO "%s ON\n", __func__);
+	}
+
+	tr = top_trace_array();
+	tracing_update_buffers();
+	/* enable ftrace facilities */
+	ftrace_events_enable(1);
+	return 0;
+}
+subsys_initcall(enable_ftrace);
 #endif
 
 int sec_debug_get_debug_level(void)
@@ -177,7 +287,7 @@ static int __init sec_debug_reserved(phys_addr_t base, phys_addr_t size)
 #endif
 }
 
-int __init sec_debug_setup(void)
+int __init sec_debug_init(void)
 {
 	phys_addr_t size = SZ_4K;
 	phys_addr_t base = 0;
@@ -544,24 +654,4 @@ out:
 }
 __setup("sec_debug.base=", sec_debug_base_setup);
 
-#ifdef CONFIG_SEC_HW_REV
-int board_id;
-EXPORT_SYMBOL(board_id);
-static int board_id_setup(char *str)
-{
-	int n;
-
-	if (!get_option(&str, &n))
-		return 0;
-
-	board_id = n;
-
-	printk("hw_rev is %d\n", board_id);
-
-	return 1;
-}
-__setup("androidboot.hw_rev=", board_id_setup);
-#endif
-
 #endif /* CONFIG_SEC_DEBUG */
-

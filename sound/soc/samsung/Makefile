@@ -25,7 +25,6 @@ obj-$(CONFIG_SND_SAMSUNG_PCM) += snd-soc-pcm.o
 obj-$(CONFIG_SND_SAMSUNG_I2S) += snd-soc-i2s.o
 obj-$(CONFIG_SND_SAMSUNG_I2S) += snd-soc-idma.o
 obj-$(CONFIG_SND_SAMSUNG_COMPR) += snd-soc-compr.o
-
 ifeq ($(CONFIG_SND_SAMSUNG_AUDSS),y)
 obj-$(CONFIG_SOC_EXYNOS5422) += lpass.o lpass-exynos5422.o
 obj-$(CONFIG_SOC_EXYNOS5430) += lpass.o lpass-exynos5430.o
@@ -35,6 +34,7 @@ obj-$(CONFIG_SOC_EXYNOS7580) += lpass.o lpass-exynos7580.o
 obj-$(CONFIG_SOC_EXYNOS7890) += lpass.o lpass-exynos7890.o
 obj-$(CONFIG_SOC_EXYNOS8890) += lpass.o lpass-exynos8890.o
 obj-$(CONFIG_SOC_EXYNOS7870) += lpass-exynos7870.o
+obj-$(CONFIG_SOC_EXYNOS7880) += lpass-exynos7880.o
 endif
 obj-$(CONFIG_SND_SOC_SAMSUNG) += snd-soc-eax-dai.o snd-soc-eax-dma.o
 obj-$(CONFIG_SND_ESA_SA_EFFECT) += snd-soc-esa-sa-effect.o
@@ -67,12 +67,9 @@ snd-soc-bells-objs := bells.o
 snd-soc-odroidx2-max98090-objs := odroidx2_max98090.o
 snd-soc-universal8890-dummy-objs := universal8890_dummy.o
 snd-soc-smdk7870-cod3026x-objs := smdk7870-cod3026.o
-ifeq ($(CONFIG_SND_SOC_EXYNOS_AUDMIXER_VER),2)
-snd-soc-universal7870-cod3026x-v2-objs := universal7870-cod3026-v2.o
-else
+snd-soc-smdk7880-cod3026x-objs := smdk7880-cod3026.o
+snd-soc-universal7880-cod3026x-objs := universal7880-cod3026.o
 snd-soc-universal7870-cod3026x-objs := universal7870-cod3026.o
-endif
-snd-soc-universal7870-rt5659-objs := universal7870-rt5659.o
 snd-soc-espresso8890-wm5110-objs := cp_dummy.o espresso8890_wm5110.o
 
 obj-$(CONFIG_SND_SOC_SAMSUNG_JIVE_WM8750) += snd-soc-jive-wm8750.o
@@ -103,11 +100,8 @@ obj-$(CONFIG_SND_SOC_ODROIDX2) += snd-soc-odroidx2-max98090.o
 obj-$(CONFIG_SND_SOC_SAMSUNG_ESPRESSO8890_WM5110) += snd-soc-espresso8890-wm5110.o
 obj-$(CONFIG_SND_SOC_SAMSUNG_UNIVERSAL8890_DUMMY) += snd-soc-universal8890-dummy.o
 obj-$(CONFIG_SND_SOC_SAMSUNG_SMDK7870_COD3026X) += snd-soc-smdk7870-cod3026x.o
-ifeq ($(CONFIG_SND_SOC_EXYNOS_AUDMIXER_VER),2)
-obj-$(CONFIG_SND_SOC_SAMSUNG_UNIVERSAL7870_COD3026X) += snd-soc-universal7870-cod3026x-v2.o
-else
+obj-$(CONFIG_SND_SOC_SAMSUNG_SMDK7880_COD3026X) += snd-soc-smdk7880-cod3026x.o
 obj-$(CONFIG_SND_SOC_SAMSUNG_UNIVERSAL7870_COD3026X) += snd-soc-universal7870-cod3026x.o
-endif
-obj-$(CONFIG_SND_SOC_SAMSUNG_UNIVERSAL7870_RT5659) += snd-soc-universal7870-rt5659.o
+obj-$(CONFIG_SND_SOC_SAMSUNG_UNIVERSAL7880_COD3026X) += snd-soc-universal7880-cod3026x.o
 
 obj-$(CONFIG_SND_SAMSUNG_SEIREN) += seiren/

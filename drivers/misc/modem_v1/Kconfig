@@ -84,19 +84,5 @@ config CP_SECURE_BOOT
 	bool "Support CP Secure Boot"
 	default n
 
-config GPIO_DS_DETECT
-	bool "Support GPIO DS Detect"
-	default n
-
-config FREE_CP_RSVD_MEMORY
-	bool "Free CP reserved memory after CP goes to sleep for Wifi model"
-	depends on LINK_DEVICE_SHMEM
-	default n
-
-config MODEM_IF_QOS
-	bool "Implement QoS"
-	depends on LINK_DEVICE_SHMEM
-	default n
-
 endmenu
 endif

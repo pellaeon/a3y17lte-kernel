@@ -10112,7 +10112,7 @@ woal_android_priv_cmd(struct net_device *dev, struct ifreq *req)
 	}
 	buf[CMD_BUF_LEN - 1] = '\0';
 
-	PRINTM(MIOCTL, "Android priv cmd: [%s] on [%s]\n", buf, req->ifr_name);
+	PRINTM(MERROR, "Android priv cmd: [%s] on [%s]\n", buf, req->ifr_name);
 
 	if (strncmp(buf, CMD_MARVELL, strlen(CMD_MARVELL)) &&
 	    woal_check_driver_status(priv->phandle)) {
@@ -11025,6 +11025,7 @@ woal_android_priv_cmd(struct net_device *dev, struct ifreq *req)
 			      priv->current_addr[0], priv->current_addr[1],
 			      priv->current_addr[2], priv->current_addr[3],
 			      priv->current_addr[4], priv->current_addr[5]) + 1;
+		PRINTM(MERROR, "### eric MACADDR !\n");
 	}
 #ifdef STA_SUPPORT
 	else if (strncmp(buf, "GETPOWER", strlen("GETPOWER")) == 0) {
@@ -11222,6 +11223,8 @@ woal_android_priv_cmd(struct net_device *dev, struct ifreq *req)
 		if (ret)
 			goto done;
 #endif
+		PRINTM(MERROR, "### eric RXFILTER-START !\n");
+
 		len = sprintf(buf, "OK\n") + 1;
 	} else if (strncmp(buf, "RXFILTER-STOP", strlen("RXFILTER-STOP")) == 0) {
 #ifdef MEF_CFG_RX_FILTER
@@ -11230,6 +11233,8 @@ woal_android_priv_cmd(struct net_device *dev, struct ifreq *req)
 			goto done;
 #endif
 		len = sprintf(buf, "OK\n") + 1;
+	PRINTM(MERROR, "### eric RXFILTER-STOP !\n");
+
 	}
 #ifdef STA_CFG80211
 	else if (strncmp(buf, "GET_EVENT", strlen("GET_EVENT")) == 0) {
@@ -11382,6 +11387,34 @@ woal_android_priv_cmd(struct net_device *dev, struct ifreq *req)
 		len = sprintf(buf, "OK\n") + 1;
 	} else if (strncmp(buf, "TDLS_CS_CHAN", strlen("TDLS_CS_CHAN")) == 0) {
 		len = woal_priv_tdls_cs_chan(priv, buf, priv_cmd.total_len);
+	} else if (strncmp(buf, "SET_FCC_CHANNEL", strlen("SET_FCC_CHANNEL")) ==
+		   0) {
+		PRINTM(MERROR, "### eric SET_FCC_CHANNEL !\n");
+		   
+		if (hw_test) {
+			PRINTM(MIOCTL, 
+			       "block set fcc channel in hw_test mode\n");
+			ret = -EFAULT;
+			goto done;
+		}
+		pdata = buf + strlen("SET_FCC_CHANNEL") + 1;
+		memset(country_code, 0, sizeof(country_code));
+		if (*pdata == '0') {
+			strcpy(country_code, "FC");
+			PRINTM(MIOCTL, "SET_FCC_CHANNEL 0\n");
+		} else if (*pdata == '-' && *(++pdata) == '1') {
+			PRINTM(MIOCTL, "SET_FCC_CHANNEL -1\n");
+		} else {
+			PRINTM(MIOCTL, "SET_FCC_CHANNEL wrong value\n");
+			ret = -EFAULT;
+			goto done;
+		}
+		if (MLAN_STATUS_SUCCESS !=
+		    woal_request_country_power_table(priv, country_code)) {
+			ret = -EFAULT;
+			goto done;
+		}
+		len = sprintf(buf, "OK\n") + 1;
 	} else {
 		PRINTM(MIOCTL, "Unknown PRIVATE command: %s, ignored\n", buf);
 		ret = -EFAULT;
@@ -11645,7 +11678,8 @@ woal_do_ioctl(struct net_device *dev, struct ifreq *req, int cmd)
 
 	ENTER();
 
-	PRINTM(MINFO, "woal_do_ioctl: ioctl cmd = 0x%x\n", cmd);
+	PRINTM(MERROR, "### eric woal_do_ioctl: ioctl cmd = 0x%x, WOAL_ANDROID_DEF_CMD = 0x%x\n", cmd, WOAL_ANDROID_DEF_CMD);
+
 	switch (cmd) {
 	case WOAL_ANDROID_DEF_CMD:
 	/** android default ioctl ID is SIOCDEVPRIVATE + 1 */

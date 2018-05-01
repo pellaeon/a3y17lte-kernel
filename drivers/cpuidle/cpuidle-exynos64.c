@@ -81,7 +81,6 @@ MODULE_PARM_DESC(enable_mask, "bitmask for C states - C2, C3(LPM)");
 unsigned int log_en;
 module_param_named(log_en, log_en, uint, 0644);
 #endif /* CONFIG_SEC_PM_DEBUG */
-
 /*
  * Exynos cpuidle driver supports the below idle states
  *
@@ -153,7 +152,6 @@ static int exynos_enter_c2(struct cpuidle_device *dev,
 	if (unlikely(log_en & ENABLE_C2))
 		pr_info("+++c2\n");
 #endif
-
 	prepare_idle(dev->cpu);
 
 	entry_index = enter_c2(dev->cpu, index);
@@ -232,6 +230,7 @@ static int exynos_enter_idle_state(struct cpuidle_device *dev,
 		break;
 	}
 #endif
+
 	switch (index) {
 	case IDLE_C1:
 		func = exynos_enter_idle;

@@ -68,6 +68,16 @@ enum exynos_devfreq_lv_index {
 	DEV_LV_END,
 };
 
+enum
+{
+	APL_EXYNOS_FREQ = 0,
+	ATL_EXYNOS_FREQ,
+	INT_EXYNOS_FREQ,
+	MIF_EXYNOS_FREQ,
+	ISP_EXYNOS_FREQ,
+	DISP_EXYNOS_FREQ,
+};
+
 struct exynos_devfreq_opp_table {
 	u32 idx;
 	u32 freq;
@@ -84,6 +94,8 @@ struct exynos_devfreq_ops {
 	int (*get_volt_table)(struct device *, u32 *, struct exynos_devfreq_data *);
 	int (*ppmu_register)(struct device *, struct exynos_devfreq_data *);
 	int (*ppmu_unregister)(struct device *, struct exynos_devfreq_data *);
+	int (*pm_suspend_prepare)(struct device *, struct exynos_devfreq_data *);
+	int (*pm_post_suspend)(struct device *, struct exynos_devfreq_data *);
 	int (*suspend)(struct device *, struct exynos_devfreq_data *);
 	int (*resume)(struct device *, struct exynos_devfreq_data *);
 	int (*reboot)(struct device *, struct exynos_devfreq_data *);
@@ -192,6 +204,7 @@ struct exynos_devfreq_data {
 	bool					use_tmu;
 	struct notifier_block			tmu_notifier;
 	struct notifier_block			reboot_notifier;
+	struct notifier_block			pm_notifier;
 
 	u32					ess_flag;
 

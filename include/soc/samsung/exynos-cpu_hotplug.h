@@ -14,6 +14,7 @@
 
 struct kobject *exynos_cpu_hotplug_kobj(void);
 bool exynos_cpu_hotplug_enabled(void);
+bool exynos_hotplug_in_progress(void);
 
 #endif /* __EXYNOS_CPU_HOTPLUG_H */
 

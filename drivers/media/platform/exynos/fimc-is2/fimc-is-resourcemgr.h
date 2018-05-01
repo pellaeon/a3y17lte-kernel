@@ -49,6 +49,8 @@ struct fimc_is_dvfs_ctrl {
 	int cur_cam_qos;
 	int cur_i2c_qos;
 	int cur_disp_qos;
+	int cur_hpg_qos;
+	int cur_hmp_bst;
 	u32 dvfs_table_idx;
 	u32 dvfs_table_max;
 	ulong state;
@@ -74,7 +76,7 @@ struct fimc_is_clk_gate_ctrl {
 };
 
 struct fimc_is_static_mem {
-	u32 paddr;
+	ulong paddr;
 	ulong vaddr;
 	ulong size;
 };
@@ -107,6 +109,9 @@ struct fimc_is_resourcemgr {
 	u32					cluster0;
 	u32					cluster1;
 	u32					hal_version;
+#ifdef ENABLE_FW_SHARE_DUMP
+	ulong					fw_share_dump_buf;
+#endif
 
 	/* tmu */
 	struct notifier_block			tmu_notifier;
@@ -117,6 +122,12 @@ struct fimc_is_resourcemgr {
 	struct notifier_block			bm_notifier;
 
 	void					*private_data;
+
+#ifdef ENABLE_SHARED_METADATA
+	/* shared meta data */
+	spinlock_t			shared_meta_lock;
+	struct camera2_shot			shared_shot;
+#endif
 };
 
 int fimc_is_resourcemgr_probe(struct fimc_is_resourcemgr *resourcemgr, void *private_data);

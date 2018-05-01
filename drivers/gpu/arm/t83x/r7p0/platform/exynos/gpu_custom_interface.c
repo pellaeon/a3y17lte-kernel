@@ -1320,6 +1320,58 @@ static ssize_t set_hwcnt_gpr(struct device *dev, struct device_attribute *attr, 
 	return count;
 }
 
+static ssize_t show_hwcnt_profile(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	struct kbase_device *kbdev;
+	struct exynos_context *platform;
+
+	kbdev = dev_get_drvdata(dev);
+	if (!kbdev)
+		return -ENODEV;
+
+	platform = (struct exynos_context *)kbdev->platform_context;
+	if (!platform)
+		return -ENODEV;
+
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", platform->hwcnt_profile);
+
+	if (ret < PAGE_SIZE - 1) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+	} else {
+		buf[PAGE_SIZE-2] = '\n';
+		buf[PAGE_SIZE-1] = '\0';
+		ret = PAGE_SIZE-1;
+	}
+	return ret;
+}
+
+static ssize_t set_hwcnt_profile(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct kbase_device *kbdev;
+	struct exynos_context *platform;
+
+	kbdev = dev_get_drvdata(dev);
+	if (!kbdev)
+		return -ENODEV;
+
+	platform = (struct exynos_context *)kbdev->platform_context;
+	if (!platform)
+		return -ENODEV;
+
+	mutex_lock(&kbdev->hwcnt.mlock);
+
+	if (sysfs_streq("0", buf))
+		platform->hwcnt_profile = false;
+	else if (sysfs_streq("1", buf))
+		platform->hwcnt_profile = true;
+	else
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "invalid val -only [0 or 1] is accepted\n");
+
+	mutex_unlock(&kbdev->hwcnt.mlock);
+	return count;
+}
+
 static ssize_t show_hwcnt_bt_state(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	ssize_t ret = 0;
@@ -1465,6 +1517,7 @@ DEVICE_ATTR(hwcnt_dvfs, S_IRUGO|S_IWUSR, show_hwcnt_dvfs, set_hwcnt_dvfs);
 DEVICE_ATTR(hwcnt_gpr, S_IRUGO|S_IWUSR, show_hwcnt_gpr, set_hwcnt_gpr);
 DEVICE_ATTR(hwcnt_bt_state, S_IRUGO, show_hwcnt_bt_state, NULL);
 DEVICE_ATTR(hwcnt_tripipe, S_IRUGO, show_hwcnt_tripipe, NULL);
+DEVICE_ATTR(hwcnt_profile, S_IRUGO|S_IWUSR, show_hwcnt_profile, set_hwcnt_profile);
 #endif
 DEVICE_ATTR(gpu_status, S_IRUGO, show_gpu_status, NULL);
 
@@ -1628,6 +1681,11 @@ int gpu_create_sysfs_file(struct device *dev)
 		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [hwcnt_tripipe]\n");
 		goto out;
 	}
+
+	if (device_create_file(dev, &dev_attr_hwcnt_profile)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "Couldn't create sysfs file [hwcnt_profile]\n");
+		goto out;
+	}
 #endif
 
 	if (device_create_file(dev, &dev_attr_gpu_status)) {
@@ -1682,6 +1740,7 @@ void gpu_remove_sysfs_file(struct device *dev)
 	device_remove_file(dev, &dev_attr_hwcnt_gpr);
 	device_remove_file(dev, &dev_attr_hwcnt_bt_state);
 	device_remove_file(dev, &dev_attr_hwcnt_tripipe);
+	device_remove_file(dev, &dev_attr_hwcnt_profile);
 #endif
 	device_remove_file(dev, &dev_attr_gpu_status);
 }

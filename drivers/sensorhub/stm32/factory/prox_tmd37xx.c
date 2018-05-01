@@ -247,8 +247,8 @@ static int calculate_proximity_threshold(struct ssp_data *data)
 {
 	int cal_hi_thres, cal_low_thres;
 
-	cal_hi_thres = 60;
-	cal_low_thres = 24;
+	cal_hi_thres = 120;
+	cal_low_thres = 55;
 
 	if (data->uCrosstalk < cal_low_thres) {
 		data->uProxCanc = 0;
@@ -380,7 +380,7 @@ static ssize_t proximity_thresh_high_store(struct device *dev,
 			pr_err("[SSP]: %s - allow 14bits.(%d)\n", __func__, uNewThresh);
 		else {
 			uNewThresh &= 0x3fff;
-			data->uProxHiThresh = uNewThresh;
+			data->uProxHiThresh = data->uProxHiThresh_default = uNewThresh;
 			set_proximity_threshold(data);
 		}
 	}
@@ -418,7 +418,7 @@ static ssize_t proximity_thresh_low_store(struct device *dev,
 			pr_err("[SSP]: %s - allow 14bits.(%d)\n", __func__, uNewThresh);
 		else {
 			uNewThresh &= 0x3fff;
-			data->uProxLoThresh = uNewThresh;
+			data->uProxLoThresh = data->uProxLoThresh_default = uNewThresh;
 			set_proximity_threshold(data);
 		}
 	}

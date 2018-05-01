@@ -16,13 +16,13 @@ static void dispaud_prev(int enable)
 		pwrcal_setbit(CLK_CON_MUX_CLKPHY_DISPAUD_MIPIPHY_RXCLKESC0_USER,	12,	0);
 		pwrcal_setbit(CLK_CON_MUX_CLKPHY_DISPAUD_MIPIPHY_TXBYTECLKHS_USER,	27,	1);
 		pwrcal_setbit(CLK_CON_MUX_CLKPHY_DISPAUD_MIPIPHY_RXCLKESC0_USER,	27,	1);
-	}
 
-	pwrcal_setf(PMU_CLKRUN_CMU_DISPAUD_SYS_PWR_REG, 0, 0x1, 0x0);
-	pwrcal_setf(PMU_CLKSTOP_CMU_DISPAUD_SYS_PWR_REG, 0, 0x1, 0x0);
-	pwrcal_setf(PMU_DISABLE_PLL_CMU_DISPAUD_SYS_PWR_REG, 0, 0x1, 0x0);
-	pwrcal_setf(PMU_RESET_LOGIC_DISPAUD_SYS_PWR_REG, 0, 0x1, 0x0);
-	pwrcal_setf(PMU_RESET_CMU_DISPAUD_SYS_PWR_REG, 0, 0x1, 0x0);
+		pwrcal_setf(PMU_CLKRUN_CMU_DISPAUD_SYS_PWR_REG, 0, 0x1, 0x0);
+		pwrcal_setf(PMU_CLKSTOP_CMU_DISPAUD_SYS_PWR_REG, 0, 0x1, 0x0);
+		pwrcal_setf(PMU_DISABLE_PLL_CMU_DISPAUD_SYS_PWR_REG, 0, 0x1, 0x0);
+		pwrcal_setf(PMU_RESET_LOGIC_DISPAUD_SYS_PWR_REG, 0, 0x1, 0x0);
+		pwrcal_setf(PMU_RESET_CMU_DISPAUD_SYS_PWR_REG, 0, 0x1, 0x0);
+	}
 }
 
 static void g3d_prev(int enable)
@@ -30,14 +30,13 @@ static void g3d_prev(int enable)
 	if (enable == 0) {
 		pwrcal_setf(CLK_ENABLE_CLK_G3D_BUS, 1, 0x3, 0x3);
 		pwrcal_setf(CLK_ENABLE_CLK_G3D_APB, 1, 0x1, 0x1);
+
+		pwrcal_setf(PMU_CLKRUN_CMU_G3D_SYS_PWR_REG, 0, 0x1, 0x0);
+		pwrcal_setf(PMU_CLKSTOP_CMU_G3D_SYS_PWR_REG, 0, 0x1, 0x0);
+		pwrcal_setf(PMU_DISABLE_PLL_CMU_G3D_SYS_PWR_REG, 0, 0x1, 0x0);
+		pwrcal_setf(PMU_RESET_LOGIC_G3D_SYS_PWR_REG, 0, 0x1, 0x0);
+		pwrcal_setf(PMU_RESET_CMU_G3D_SYS_PWR_REG, 0, 0x1, 0x0);
 	}
-
-	pwrcal_setf(PMU_CLKRUN_CMU_G3D_SYS_PWR_REG, 0, 0x1, 0x0);
-	pwrcal_setf(PMU_CLKSTOP_CMU_G3D_SYS_PWR_REG, 0, 0x1, 0x0);
-	pwrcal_setf(PMU_DISABLE_PLL_CMU_G3D_SYS_PWR_REG, 0, 0x1, 0x0);
-	pwrcal_setf(PMU_RESET_LOGIC_G3D_SYS_PWR_REG, 0, 0x1, 0x0);
-	pwrcal_setf(PMU_RESET_CMU_G3D_SYS_PWR_REG, 0, 0x1, 0x0);
-
 }
 
 static void isp_prev(int enable)
@@ -58,13 +57,13 @@ static void isp_prev(int enable)
 		while (pwrcal_getf((void *)0x14443010, 0, 0x1) != 0x0);
 		while (pwrcal_getf((void *)0x1444B010, 0, 0x1) != 0x0);
 #endif
-	}
 
-	pwrcal_setf(PMU_CLKRUN_CMU_ISP_SYS_PWR_REG, 0, 0x1, 0x0);
-	pwrcal_setf(PMU_CLKSTOP_CMU_ISP_SYS_PWR_REG, 0, 0x1, 0x0);
-	pwrcal_setf(PMU_DISABLE_PLL_CMU_ISP_SYS_PWR_REG, 0, 0x1, 0x0);
-	pwrcal_setf(PMU_RESET_LOGIC_ISP_SYS_PWR_REG, 0, 0x1, 0x0);
-	pwrcal_setf(PMU_RESET_CMU_ISP_SYS_PWR_REG, 0, 0x1, 0x0);
+		pwrcal_setf(PMU_CLKRUN_CMU_ISP_SYS_PWR_REG, 0, 0x1, 0x0);
+		pwrcal_setf(PMU_CLKSTOP_CMU_ISP_SYS_PWR_REG, 0, 0x1, 0x0);
+		pwrcal_setf(PMU_DISABLE_PLL_CMU_ISP_SYS_PWR_REG, 0, 0x1, 0x0);
+		pwrcal_setf(PMU_RESET_LOGIC_ISP_SYS_PWR_REG, 0, 0x1, 0x0);
+		pwrcal_setf(PMU_RESET_CMU_ISP_SYS_PWR_REG, 0, 0x1, 0x0);
+	}
 }
 
 static void mfcmscl_prev(int enable)
@@ -73,14 +72,13 @@ static void mfcmscl_prev(int enable)
 		pwrcal_setf(CLK_ENABLE_CLK_MFCMSCL_MSCL, 0, 0x1D, 0x1D);
 		pwrcal_setf(CLK_ENABLE_CLK_MFCMSCL_APB, 0, 0x1, 0x1);
 		pwrcal_setf(CLK_ENABLE_CLK_MFCMSCL_MFC, 0, 0x1, 0x1);
+
+		pwrcal_setf(PMU_CLKRUN_CMU_MFCMSCL_SYS_PWR_REG, 0, 0x1, 0x0);
+		pwrcal_setf(PMU_CLKSTOP_CMU_MFCMSCL_SYS_PWR_REG, 0, 0x1, 0x0);
+		pwrcal_setf(PMU_DISABLE_PLL_CMU_MFCMSCL_SYS_PWR_REG, 0, 0x1, 0x0);
+		pwrcal_setf(PMU_RESET_LOGIC_MFCMSCL_SYS_PWR_REG, 0, 0x1, 0x0);
+		pwrcal_setf(PMU_RESET_CMU_MFCMSCL_SYS_PWR_REG, 0, 0x1, 0x0);
 	}
-
-	pwrcal_setf(PMU_CLKRUN_CMU_MFCMSCL_SYS_PWR_REG, 0, 0x1, 0x0);
-	pwrcal_setf(PMU_CLKSTOP_CMU_MFCMSCL_SYS_PWR_REG, 0, 0x1, 0x0);
-	pwrcal_setf(PMU_DISABLE_PLL_CMU_MFCMSCL_SYS_PWR_REG, 0, 0x1, 0x0);
-	pwrcal_setf(PMU_RESET_LOGIC_MFCMSCL_SYS_PWR_REG, 0, 0x1, 0x0);
-	pwrcal_setf(PMU_RESET_CMU_MFCMSCL_SYS_PWR_REG, 0, 0x1, 0x0);
-
 }
 
 static void dispaud_post(int enable)
@@ -158,8 +156,8 @@ static void dispaud_config(int enable)
 
 static void g3d_config(int enable)
 {
-	pwrcal_setf(PMU_G3D_OPTION, 0, 0x1, 0x1);
-	pwrcal_setf(PMU_G3D_DURATION0, 4, 0xFF, 0x0);
+	pwrcal_setf(PMU_G3D_OPTION, 0, 0x3, 0x1);
+	pwrcal_setf(PMU_G3D_DURATION0, 0, 0xFF, 0x0);
 }
 
 static void isp_config(int enable)

@@ -19,6 +19,10 @@
 #ifndef _ET5XX_LINUX_DIRVER_H_
 #define _ET5XX_LINUX_DIRVER_H_
 
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+#define FEATURE_SPI_WAKELOCK
+#endif /* CONFIG_SEC_FACTORY */
+
 #include <linux/module.h>
 #include <linux/spi/spi.h>
 
@@ -218,9 +222,12 @@ struct etspi_data {
 	struct timer_list dbg_timer;
 	int sensortype;
 	struct device *fp_device;
+
 #ifdef ENABLE_SENSORS_FPRINT_SECURE
 	bool enabled_clk;
+#ifdef FEATURE_SPI_WAKELOCK
 	struct wake_lock fp_spi_lock;
+#endif
 #endif
 	bool tz_mode;
 	int detect_period;
@@ -254,5 +261,4 @@ extern int fingerprint_register(struct device *dev, void *drvdata,
 	struct device_attribute *attributes[], char *name);
 extern void fingerprint_unregister(struct device *dev,
 	struct device_attribute *attributes[]);
-
 #endif

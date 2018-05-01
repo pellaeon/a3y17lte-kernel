@@ -1357,6 +1357,7 @@ static void uart_close(struct tty_struct *tty, struct file *filp)
 		spin_lock_irq(&port->lock);
 		--port->count;
 		spin_unlock_irq(&port->lock);
+		
 		return;
 	}
 

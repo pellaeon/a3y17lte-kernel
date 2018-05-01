@@ -303,12 +303,9 @@ struct mmc_host {
 #define MMC_CAP2_SDIO_IRQ_NOTHREAD	(1 << 17)
 #define MMC_CAP2_STROBE_ENHANCED	(1 << 18) /* enhanced strobe */
 #define MMC_CAP2_SKIP_INIT_SCAN		(1 << 19) /* skip init mmc scan */
-#define MMC_CAP2_DETECT_ON_ERR	(1 << 20)	/* On I/O err check card removal */
-#if defined(CONFIG_BCM43454) || defined(CONFIG_BCM43454_MODULE) || \
-	defined(CONFIG_BCM43455) || defined(CONFIG_BCM43455_MODULE)
-#define MMC_CAP2_BROKEN_VOLTAGE		(1 << 21) /* broken voltage */
-#endif /*(CONFIG_BCM43454) || (CONFIG_BCM43454_MODULE) || \
-	(CONFIG_BCM43455) || (CONFIG_BCM43455_MODULE)*/
+#define MMC_CAP2_DETECT_ON_ERR	(1 << 22)	/* On I/O err check card removal */
+#define MMC_CAP2_PWR_SHUT_DOWN		(1 << 23) /* emmc cntrl pwr in shutdown */
+
 	mmc_pm_flag_t		pm_caps;	/* supported pm features */
 
 #ifdef CONFIG_MMC_CLKGATE
@@ -359,9 +356,6 @@ struct mmc_host {
 	struct delayed_work	detect;
 	struct wake_lock        detect_wake_lock;
 	const char              *wlock_name;
-#ifdef CONFIG_MARVELL_DRIVERS
-    void                *detect_complete;
-#endif
 	int			detect_change;	/* card detect flag */
 	struct mmc_slot		slot;
 
@@ -369,8 +363,8 @@ struct mmc_host {
 	unsigned int		bus_refs;	/* reference counter */
 
 	unsigned int		bus_resume_flags;
-#define MMC_BUSRESUME_MANUAL_RESUME (1 << 0)
-#define MMC_BUSRESUME_NEEDS_RESUME  (1 << 1)
+#define MMC_BUSRESUME_MANUAL_RESUME	(1 << 0)
+#define MMC_BUSRESUME_NEEDS_RESUME	(1 << 1)
 
 	unsigned int		sdio_irqs;
 	struct task_struct	*sdio_irq_thread;

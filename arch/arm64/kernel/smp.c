@@ -58,6 +58,8 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/ipi.h>
 
+extern void machine_crash_nonpanic_core(void *unused);
+
 /*
  * as from 2.5, kernels no longer have an init_tasks structure
  * so we need some other way of telling a new secondary core
@@ -658,6 +660,9 @@ void smp_send_stop(void)
 
 		cpumask_copy(&mask, cpu_online_mask);
 		cpu_clear(smp_processor_id(), mask);
+		/* for debug */
+		pr_info("SMP: cpu_online_mask %lx , cpumask_t.bits %lx\n", 
+			cpu_online_mask->bits[0], mask.bits[0]);
 
 		smp_cross_call(&mask, IPI_CPU_STOP);
 	}

@@ -175,7 +175,7 @@ static struct io_device *create_io_device(struct platform_device *pdev,
 
 	if (iod->format == IPC_BOOT) {
 		modemctl->bootd = iod;
-		mif_info("BOOT device = %s\n", iod->name);
+		mif_err("BOOT device = %s\n", iod->name);
 	}
 
 	/* link between io device and modem shared */
@@ -299,7 +299,7 @@ static int __parse_dt_mandatory_gpio_pdata(struct device_node *np,
 		return -EINVAL;
 	}
 
-	mif_info("gpio_cp_on: %d\n", pdata->gpio_cp_on);
+	mif_err("gpio_cp_on: %d\n", pdata->gpio_cp_on);
 	ret = gpio_request(pdata->gpio_cp_on, "CP_ON");
 	if (ret)
 		mif_err("fail to request gpio %s:%d\n", "CP_ON", ret);
@@ -312,7 +312,7 @@ static int __parse_dt_mandatory_gpio_pdata(struct device_node *np,
 		return -EINVAL;
 	}
 
-	mif_info("gpio_cp_reset: %d\n", pdata->gpio_cp_reset);
+	mif_err("gpio_cp_reset: %d\n", pdata->gpio_cp_reset);
 	ret = gpio_request(pdata->gpio_cp_reset, "CP_RST");
 	if (ret)
 		mif_err("fail to request gpio %s:%d\n", "CP_RST", ret);
@@ -326,7 +326,7 @@ static int __parse_dt_mandatory_gpio_pdata(struct device_node *np,
 		return -EINVAL;
 	}
 
-	mif_info("gpio_pda_active: %d\n", pdata->gpio_pda_active);
+	mif_err("gpio_pda_active: %d\n", pdata->gpio_pda_active);
 	ret = gpio_request(pdata->gpio_pda_active, "PDA_ACTIVE");
 	if (ret)
 		mif_err("fail to request gpio %s:%d\n", "PDA_ACTIVE", ret);
@@ -340,7 +340,7 @@ static int __parse_dt_mandatory_gpio_pdata(struct device_node *np,
 		return -EINVAL;
 	}
 
-	mif_info("gpio_phone_active: %d\n", pdata->gpio_phone_active);
+	mif_err("gpio_phone_active: %d\n", pdata->gpio_phone_active);
 	ret = gpio_request(pdata->gpio_phone_active, "PHONE_ACTIVE");
 	if (ret)
 		mif_err("fail to request gpio %s:%d\n", "PHONE_ACTIVE", ret);
@@ -350,7 +350,7 @@ static int __parse_dt_mandatory_gpio_pdata(struct device_node *np,
 	pdata->gpio_ipc_int2cp = of_get_named_gpio(np,
 						"mif,gpio_ipc_int2cp", 0);
 	if (gpio_is_valid(pdata->gpio_ipc_int2cp)) {
-		mif_info("gpio_ipc_int2cp: %d\n", pdata->gpio_ipc_int2cp);
+		mif_err("gpio_ipc_int2cp: %d\n", pdata->gpio_ipc_int2cp);
 		ret = gpio_request(pdata->gpio_ipc_int2cp, "IPC_INT2CP");
 		if (ret)
 			mif_err("fail to request gpio %s:%d\n",
@@ -373,7 +373,7 @@ static void __parse_dt_optional_gpio_pdata(struct device_node *np,
 	pdata->gpio_cp_wakeup = of_get_named_gpio(np,
 						"mif,gpio_cp_wakeup", 0);
 	if (gpio_is_valid(pdata->gpio_cp_wakeup)) {
-		mif_info("gpio_cp_wakeup: %d\n", pdata->gpio_cp_wakeup);
+		mif_err("gpio_cp_wakeup: %d\n", pdata->gpio_cp_wakeup);
 		ret = gpio_request(pdata->gpio_cp_wakeup, "CP_WAKEUP");
 		if (ret)
 			mif_err("fail to request gpio %s:%d\n",
@@ -386,7 +386,7 @@ static void __parse_dt_optional_gpio_pdata(struct device_node *np,
 	pdata->gpio_ap_status = of_get_named_gpio(np,
 						"mif,gpio_ap_status", 0);
 	if (gpio_is_valid(pdata->gpio_ap_status)) {
-		mif_info("gpio_ap_status: %d\n", pdata->gpio_ap_status);
+		mif_err("gpio_ap_status: %d\n", pdata->gpio_ap_status);
 		ret = gpio_request(pdata->gpio_ap_status, "AP_STATUS");
 		if (ret)
 			mif_err("fail to request gpio %s:%d\n",
@@ -399,7 +399,7 @@ static void __parse_dt_optional_gpio_pdata(struct device_node *np,
 	pdata->gpio_ap_wakeup = of_get_named_gpio(np,
 						"mif,gpio_ap_wakeup", 0);
 	if (gpio_is_valid(pdata->gpio_ap_wakeup)) {
-		mif_info("gpio_ap_wakeup: %d\n", pdata->gpio_ap_wakeup);
+		mif_err("gpio_ap_wakeup: %d\n", pdata->gpio_ap_wakeup);
 		ret = gpio_request(pdata->gpio_ap_wakeup, "AP_WAKEUP");
 		if (ret)
 			mif_err("fail to request gpio %s:%d\n",
@@ -412,7 +412,7 @@ static void __parse_dt_optional_gpio_pdata(struct device_node *np,
 	pdata->gpio_cp_status = of_get_named_gpio(np,
 						"mif,gpio_cp_status", 0);
 	if (gpio_is_valid(pdata->gpio_cp_status)) {
-		mif_info("gpio_cp_status: %d\n", pdata->gpio_cp_status);
+		mif_err("gpio_cp_status: %d\n", pdata->gpio_cp_status);
 		ret = gpio_request(pdata->gpio_cp_status, "CP_STATUS");
 		if (ret)
 			mif_err("fail to request gpio %s:%d\n",
@@ -460,7 +460,7 @@ static int parse_dt_mbox_pdata(struct device *dev, struct device_node *np,
 	const struct property *prop;
 	const __be32 *val;
 	int nr;
-#endif	
+#endif
 
 	if (pdata->link_types != LINKTYPE(LINKDEV_SHMEM))
 		return ret;
@@ -504,67 +504,48 @@ static int parse_dt_mbox_pdata(struct device *dev, struct device_node *np,
 	mif_dt_read_u32 (np, "mbx_cp2ap_active", mbox->mbx_cp2ap_active);
 	mif_dt_read_u32 (np, "mbx_ap2cp_lock_value",
 		mbox->mbx_ap2cp_lock_value);
+	mif_dt_read_u32 (np, "mbx_cp2ap_evs_mode", mbox->mbx_cp2ap_evs_mode);
 
 #ifndef CONFIG_ECT
 	/* get AP core clock table from DT */
 	prop = of_find_property(np, "mif,ap_clk_table", NULL);
 	if (!prop || !prop->value) {
 		mif_err("failed to get ap_clk_table prop\n");
-		mbox->ap_clk_cnt = 0;
-	} else {
-		nr = prop->length / sizeof(u32);
-		mbox->ap_clk_cnt = nr;
-
-		mbox->ap_clk_table = devm_kzalloc(dev, sizeof(u32) * nr, GFP_KERNEL);
-		if (!mbox->ap_clk_table) {
-			mif_err("ap_clk_table: failed to alloc memory\n");
-			return -ENOMEM;
-		}
-
-		val = prop->value;
-		while (nr--)
-			mbox->ap_clk_table[nr] = be32_to_cpup(val++);
+		return -ENODEV;
 	}
+
+	nr = prop->length / sizeof(u32);
+	mbox->ap_clk_cnt = nr;
+
+	mbox->ap_clk_table = devm_kzalloc(dev, sizeof(u32) * nr, GFP_KERNEL);
+	if (!mbox->ap_clk_table) {
+		mif_err("ap_clk_table: failed to alloc memory\n");
+		return -ENOMEM;
+	}
+
+	val = prop->value;
+	while (nr--)
+		mbox->ap_clk_table[nr] = be32_to_cpup(val++);
 
 	/* get MIF clock table from DT */
 	prop = of_find_property(np, "mif,mif_clk_table", NULL);
 	if (!prop || !prop->value) {
-		mif_err("failed to get mif_clk_table prop\n");
-		mbox->mif_clk_cnt = 0;
-	} else {
-		nr = prop->length / sizeof(u32);
-		mbox->mif_clk_cnt = nr;
-
-		mbox->mif_clk_table = devm_kzalloc(dev, sizeof(u32) * nr, GFP_KERNEL);
-		if (!mbox->mif_clk_table) {
-			mif_err("mif_clk_table: failed to alloc memory\n");
-			return -ENOMEM;
-		}
-
-		val = prop->value;
-		while (nr--)
-			mbox->mif_clk_table[nr] = be32_to_cpup(val++);
+		mif_err("failed to get ap_clk_table prop\n");
+		return -ENODEV;
 	}
 
-	/* get INT clock table from DT */
-	prop = of_find_property(np, "mif,int_clk_table", NULL);
-	if (!prop || !prop->value) {
-		mif_err("failed to get int_clk_table prop\n");
-		mbox->int_clk_cnt = 0;
-	} else {
-		nr = prop->length / sizeof(u32);
-		mbox->int_clk_cnt = nr;
+	nr = prop->length / sizeof(u32);
+	mbox->mif_clk_cnt = nr;
 
-		mbox->int_clk_table = devm_kzalloc(dev, sizeof(u32) * nr, GFP_KERNEL);
-		if (!mbox->int_clk_table) {
-			mif_err("int_clk_table: failed to alloc memory\n");
-			return -ENOMEM;
-		}
-
-		val = prop->value;
-		while (nr--)
-			mbox->int_clk_table[nr] = be32_to_cpup(val++);
+	mbox->mif_clk_table = devm_kzalloc(dev, sizeof(u32) * nr, GFP_KERNEL);
+	if (!mbox->mif_clk_table) {
+		mif_err("mif_clk_table: failed to alloc memory\n");
+		return -ENOMEM;
 	}
+
+	val = prop->value;
+	while (nr--)
+		mbox->mif_clk_table[nr] = be32_to_cpup(val++);
 #endif
 
 	return ret;
@@ -766,7 +747,7 @@ static int modem_probe(struct platform_device *pdev)
 	struct link_device *ld;
 	enum mif_sim_mode sim_mode;
 
-	mif_info("%s: +++ (%s)\n",
+	mif_err("%s: +++ (%s)\n",
 			pdev->name, CONFIG_OPTION_REGION);
 
 	if (dev->of_node) {
@@ -804,7 +785,7 @@ static int modem_probe(struct platform_device *pdev)
 			if (!ld)
 				goto free_mc;
 
-			mif_info("%s: %s link created\n", pdata->name, ld->name);
+			mif_err("%s: %s link created\n", pdata->name, ld->name);
 
 			ld->link_type = i;
 			ld->mc = modemctl;
@@ -847,7 +828,7 @@ static int modem_probe(struct platform_device *pdev)
 
 	kfree(iod);
 
-	mif_info("%s: ---\n", pdev->name);
+	mif_err("%s: ---\n", pdev->name);
 	return 0;
 
 free_iod:
@@ -896,7 +877,7 @@ static int modem_suspend(struct device *pdev)
 #endif
 
 #ifdef CONFIG_LINK_DEVICE_SHMEM
-	mif_info("%s: pda_active:0\n", mc->name);
+	mif_err("%s: pda_active:0\n", mc->name);
 	mbox_set_value(MCU_CP, mc->mbx_pda_active, 0);
 	mbox_set_interrupt(MCU_CP, mc->int_pda_active);
 #endif
@@ -921,14 +902,14 @@ static int modem_resume(struct device *pdev)
 
 	/* CP initiated resume case */
 	if (gpio_get_value(mc->gpio_ap_wakeup)) {
-		mif_info("gpio_ap_wakeup high\n");
+		mif_err("gpio_ap_wakeup high\n");
 		mipi_lli_set_link_status(LLI_WAITFORMOUNT);
 		gpio_set_value(mc->gpio_ap_status, 1);
 	}
 #endif
 
 #ifdef CONFIG_LINK_DEVICE_SHMEM
-	mif_info("%s: pda_active:1\n", mc->name);
+	mif_err("%s: pda_active:1\n", mc->name);
 	mbox_set_value(MCU_CP, mc->mbx_pda_active, 1);
 	mbox_set_interrupt(MCU_CP, mc->int_pda_active);
 #endif

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Samsung Electronics Co., Ltd.
+ * Copyright (c) 2016 Samsung Electronics Co., Ltd.
  *		http://www.samsung.com
  *
  * Exynos-SnapShot debugging framework for Exynos SoC
@@ -31,7 +31,7 @@ extern int exynos_ss_save_context(void *regs);
 extern int exynos_ss_save_reg(void *regs);
 extern int exynos_ss_dump_panic(char *str, size_t len);
 extern int exynos_ss_prepare_panic(void);
-extern int exynos_ss_post_panic(void);
+extern int exynos_ss_post_panic(void *pv_regs);
 extern int exynos_ss_post_reboot(void);
 extern int exynos_ss_set_hardlockup(int);
 extern int exynos_ss_get_hardlockup(void);
@@ -74,38 +74,38 @@ extern void exynos_ss_printkl(size_t msg, size_t val);
 #ifdef CONFIG_EXYNOS_SNAPSHOT_IRQ_DISABLED
 extern void exynos_ss_irqs_disabled(unsigned long flags);
 #else
-#define exynos_ss_irqs_disabled(a)	do { } while(0);
+#define exynos_ss_irqs_disabled(a)	do { } while(0)
 #endif
 
 #ifdef CONFIG_EXYNOS_SNAPSHOT_HRTIMER
 extern void exynos_ss_hrtimer(void *timer, s64 *now, void *fn, int en);
 #else
-#define exynos_ss_hrtimer(a,b,c,d)	do { } while(0);
+#define exynos_ss_hrtimer(a,b,c,d)	do { } while(0)
 #endif
 
 #ifdef CONFIG_EXYNOS_SNAPSHOT_REG
 extern void exynos_ss_reg(unsigned int read, size_t val, size_t reg, int en);
 #else
-#define exynos_ss_reg(a,b,c,d)		do { } while(0);
+#define exynos_ss_reg(a,b,c,d)		do { } while(0)
 #endif
 
 #ifdef CONFIG_EXYNOS_SNAPSHOT_SPINLOCK
 extern void exynos_ss_spinlock(void *lock, int en);
 #else
-#define exynos_ss_spinlock(a,b)		do { } while(0);
+#define exynos_ss_spinlock(a,b)		do { } while(0)
 #endif
 
 #ifdef CONFIG_EXYNOS_SNAPSHOT_CLK
 struct clk;
 extern void exynos_ss_clk(void *clock, const char *func_name, int mode);
 #else
-#define exynos_ss_clk(a,b,c)		do { } while(0);
+#define exynos_ss_clk(a,b,c)		do { } while(0)
 #endif
 
 #ifdef CONFIG_EXYNOS_SNAPSHOT_FREQ
 void exynos_ss_freq(int type, unsigned long old_freq, unsigned long target_freq, int en);
 #else
-#define exynos_ss_freq(a,b,c,d)	do { } while(0);
+#define exynos_ss_freq(a,b,c,d)	do { } while(0)
 #endif
 
 #ifdef CONFIG_EXYNOS_SNAPSHOT_IRQ_EXIT
@@ -113,20 +113,20 @@ extern void exynos_ss_irq_exit(unsigned int irq, unsigned long long start_time);
 #define exynos_ss_irq_exit_var(v)	do {	v = cpu_clock(raw_smp_processor_id());	\
 					} while(0)
 #else
-#define exynos_ss_irq_exit(a,b)		do { } while(0);
-#define exynos_ss_irq_exit_var(v)	do {	v = 0; } while(0);
+#define exynos_ss_irq_exit(a,b)		do { } while(0)
+#define exynos_ss_irq_exit_var(v)	do {	v = 0; } while(0)
 #endif
 
 #ifdef CONFIG_EXYNOS_SNAPSHOT_PSTORE
 extern int exynos_ss_hook_pmsg(char *buffer, size_t count);
 #else
-#define exynos_ss_hook_pmsg(a,b)	do { } while(0);
+#define	exynos_ss_hook_pmsg(a,b)	do { } while(0)
 #endif
 
 #ifdef CONFIG_EXYNOS_SNAPSHOT_CRASH_KEY
 void exynos_ss_check_crash_key(unsigned int code, int value);
 #else
-#define exynos_ss_check_crash_key(a,b)	do { } while(0);
+#define exynos_ss_check_crash_key(a,b)	do { } while(0)
 #endif
 
 #ifdef CONFIG_EXYNOS_SNAPSHOT_SFRDUMP
@@ -163,13 +163,13 @@ void exynos_ss_dump_sfr(void);
 #define exynos_ss_dump_panic(a,b)	do { } while(0)
 #define exynos_ss_dump_sfr()		do { } while(0)
 #define exynos_ss_prepare_panic()	do { } while(0)
-#define exynos_ss_post_panic()		do { } while(0)
+#define exynos_ss_post_panic(a)		do { } while(0)
 #define exynos_ss_post_reboot()		do { } while(0)
 #define exynos_ss_set_hardlockup(a)	do { } while(0)
 #define exynos_ss_get_hardlockup()	do { } while(0)
 #define exynos_ss_get_item_size(a)	do { } while(0)
 #define exynos_ss_get_item_paddr(a)	do { } while(0)
-#define exynos_ss_check_crash_key(a,b)	do { } while(0);
+#define exynos_ss_check_crash_key(a,b)	do { } while(0)
 #endif /* CONFIG_EXYNOS_SNAPSHOT */
 
 /**

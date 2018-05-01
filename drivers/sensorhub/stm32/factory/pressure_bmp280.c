@@ -73,7 +73,7 @@ int pressure_open_calibration(struct ssp_data *data)
 		pr_err("[SSP]: %s - Can't read the cal data from file (%d)\n",
 			__func__, iErr);
         filp_close(cal_filp, current->files);
-        set_fs(old_fs);     
+        set_fs(old_fs);    
 		return iErr;
 	}
 	filp_close(cal_filp, current->files);
@@ -185,7 +185,7 @@ static ssize_t pressure_temperature_show(struct device *dev,
 	temp = (s32) (data->buf[SENSOR_TYPE_PRESSURE].temperature);
 	temperature = (4250) + ((temp / (120 * 4))*100); //(42.5f) + (temperature/(120 * 4));
 	float_temperature = ((temperature%100) > 0 ? (temperature%100) : -(temperature%100));
-	
+
 	return sprintf(buf, "%d.%02d\n", (temperature/100), float_temperature);
 }
 

@@ -12,6 +12,11 @@
 #ifndef fimc_is_device_sensor_peri_H
 #define fimc_is_device_sensor_peri_H
 
+#ifdef CONFIG_MUIC_NOTIFIER
+#include <linux/muic/muic.h>
+#include <linux/muic/muic_notifier.h>
+#endif
+
 #include <linux/interrupt.h>
 #include "fimc-is-mem.h"
 #include "fimc-is-param.h"
@@ -32,7 +37,7 @@ struct fimc_is_cis {
 	cis_shared_data			*cis_data;
 	struct fimc_is_cis_ops		*cis_ops;
 	enum otf_input_order		bayer_order;
-	enum apex_aperture_value	aperture_num;
+	u32				aperture_num;
 	bool				use_dgain;
 	bool				hdr_ctrl_by_again;
 
@@ -64,7 +69,9 @@ struct fimc_is_cis {
 	/* get a min, max fps to HAL */
 	u32				min_fps;
 	u32				max_fps;
+
 	struct mutex			control_lock;
+	bool				use_pdaf;
 };
 
 struct fimc_is_actuator_data {
@@ -92,7 +99,7 @@ struct fimc_is_actuator {
 	struct timeval				start_time;
 	struct timeval				end_time;
 	u32					valid_flag;
-	u32					valid_time;
+	ulong					valid_time;
 
 	/* WinAf value for M2M AF */
 	u32					left_x;
@@ -109,6 +116,7 @@ struct fimc_is_actuator {
 	enum fimc_is_actuator_direction		pos_direction;
 
 	struct fimc_is_actuator_data		actuator_data;
+	struct fimc_is_device_sensor_peri	*sensor_peri;
 };
 
 struct fimc_is_flash_data {
@@ -132,6 +140,12 @@ struct fimc_is_flash {
 
 	struct fimc_is_flash_data	flash_data;
 	struct fimc_is_flash_expo_gain  flash_ae;
+
+#ifdef CONFIG_CAMERA_FLASH_I2C_OBJ
+	struct notifier_block		flash_noti_ta;
+	int				attach_ta;
+	int				attach_sdp;
+#endif
 };
 
 /*
@@ -144,9 +158,11 @@ struct fimc_is_preprocessor {
 	struct v4l2_subdev		*subdev; /* connected module subdevice */
 	u32				device; /* connected sensor device */
 	struct i2c_client		*client;
+	struct fimc_is_device_preproc *device_preproc;
 
-	u32					position;
-	u32					max_position;
+	u32				cfgs;
+	const struct fimc_is_companion_cfg	*cfg;
+
 	struct fimc_is_preprocessor_ops	*preprocessor_ops;
 };
 
@@ -179,8 +195,8 @@ struct fimc_is_device_sensor_peri {
 	struct kthread_worker		mode_change_worker;
 	struct kthread_work		mode_change_work;
 
-	/* sensor mode setting flag */
-        u32                             mode_change_flag;
+	/* first sensor mode setting flag */
+        u32                             mode_change_first;
 
 	struct fimc_is_sensor_interface			sensor_interface;
 };

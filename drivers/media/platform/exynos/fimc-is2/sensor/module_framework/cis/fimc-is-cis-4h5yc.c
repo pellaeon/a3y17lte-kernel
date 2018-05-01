@@ -161,11 +161,6 @@ int sensor_4h5yc_cis_init(struct v4l2_subdev *subdev)
 	struct fimc_is_cis *cis;
 	u32 setfile_index = 0;
 	cis_setting_info setinfo;
-#ifdef USE_CAMERA_HW_BIG_DATA
-	struct cam_hw_param *hw_param = NULL;
-	struct fimc_is_device_sensor_peri *sensor_peri = NULL;
-#endif
-
 	setinfo.param = NULL;
 	setinfo.return_value = 0;
 
@@ -184,15 +179,6 @@ int sensor_4h5yc_cis_init(struct v4l2_subdev *subdev)
 
 	ret = sensor_cis_check_rev(cis);
 	if (ret < 0) {
-#ifdef USE_CAMERA_HW_BIG_DATA
-		sensor_peri = container_of(cis, struct fimc_is_device_sensor_peri, cis);
-		if (sensor_peri && sensor_peri->module->position == SENSOR_POSITION_REAR)
-			fimc_is_sec_get_rear_hw_param(&hw_param);
-		else if (sensor_peri && sensor_peri->module->position == SENSOR_POSITION_FRONT)
-			fimc_is_sec_get_front_hw_param(&hw_param);
-		if (hw_param)
-			hw_param->i2c_sensor_err_cnt++;
-#endif
 		warn("sensor_4h5yc_check_rev is fail when cis init");
 		cis->rev_flag = true;
 		ret = 0;
@@ -1411,7 +1397,7 @@ int sensor_4h5yc_cis_set_digital_gain(struct v4l2_subdev *subdev, struct ae_para
 		goto p_err;
 	}
 
-	dgains[0] = dgains[1] = dgains[2] = dgains[3] = long_gain;
+	dgains[0] = dgains[1] = dgains[2] = dgains[3] = short_gain;
 	/* Short digital gain */
 	ret = fimc_is_sensor_write16_array(client, 0x020E, dgains, 4);
 	if (ret < 0)
@@ -1638,14 +1624,13 @@ int sensor_4h5yc_cis_compensate_gain_for_extremely_br(struct v4l2_subdev *subdev
 	integration_time = ((cis_data->line_length_pck * coarse_int + (cis_data->line_length_pck - 0xf0)) / vt_pic_clk_freq_mhz);
 	ratio = ((expo << 8) / integration_time);
 
-	if (pre_coarse_int <= 15 && pre_coarse_int != 0) {
+	if (pre_coarse_int <= 15) {
 			compensated_again = (*again * (pre_ratio)) >> 8;
 
-		if (compensated_again < cis_data->min_analog_gain[0]) {
-			*again = cis_data->min_analog_gain[0];
-		} else if (*again >= cis_data->max_analog_gain[0]) {
-			*dgain = (*dgain * (pre_ratio)) >> 8;
-
+		if (compensated_again < cis_data->min_analog_gain[1]) {
+			*again = cis_data->min_analog_gain[1];
+		} else if (*again >= cis_data->max_analog_gain[1]) {
+			*dgain = (*dgain * (pre_ratio));
 		} else {
 			*again = compensated_again;
 		}
@@ -1684,6 +1669,7 @@ static struct fimc_is_cis_ops cis_ops = {
 	.cis_get_max_digital_gain = sensor_4h5yc_cis_get_max_digital_gain,
 	.cis_compensate_gain_for_extremely_br = sensor_4h5yc_cis_compensate_gain_for_extremely_br,
 	.cis_wait_streamoff = sensor_cis_wait_streamoff,
+	.cis_wait_streamon = sensor_cis_wait_streamon,
 };
 
 int cis_4h5yc_probe(struct i2c_client *client,
@@ -1759,7 +1745,18 @@ int cis_4h5yc_probe(struct i2c_client *client,
 
 	/* belows are depend on sensor cis. MUST check sensor spec */
 	cis->bayer_order = OTF_INPUT_ORDER_BAYER_GR_BG;
-	cis->aperture_num = F1_9;
+
+	if (of_property_read_bool(dnode, "sensor_f_number")) {
+		ret = of_property_read_u32(dnode, "sensor_f_number", &cis->aperture_num);
+		if (ret) {
+			warn("f-number read is fail(%d)",ret);
+		}
+	} else {
+		cis->aperture_num = F2_2;
+	}
+
+	probe_info("%s f-number %d\n", __func__, cis->aperture_num);
+
 	cis->use_dgain = true;
 	cis->hdr_ctrl_by_again = false;
 

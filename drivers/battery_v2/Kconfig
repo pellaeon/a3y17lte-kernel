@@ -22,23 +22,12 @@ config BATTERY_SWELLING
 	help
 	  Say Y to include support for prevent battery swelling
 
-config BATTERY_SWELLING_SELF_DISCHARGING
-	bool "prevent battery swelling with self discharging"
-	help
-	  Say Y to include support for prevent battery swelling with self discharging
-
 config CALC_TIME_TO_FULL
 	tristate "calculate time to full"
 	default n
 	depends on BATTERY_SAMSUNG
 	help
 	  Say Y to use calc time to full function.
-
-config SW_SELF_DISCHARGING
-	bool "enable sw_self_discharging"
-	default n
-	help
-	  Say Y to enable CONFIG_SW_SELF_DISCHARGING
 
 config BATTERY_AGE_FORECAST
 	tristate "battery age forecast"
@@ -224,32 +213,6 @@ config FUELGAUGE_S2MU004
 	help
 	 Say y to include support for s.lsi s2mu004 fuel gauge driver.
 
-config FUELGAUGE_S2MU005
-	tristate "S2MU005 fuel gauge driver"
-	default n
-	depends on BATTERY_SAMSUNG
-	help
-	  Say Y to include support
-	  for S.LSI S2MU005 fuel gauge driver.
-
-
-config FUELGAUGE_SM5703
-	 tristate "SM5703 fuel gauge driver"
-	 default n
-	 depends on BATTERY_SAMSUNG
-	 help
-	  Say Y to include support SM5703 FUELGAUGE.
-	  Using coulomb counting.
- 
-config FUELGAUGE_SM5705
-	tristate "Siliconmitus SM5705 Fuel Gauge"
-	default n
-	depends on BATTERY_SAMSUNG
-	help
-	  SM5705 is fuel-gauge systems for lithium-ion (Li+) batteries
-	  in handheld and portable equipment. The SM5705 is configured
-	  to operate with a single lithium cell
- 
 # Charger
 
 config CHARGER_DUMMY
@@ -383,37 +346,6 @@ config CHARGER_MAX77888
 	  flash driver.
 	  You have to define MFD_MAX77888
 
-
-config CHARGER_SM5703
-	tristate "SM5703 battery charger support"
-	depends on MFD_SM5703 && I2C
-	help
-	  Say Y here to enable support for the SM5703 charger
-	  SM5703 incluse led, flash driver.
-	  You have to define MFD_SM5703
-
-config CHARGER_SM5705
-	tristate "SM5705 battery charger support"
-	depends on MFD_SM5705 && I2C
-	help
-	  Say Y here to enable support for the SM5705 charger
-
-config CHARGER_SM5703_SOFT_START_CHARGING
-	bool "SM5703 soft step charging"
-	default n
-	depends on CHARGER_SM5703
-	help
-	 Say Y here to enable support for SM5703 soft step charging
-	 You have to define CHARGER_SM5703
-
-config CHARGER_SM5703_DUALPATH
-	bool "SM5703 dual path"
-	default n
-	depends on CHARGER_SM5703
-	help
-	  Say Y here to enable support for SM5703 dual path setting for suspending the charger in battery removal/VF open test scenario
-	  You have to define CHARGER_SM5703
-
 config CHARGER_S2MU003
         tristate "S2MU003 charger support"
         depends on (MFD_S2MU003) && I2C
@@ -430,19 +362,17 @@ config CHARGER_S2MU004
 	 S2MU004 includes pmic, led, haptic, flash.
 	 You have to define MFD_S2MU004
 
-config CHARGER_S2MU005
-	tristate "S2MU005 charger support"
-	depends on (MFD_S2MU005) && I2C
-	help
-	  Say Y here to enable support for the S2MU005 charger
-	  S2MU005 incluse pmic, led driver.
-	  You have to define MFD_S2MU005
-
 config CHARGER_SMA7P10
 	tristate "SMA7P01 sub-charger support"
 	depends on I2C
 	help
 	 Say Y here to enable support for the SMA7P01 charger.
+
+config CHARGER_S2MCS01
+	tristate "S2MCS01 sub-charger support"
+	depends on I2C
+	help
+	 Say Y here to enable support for the S2MCS01 charger.
 
 config CHARGER_DA9155
 	tristate "DA9155 charger driver"
@@ -509,12 +439,6 @@ config EN_OOPS
 	help
 	  Say Y to enable oops filter
 
-config USE_POGO
-       bool "enable pogo charging"
-       default n
-       help
-	 Say Y to enable CONFIG_USE_POGO
-
 config STORE_MODE
        bool "enable store mode"
        default n
@@ -532,16 +456,3 @@ config XADC_SHARE_BATT_WITH_USB_THM
 	default n
 	help
 	  Say Y to enable use xadc mux for BAT_THM with USB_THM
-
-config THM_MUX_SHARE
-	bool "To use xadc mux for BAT_THM with AP_THM"
-	default n
-	help
-	  Say Y to enable use xadc mux for BAT_THM with AP_THM
-
-config TYPEB_WATERPROOF_MODEL
-	bool "enable typeb_waterproof_model"
-	default n
-	help
-	  Say Y here to enable typeb_waterproof_model
-

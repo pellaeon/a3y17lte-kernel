@@ -60,13 +60,12 @@ obj-$(CONFIG_CONNECTOR)		+= connector/
 obj-$(CONFIG_FB_I810)           += video/fbdev/i810/
 obj-$(CONFIG_FB_INTEL)          += video/fbdev/intelfb/
 
-obj-$(CONFIG_VBUS_NOTIFIER)	+= staging/samsung/sec_notifier/
-obj-$(CONFIG_USE_MUIC)		+= muic/
-obj-y				+= ccic/
+obj-$(CONFIG_USE_MUIC)      += muic/
+
+obj-$(CONFIG_USE_CCIC)      += ccic/
 
 obj-$(CONFIG_PARPORT)		+= parport/
-obj-y				+= base/ block/ misc/ mfd/
-obj-$(CONFIG_SAMSUNG_NFC)		+= nfc/
+obj-y				+= base/ block/ misc/ mfd/ nfc/
 obj-$(CONFIG_DMA_SHARED_BUFFER) += dma-buf/
 obj-$(CONFIG_NUBUS)		+= nubus/
 obj-y				+= macintosh/
@@ -165,9 +164,6 @@ endif
 obj-$(CONFIG_EXTCON)		+= extcon/
 obj-$(CONFIG_MEMORY)		+= memory/
 obj-$(CONFIG_IIO)		+= iio/
-
-#Sensor
-obj-$(CONFIG_SENSORS)		+= sensors/
 obj-$(CONFIG_VME_BUS)		+= vme/
 obj-$(CONFIG_IPACK_BUS)		+= ipack/
 obj-$(CONFIG_NTB)		+= ntb/
@@ -180,16 +176,11 @@ obj-$(CONFIG_EXYNOS_BTS)	+= bts/
 obj-$(CONFIG_MARVELL_DRIVERS)	+= marvell/
 # Mobicore driver
 obj-$(CONFIG_TRUSTONIC_TEE)	+= gud/
-
 #haptic driver
 obj-$(CONFIG_ANDROID_TIMED_OUTPUT)	+= motor/
-
+#Sensorhub
+obj-$(CONFIG_SENSORS_SSP)       += sensorhub/
+obj-$(CONFIG_GPS_BCMxxxxx)	+= gps/
 #Fingerprint
 obj-$(CONFIG_SENSORS_FINGERPRINT)       += fingerprint/
 
-#Sensorhub
-obj-$(CONFIG_SENSORS_SSP)	+= sensorhub/
-
-#GPS
-obj-$(CONFIG_GPS_BCMxxxxx)	+= gps/
-obj-$(CONFIG_GPS_BCM4752)	+= gps/

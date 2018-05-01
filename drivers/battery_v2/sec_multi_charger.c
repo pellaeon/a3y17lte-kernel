@@ -483,6 +483,9 @@ static int sec_multi_chg_set_property(struct power_supply *psy,
 		if(!charger->pdata->aicl_disable)
 			psy_do_property(charger->pdata->main_charger_name, set, psp, value);
 		break;
+	case POWER_SUPPLY_PROP_CURRENT_MEASURE:
+		psy_do_property(charger->pdata->main_charger_name, set,	psp, value);
+		break;
 	case POWER_SUPPLY_PROP_MAX ... POWER_SUPPLY_EXT_PROP_MAX:
 		switch (ext_psp) {
 		case POWER_SUPPLY_EXT_PROP_MULTI_CHARGER_MODE:

@@ -12,10 +12,7 @@ obj-$(CONFIG_FUELGAUGE_MAX17050)	+= max17050_fuelgauge.o sec_fuelgauge.o
 obj-$(CONFIG_FUELGAUGE_MAX77823)	+= max77823_fuelgauge.o
 obj-$(CONFIG_FUELGAUGE_MAX77843)	+= max77843_fuelgauge.o
 obj-$(CONFIG_FUELGAUGE_MAX77833)	+= max77833_fuelgauge.o
-obj-$(CONFIG_FUELGAUGE_S2MU005)        += s2mu005_fuelgauge.o
-obj-$(CONFIG_FUELGAUGE_SM5703)		+= sm5703_fuelgauge.o
 obj-$(CONFIG_FUELGAUGE_MAX77854)	+= max77854_fuelgauge.o
-obj-$(CONFIG_FUELGAUGE_SM5705)		+= sm5705_fuelgauge.o
 obj-$(CONFIG_FUELGAUGE_S2MU004)		+= s2mu004_fuelgauge.o
 
 obj-$(CONFIG_CHARGER_MAX8903)	+= max8903_charger.o
@@ -36,9 +33,7 @@ obj-$(CONFIG_CHARGER_S2MU003)   += s2mu003_charger.o
 obj-$(CONFIG_CHARGER_DA9155)    += da9155_charger.o
 obj-$(CONFIG_CHARGER_S2MU004)   += s2mu004_charger.o
 obj-$(CONFIG_CHARGER_SMA7P10)   += sma7p10_charger.o
+obj-$(CONFIG_CHARGER_S2MCS01)   += s2mcs01_charger.o
 
 obj-$(CONFIG_WIRELESS_CHARGER_BQ51221)	+= bq51221_charger.o
-obj-$(CONFIG_CHARGER_S2MU005)   += s2mu005_charger.o
-obj-$(CONFIG_CHARGER_SM5703)	+= sm5703_charger.o
-obj-$(CONFIG_CHARGER_SM5705)	+= sm5705_charger.o sm5705_charger_oper.o
 obj-$(CONFIG_WIRELESS_CHARGER_P9220)	+= p9220_charger.o

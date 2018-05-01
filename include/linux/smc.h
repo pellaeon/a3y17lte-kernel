@@ -117,10 +117,15 @@
 #elif defined(CONFIG_SOC_EXYNOS8890)
 #define UFS_FMP				(0x155A2000)
 #define EMMC0_FMP			(0x15561000)
-#elif defined(CONFIG_SOC_EXYNOS7870)
+#elif defined(CONFIG_SOC_EXYNOS7870) || defined(CONFIG_SOC_EXYNOS7880)
 #define EMMC0_FMP			(0x13541000)
 #define EMMC2_FMP			(0x13561000)
 #endif
+
+/*
+ * For SMC CMD for SRPMB
+ */
+#define SMC_SRPMB_WSM			(0x82003811)
 
 /* For DTRNG Access */
 #define HWRNG_INIT			(0x0)
@@ -225,7 +230,7 @@ enum drmdrv_result_t {
 	E_DRMDRV_MFC_FW_INVALID_SIZE		= 0x8003,
 };
 
-extern int __exynos_smc(unsigned long cmd, unsigned long arg1, unsigned long arg2, unsigned long arg3);
+extern int _exynos_smc(unsigned long cmd, unsigned long arg1, unsigned long arg2, unsigned long arg3);
 extern int exynos_smc(unsigned long cmd, unsigned long arg1, unsigned long arg2, unsigned long arg3);
 extern int exynos_smc_readsfr(unsigned long addr, unsigned long* val);
 #endif

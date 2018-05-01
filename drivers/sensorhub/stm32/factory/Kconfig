@@ -100,17 +100,6 @@ config SENSORS_SSP_TMD3725
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
-
-config SENSORS_SSP_TMD3700
-	tristate "Sensors ssp tmd3700"
-	default n
-	depends on SPI
-	help
-	  tmd3700 file for factory test in ssp driver.
-          If you say yes here you get tmd3700 support for
-	  factory test.
-	  To compile this driver as a module, choose M here: the
-	  module will be called ssp.
 	  
 config SENSORS_SSP_AK09911
 	tristate "Sensors ssp ak09911"

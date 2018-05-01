@@ -95,13 +95,6 @@ static int adc_read_type(struct sec_battery_info *battery, int channel)
 {
 	int adc = 0;
 
-	if ((!battery->pdata->self_discharging_en) &&
-	    ((channel == SEC_BAT_ADC_CHANNEL_DISCHARGING_CHECK) ||
-	     (channel == SEC_BAT_ADC_CHANNEL_DISCHARGING_NTC))) {
-		pr_info("%s : Doesn't enable Self Discharging Algorithm\n", __func__);
-		return 0;
-	}
-
 	switch (battery->pdata->temp_adc_type)
 	{
 	case SEC_BATTERY_ADC_TYPE_NONE :

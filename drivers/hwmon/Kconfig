@@ -1678,7 +1678,7 @@ config SENSORS_ULTRA45
 	depends on SPARC64
 	help
 	  This driver provides support for the Ultra45 workstation environmental
-	  sensors.
+	  sensors..
 
 config SENSORS_SEC_THERMISTOR
 	tristate "SEC Thermistor support"

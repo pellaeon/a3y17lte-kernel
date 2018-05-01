@@ -42,18 +42,17 @@
 #define GNSS_IOCTL_READ_FIRMWARE	_IO(GNSS_IOC_MAGIC, 0x04)
 #define GNSS_IOCTL_CHANGE_SENSOR_GPIO	_IO(GNSS_IOC_MAGIC, 0x05)
 #define GNSS_IOCTL_CHANGE_TCXO_MODE		_IO(GNSS_IOC_MAGIC, 0x06)
-#define GNSS_IOCTL_SET_SENSOR_POWER		_IO(GNSS_IOC_MAGIC, 0x07)
-
-enum sensor_power {
-	SENSOR_OFF,
-	SENSOR_ON,
-};
 
 /* #define USE_IOREMAP_NOPMU */
 #define USE_SIMPLE_WAKE_LOCK
 
-#define PMU_ADDR_7870		(0x10480000)
-#define PMU_SIZE_7870		(SZ_64K)
+#if defined(CONFIG_SOC_EXYNOS7870)
+#define PMU_ADDR		(0x10480000)
+#define PMU_SIZE		(SZ_64K)
+#elif defined(CONFIG_SOC_EXYNOS7880)
+#define PMU_ADDR		(0x106B0000)
+#define PMU_SIZE		(SZ_64K)
+#endif
 
 struct kepler_bcmd_args {
 	u16 flags;
@@ -363,7 +362,6 @@ struct gnssctl_ops {
 	int (*suspend_gnss_ctrl)(struct gnss_ctl *);
 	int (*resume_gnss_ctrl)(struct gnss_ctl *);
 	int (*change_sensor_gpio)(struct gnss_ctl *);
-	int (*set_sensor_power)(struct gnss_ctl *, unsigned long);
 };
 
 struct gnss_ctl {
@@ -371,6 +369,8 @@ struct gnss_ctl {
 	char *name;
 	struct gnss_data *gnss_data;
 	enum gnss_state gnss_state;
+
+	struct clk *ccore_qch_lh_gnss;
 
 #ifdef USE_IOREMAP_NOPMU
 	void __iomem *pmu_reg;
@@ -394,8 +394,6 @@ struct gnss_ctl {
 
 	struct pinctrl *gnss_gpio;
 	struct pinctrl_state *gnss_sensor_gpio;
-
-	struct regulator *vdd_sensor_reg;
 };
 
 unsigned long shm_get_phys_base(void);

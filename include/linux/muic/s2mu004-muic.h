@@ -29,7 +29,6 @@
 
 #define MUIC_DEV_NAME	"muic-s2mu004"
 
-#define MAX_BCD_RESCAN_CNT 		5
 
 /* s2mu004 muic register read/write related information defines. */
 
@@ -150,23 +149,20 @@
 #define DEV_TYPE_USB		(0x1 << 2)
 #define DEV_TYPE_CDPCHG		(0x1 << 1)
 #define DEV_TYPE_DCPCHG		(0x1 << 0)
-#define DEV_TYPE_CHG_TYPE		(DEV_TYPE_U200 | DEV_TYPE_SDP_1P8S)
+#define DEV_TYPE_CHG_TYPE		(CHG_TYPE_VBUS_R255 | DEV_TYPE_U200 | DEV_TYPE_SDP_1P8S)
 
-/* S2MU004_REG_MUIC_BCD_RESCAN */
-#define BCD_RESCAN_MASK 0x1
+#define MANUAL_SW_JIG_EN		(0x1 << 0)
 
 /* S2MU004_REG_MUIC_RID_CTRL */
 #define RID_CTRL_ADC_OFF_SHIFT	1
 #define RID_CTRL_ADC_OFF_MASK	0x1 << RID_CTRL_ADC_OFF_SHIFT
+
 /*
  * Manual Switch
  * D- [7:5] / D+ [4:2] / CHARGER[1] / OTGEN[0]
  * 000: Open all / 001: USB / 010: AUDIO / 011: UART / 100: V_AUDIO
  * 00: Vbus to Open / 01: Vbus to Charger / 10: Vbus to MIC / 11: Vbus to VBout
  */
-
-#define MANUAL_SW_JIG_EN		(0x1 << 0)
-
 #define MANUAL_SW_DM_SHIFT		5
 #define MANUAL_SW_DP_SHIFT		2
 #define MANUAL_SW_CHG_SHIFT		1
@@ -181,7 +177,7 @@
 #define MANUAL_SW_OTGEN		(0x1)
 #define MANUAL_SW_CHARGER	(0x1 << MANUAL_SW_CHG_SHIFT)
 
-#define WATER_DET_RETRY_CNT				10
+#define WATER_DET_RETRY_CNT	10
 #define WATER_CCIC_WAIT_DURATION_MS		4000
 #define WATER_DRY_RETRY_INTERVAL_MS		30000
 #define WATER_DRY_INTERVAL_MS			10000
@@ -266,7 +262,7 @@ enum s2mu004_muic_adc_mode {
 	S2MU004_ADC_PERIODIC,
 };
 
-typedef enum {
+typedef enum { 
 	S2MU004_WATER_MUIC_IDLE,
 	S2MU004_WATER_MUIC_DET,
 	S2MU004_WATER_MUIC_CCIC_DET,
@@ -290,14 +286,11 @@ struct s2mu004_muic_data {
 	struct mutex muic_mutex;
 	struct mutex afc_mutex;
 	struct mutex switch_mutex;
-#if defined(CONFIG_CCIC_S2MU004)
 	struct mutex water_det_mutex;
 	struct mutex water_dry_mutex;
-#endif
 	struct s2mu004_dev *s2mu004_dev;
-#if defined(CONFIG_CCIC_S2MU004)
 	wait_queue_head_t wait;
-#endif
+
 	/* model dependant mfd platform data */
 	struct s2mu004_platform_data	*mfd_pdata;
 
@@ -316,6 +309,7 @@ struct s2mu004_muic_data {
 	struct delayed_work muic_pdic_work;
 	int re_detect;
 	bool afc_check;
+	bool otg_state;
 #if defined(CONFIG_HV_MUIC_S2MU004_AFC)
 	int irq_dnres;
 	int irq_mrxrdy;
@@ -333,10 +327,9 @@ struct s2mu004_muic_data {
 	struct muic_platform_data *pdata;
 
 	struct wake_lock wake_lock;
-#if defined(CONFIG_CCIC_S2MU004)
 	struct wake_lock water_wake_lock;
 	struct wake_lock water_dry_wake_lock;
-#endif
+
 	/* muic support vps list */
 	bool muic_support_list[ATTACHED_DEV_NUM];
 
@@ -357,7 +350,6 @@ struct s2mu004_muic_data {
 #if !defined(CONFIG_MUIC_S2MU004_ENABLE_AUTOSW)
 	bool	is_jig_on;
 #endif
-
 	/* W/A waiting for the charger ic */
 	bool suspended;
 	bool need_to_noti;
@@ -373,11 +365,8 @@ struct s2mu004_muic_data {
 	struct delayed_work afc_after_prepare;
 	struct delayed_work afc_check_interrupt;
 	struct delayed_work dcd_recheck;
-	struct delayed_work incomplete_check;
-#if defined(CONFIG_CCIC_S2MU004)
 	struct delayed_work water_detect_handler;
 	struct delayed_work water_dry_handler;
-#endif
 
 	struct delayed_work afc_mrxrdy;
 	int rev_id;
@@ -385,21 +374,12 @@ struct s2mu004_muic_data {
 	int attach_mode;
 
 	struct notifier_block pdic_nb;
-#if defined(CONFIG_CCIC_S2MU004)
-	bool is_water_detect;
+	bool is_dcd_recheck;
 	bool is_otg_vboost;
 	bool is_otg_reboost;
-
-	bool otg_state;
 	t_water_status water_status;
 	t_water_dry_status water_dry_status;
-#else
-#ifndef CONFIG_SEC_FACTORY
-	bool is_water_wa;
-#endif
-	int bcd_rescan_cnt;
-#endif
-	
+
 #if defined(CONFIG_HV_MUIC_S2MU004_AFC)
 	bool				is_afc_muic_ready;
 	bool				is_afc_handshaking;
@@ -427,7 +407,6 @@ struct s2mu004_muic_data {
 	u8				hvcontrol2;
 #endif
 };
-
 
 extern struct device *switch_device;
 extern unsigned int system_rev;

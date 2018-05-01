@@ -49,7 +49,7 @@ static void decon_oneshot_underrun_log(struct decon_device *decon)
 		return;
 
 	if (decon->underrun_stat.underrun_cnt > DECON_UNDERRUN_THRESHOLD) {
-		decon_err("underrun (level %d), bw(%llu), mif(%ld), chmap(0x%x), win(0x%lx), aclk(%ld)\n",
+		pr_err("underrun (level %d), bw(%llu), mif(%ld), chmap(0x%x), win(0x%lx), aclk(%ld)\n",
 			decon->underrun_stat.fifo_level,
 			decon->underrun_stat.prev_bw,
 			decon->underrun_stat.mif_pll / MHZ,
@@ -92,16 +92,11 @@ irqreturn_t decon_int_irq_handler(int irq, void *dev_data)
 	irq_sts_reg = decon_read(DECON_INT, VIDINTCON1);
 	if (irq_sts_reg & VIDINTCON1_INT_FRAME) {
 		/* VSYNC interrupt, accept it */
-		decon->frame_start_cnt_cur++;
-		wake_up_interruptible_all(&decon->wait_vstatus);
 		DISP_SS_EVENT_LOG(DISP_EVT_DECON_FRAMEDONE, &decon->sd, ktime_set(0, 0));
 		decon_write_mask(DECON_INT, VIDINTCON1, ~0,
 			VIDINTCON1_INT_FRAME);
-
-		if (decon->pdata->psr_mode == DECON_VIDEO_MODE) {
-			decon->vsync_info.timestamp = timestamp;
-			wake_up_interruptible_all(&decon->vsync_info.wait);
-		}
+		decon->vsync_info.timestamp = timestamp;
+		wake_up_interruptible_all(&decon->vsync_info.wait);
 	}
 	if (irq_sts_reg & VIDINTCON1_INT_FIFO) {
 		/* TODO: false underrun check only for EVT0. This will be removed in EVT1 */
@@ -118,13 +113,11 @@ irqreturn_t decon_int_irq_handler(int irq, void *dev_data)
 					~0, VIDINTCON1_INT_FIFO);
 		/* TODO: underrun function */
 		/* s3c_fb_log_fifo_underflow_locked(decon, timestamp); */
-		DISP_SS_DUMP(DISP_DUMP_DECON_UNDERRUN);
 	}
 	if (irq_sts_reg & VIDINTCON1_INT_I80) {
 		DISP_SS_EVENT_LOG(DISP_EVT_DECON_FRAMEDONE, &decon->sd, ktime_set(0, 0));
 		decon_write_mask(DECON_INT, VIDINTCON1, ~0, VIDINTCON1_INT_I80);
 		decon->frame_done_cnt_cur++;
-		decon_lpd_trig_reset(decon);
 		wake_up_interruptible_all(&decon->wait_frmdone);
 	}
 
@@ -335,13 +328,13 @@ static u32 wincon(u32 bits_per_pixel, u32 transp_length)
 	case 32:
 		if (transp_length > 0) {
 			data |= WINCON_BLD_PIX;
-			data |= WINCON_BPPMODE_ABGR8888;
+			data |= WINCON_BPPMODE_ARGB8888;
 		} else {
 			data |= WINCON_BPPMODE_XRGB8888;
 		}
 		break;
 	default:
-		decon_err("%d bpp doesn't support\n", bits_per_pixel);
+		pr_err("%d bpp doesn't support\n", bits_per_pixel);
 		break;
 	}
 
@@ -356,15 +349,19 @@ int decon_set_par(struct fb_info *info)
 	struct fb_var_screeninfo *var = &info->var;
 	struct decon_win *win = info->par;
 	struct decon_device *decon = win->decon;
+	struct decon_regs_data win_regs;
 	int win_no = win->index;
-	struct decon_regs_data *win_regs;
 
-	win_regs = &decon->win_regs;
-	memset(win_regs, 0, sizeof(struct decon_regs_data));
-	//decon_warn("setting framebuffer parameters\n");
+	memset(&win_regs, 0, sizeof(struct decon_regs_data));
+	dev_info(decon->dev, "setting framebuffer parameters\n");
 
 	if (decon->state == DECON_STATE_OFF)
 		return 0;
+
+	decon_lpd_block_exit(decon);
+
+	decon_reg_shadow_protect_win(DECON_INT, win->index, 1);
+
 	info->fix.visual = fb_visual(var->bits_per_pixel, 0);
 
 	info->fix.line_length = fb_linelength(var->xres_virtual,
@@ -372,24 +369,34 @@ int decon_set_par(struct fb_info *info)
 	info->fix.xpanstep = fb_panstep(var->xres, var->xres_virtual);
 	info->fix.ypanstep = fb_panstep(var->yres, var->yres_virtual);
 
-	win_regs->wincon = WINCON_ENWIN;
-	win_regs->wincon |= wincon(var->bits_per_pixel, var->transp.length);
-	win_regs->winmap = 0x0;
-	win_regs->vidosd_a = vidosd_a(0, 0);
-	win_regs->vidosd_b = vidosd_b(0, 0, var->xres, var->yres);
-	win_regs->vidosd_c = vidosd_c(0x0, 0x0, 0x0);
-	win_regs->vidosd_d = vidosd_d(0xff, 0xff, 0xff);
-	win_regs->vidw_buf_start = info->fix.smem_start;
-	win_regs->vidw_whole_w = var->xres;
-	win_regs->vidw_whole_h = var->yres;
-	win_regs->vidw_offset_x = 0;
-	win_regs->vidw_offset_y = 0;
+	if (decon_reg_is_win_enabled(DECON_INT, win_no))
+		win_regs.wincon = WINCON_ENWIN;
+	else
+		win_regs.wincon = 0;
+
+	win_regs.wincon |= wincon(var->bits_per_pixel, var->transp.length);
+	win_regs.winmap = 0x0;
+	win_regs.vidosd_a = vidosd_a(0, 0);
+	win_regs.vidosd_b = vidosd_b(0, 0, var->xres, var->yres);
+	win_regs.vidosd_c = vidosd_c(0x0, 0x0, 0x0);
+	win_regs.vidosd_d = vidosd_d(0xff, 0xff, 0xff);
+	win_regs.vidw_buf_start = info->fix.smem_start;
+	win_regs.vidw_whole_w = var->xoffset + var->xres;
+	win_regs.vidw_whole_h = var->yoffset + var->yres;
+	win_regs.vidw_offset_x = var->xoffset;
+	win_regs.vidw_offset_y = var->yoffset;
 	if (win_no)
-		win_regs->blendeq = BLENDE_A_FUNC(BLENDE_COEF_ONE) |
+		win_regs.blendeq = BLENDE_A_FUNC(BLENDE_COEF_ONE) |
 			BLENDE_B_FUNC(BLENDE_COEF_ZERO) |
 			BLENDE_P_FUNC(BLENDE_COEF_ZERO) |
 			BLENDE_Q_FUNC(BLENDE_COEF_ZERO);
-	win_regs->type = IDMA_G0;
+	win_regs.type = IDMA_G0;
+	decon_reg_set_regs_data(DECON_INT, win_no, &win_regs);
+
+	decon_reg_shadow_protect_win(DECON_INT, win->index, 0);
+
+	decon_reg_update_standalone(DECON_INT);
+	decon_lpd_unblock(decon);
 
 	return 0;
 }
@@ -551,15 +558,14 @@ static void decon_activate_window_dma(struct decon_device *decon, unsigned int i
 
 int decon_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 {
-	int ret = 0;
 	struct decon_win *win = info->par;
 	struct decon_device *decon = win->decon;
 	unsigned int start_boff, end_boff;
-
-	if (decon->state == DECON_STATE_OFF)
-		return ret;
+	int ret = 0;
 
 	decon_lpd_block_exit(decon);
+
+	decon_set_par(info);
 
 	/* Offset in bytes to the start of the displayed area */
 	start_boff = var->yoffset * info->fix.line_length;
@@ -590,35 +596,27 @@ int decon_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 	 * both start and end addresses are updated to prevent corruption */
 	decon_reg_shadow_protect_win(DECON_INT, win->index, 1);
 
-	decon_reg_set_regs_data(DECON_INT, win->index, &decon->win_regs);
+	decon_activate_window_dma(decon, win->index);
+	decon_reg_activate_window(DECON_INT, win->index);
 
 	writel(info->fix.smem_start + start_boff, decon->regs + VIDW_ADD0(win->index));
+	/* writel(info->fix.smem_start + end_boff, buf + 	sfb->variant.buf_end); */
 
 	decon_reg_shadow_protect_win(DECON_INT, win->index, 0);
 
-	decon_reg_activate_window(DECON_INT, win->index);
-	decon_activate_window_dma(decon, win->index);
-
-	if (decon->pdata->trig_mode == DECON_HW_TRIG) {
-		decon_reg_set_trigger(DECON_INT, decon->pdata->dsi_mode,
+#ifdef CONFIG_FB_I80_COMMAND_MODE
+	decon_reg_set_trigger(DECON_INT, decon->pdata->dsi_mode,
 			decon->pdata->trig_mode, DECON_TRIG_ENABLE);
 #ifdef CONFIG_DECON_MIPI_DSI_PKTGO
-			v4l2_subdev_call(decon->output_sd, core, ioctl, DSIM_IOC_PKT_GO_ENABLE, NULL); /* Don't care failure or success */
+
+	if (v4l2_subdev_call(decon->output_sd, core, ioctl, DSIM_IOC_PKT_GO_ENABLE, NULL))
+		decon_err("Failed to call DSIM packet go enable!\n");
+#endif
+	decon_reg_set_trigger(DECON_INT, decon->pdata->dsi_mode,
+			decon->pdata->trig_mode, DECON_TRIG_DISABLE);
 #endif
 
-	}
-
-	ret = decon_wait_for_vsync(decon, VSYNC_TIMEOUT_MSEC);
-	if (ret) {
-		decon_err("%s:vsync time over\n", __func__);
-		goto pan_display_exit;
-	}
-
 pan_display_exit:
-	if (decon->pdata->trig_mode == DECON_HW_TRIG)
-		decon_reg_set_trigger(DECON_INT, decon->pdata->dsi_mode,
-			decon->pdata->trig_mode, DECON_TRIG_DISABLE);
-
 	decon_lpd_unblock(decon);
 	return ret;
 }
@@ -679,7 +677,6 @@ static void decon_parse_lcd_info(struct decon_device *decon)
 		decon->windows[i]->win_mode.videomode.yres = lcd_info->yres;
 		decon->windows[i]->win_mode.width = lcd_info->width;
 		decon->windows[i]->win_mode.height = lcd_info->height;
-		decon->windows[i]->win_mode.videomode.refresh = lcd_info->fps;
 	}
 }
 
@@ -774,53 +771,32 @@ int decon_int_register_irq(struct platform_device *pdev, struct decon_device *de
 	struct resource *res;
 	int ret = 0;
 
-	if (decon_reg_get_stop_status(DECON_INT)) {
-		/*
-		* Clear if any interrupt is set durnig bootloader display. It
-		* should have been handled and cleared in bootloader. At this
-		* point, it is too early to handle pernding interrupt in kernel.
-		*/
-		decon_write_mask(DECON_INT, VIDINTCON1, ~0, ~0);
-	}
-
 	/* Get IRQ resource and register IRQ handler. */
 	/* 0: FIFO irq */
 	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-	if (!res) {
-		decon_err("failed to get platform resource\n");
-		return -EINVAL;
-	}
 	ret = devm_request_irq(dev, res->start, decon_int_irq_handler, 0,
 			pdev->name, decon);
 	if (ret) {
-		decon_err("failed to install FIFO irq\n");
-		return ret;
-	}
-
-	/* 1: frame irq (Vsync) */
-	res = platform_get_resource(pdev, IORESOURCE_IRQ, 1);
-	if (!res) {
-		decon_err("failed to get platform resource\n");
-		return -EINVAL;
-	}
-	ret = devm_request_irq(dev, res->start, decon_int_irq_handler,
-			0, pdev->name, decon);
-	if (ret) {
-		decon_err("failed to install VSYNC irq\n");
+		decon_err("failed to install irq\n");
 		return ret;
 	}
 
 	if (decon->pdata->psr_mode == DECON_MIPI_COMMAND_MODE) {
-		/* 1: i80 irq (framedone) */
+		/* 1: i80 irq */
 		res = platform_get_resource(pdev, IORESOURCE_IRQ, 2);
-		if (!res) {
-			decon_err("failed to get platform resource\n");
-			return -EINVAL;
-		}
 		ret = devm_request_irq(dev, res->start, decon_int_irq_handler,
 				0, pdev->name, decon);
 		if (ret) {
-			decon_err("failed to install FRAMEDONE irq\n");
+			decon_err("failed to install irq\n");
+			return ret;
+		}
+	} else if (decon->pdata->psr_mode == DECON_VIDEO_MODE) {
+		/* 2: frame irq */
+		res = platform_get_resource(pdev, IORESOURCE_IRQ, 1);
+		ret = devm_request_irq(dev, res->start, decon_int_irq_handler,
+				0, pdev->name, decon);
+		if (ret) {
+			decon_err("failed to install irq\n");
 			return ret;
 		}
 	}
@@ -834,12 +810,11 @@ int decon_int_register_irq(struct platform_device *pdev, struct decon_device *de
 
 int decon_fb_config_eint_for_te(struct platform_device *pdev, struct decon_device *decon)
 {
-#ifdef CONFIG_EXYNOS7870_DISPLAY_TE_IRQ_GPIO
 	struct device *dev = decon->dev;
+#ifdef CONFIG_EXYNOS7870_DISPLAY_TE_IRQ_GPIO
 	int gpio;
 #endif
 #ifdef CONFIG_EXYNOS7870_DISPLAY_TE_IRQ_GIC
-	struct device *dev = decon->dev;
 	struct resource *res;
 #endif
 	int ret = 0;
@@ -1050,8 +1025,6 @@ void decon_lpd_enable(void)
 int decon_lpd_block_exit(struct decon_device *decon)
 {
 	int ret = 0;
-	if (!decon)
-		return ret;
 
 	decon_lpd_block(decon);
 	ret = decon_exit_lpd(decon);

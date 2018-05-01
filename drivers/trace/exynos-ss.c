@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Samsung Electronics Co., Ltd.
+ * Copyright (c) 2016 Samsung Electronics Co., Ltd.
  *		http://www.samsung.com
  *
  * Exynos-SnapShot debugging framework for Exynos SoC
@@ -34,24 +34,26 @@
 #include <linux/clk-private.h>
 #include <linux/input.h>
 #include <linux/of_address.h>
-#ifdef CONFIG_SEC_PM_DEBUG
-#include <linux/uaccess.h>
-#include <linux/proc_fs.h>
-#endif
+#include <linux/kexec.h>
 
 #include <asm/cacheflush.h>
 #include <asm/ptrace.h>
 #include <asm/memory.h>
 #include <asm/map.h>
 #include <soc/samsung/exynos-pmu.h>
-
-#ifdef CONFIG_SEC_EXT
-#include <linux/sec_ext.h>
+#include <trace/events/exynos.h>
 #ifdef CONFIG_SEC_DEBUG
 #include <linux/sec_debug.h>
 #include <linux/sec_debug_hard_reset_hook.h>
 #endif
-#endif /* CONFIG_SEC_EXT */
+#ifdef CONFIG_SEC_PM_DEBUG
+#include <linux/uaccess.h>
+#include <linux/proc_fs.h>
+#endif
+
+#ifdef CONFIG_SEC_BSP
+#include <linux/sec_bsp.h>
+#endif
 
 /*  Size domain */
 #define ESS_KEEP_HEADER_SZ		(SZ_256 * 3)
@@ -267,12 +269,12 @@ struct exynos_ss_log {
 		void *caller[ESS_CALLSTACK_MAX_NUM];
 	} printkl[ESS_API_MAX_NUM];
 
-	struct printk_log {
+	struct _printk_log {
 		unsigned long long time;
 		int cpu;
 		char log[ESS_LOG_STRING_LENGTH];
 		void *caller[ESS_CALLSTACK_MAX_NUM];
-	} printk[ESS_API_MAX_NUM];
+	} _printk[ESS_API_MAX_NUM];
 #endif
 #ifdef CONFIG_EXYNOS_CORESIGHT
 	struct core_log {
@@ -414,22 +416,13 @@ extern void register_hook_logbuf(void (*)(const char));
 extern void register_hook_logbuf(void (*)(const char *, size_t));
 #endif
 extern void register_hook_logger(void (*)(const char *, const char *, size_t));
-#ifdef CONFIG_ANDROID_LOGGER
-extern void register_hook_logger_sec(void (*)(const char *, const char *, size_t));
-#endif
 
 extern int exynos_check_hardlockup_reason(void);
 
 typedef int (*ess_initcall_t)(const struct device_node *);
-
 #ifdef CONFIG_SEC_PM_DEBUG
-static bool sec_log_full;
+static bool sec_log_full = true;
 #endif
-
-/* purpose of debugging : should be removed */
-unsigned char *debug_curr_ptr;
-const char *debug_buf;
-size_t debug_size;
 
 #ifdef CONFIG_SEC_DEBUG_AUTO_SUMMARY
 static void (*func_hook_auto_comm_lastfreq)(int type, int old_freq, int new_freq, u64 time);
@@ -445,7 +438,6 @@ static void (*func_hook_auto_comm_lastfreq)(int type, int old_freq, int new_freq
  *  evince memory-map of snapshot
  */
 static struct exynos_ss_item ess_items[] = {
-/*****************************************************************/
 #ifndef CONFIG_EXYNOS_SNAPSHOT_MINIMIZED_MODE
 	{"log_kevents",	{SZ_8M,		0, 0, false, true, true}, NULL ,NULL, 0},
 	{"log_kernel",	{SZ_2M,		0, 0, false, true, true}, NULL ,NULL, 0},
@@ -718,11 +710,11 @@ int exynos_ss_prepare_panic(void)
 }
 EXPORT_SYMBOL(exynos_ss_prepare_panic);
 
-int exynos_ss_post_panic(void)
+int exynos_ss_post_panic(void *pv_regs)
 {
 	if (ess_base.enabled) {
 		exynos_ss_dump_sfr();
-		exynos_ss_save_context(NULL);
+		exynos_ss_save_context(pv_regs);
 		flush_cache_all();
 #ifdef CONFIG_EXYNOS_SNAPSHOT_PANIC_REBOOT
 		if (!ess_desc.no_wdt_dev) {
@@ -736,11 +728,10 @@ int exynos_ss_post_panic(void)
 		}
 #endif
 	}
-#ifdef CONFIG_SEC_DEBUG
+#ifdef CONFIG_EXYNOS_SNAPSHOT_PANIC_REBOOT
 	hard_reset_delay();
 	sec_debug_post_panic_handler();
-#endif
-#ifdef CONFIG_EXYNOS_SNAPSHOT_PANIC_REBOOT
+
 	arm_pm_restart(0, "panic");
 #endif
 	/* for stall cpu when not enabling panic reboot */
@@ -822,7 +813,7 @@ int exynos_ss_dump(void)
 		: "=r" (reg1), "=r" (reg2));
 	pr_emerg("CPUMERRSR: %016lx, L2MERRSR: %016lx\n", reg1, reg2);
 	hook_merr(CPUMERRSR, reg1, FATAL_MASK_A);
-	hook_merr(L2MERRSR, reg2, FATAL_MASK_A);	
+	hook_merr(L2MERRSR, reg2, FATAL_MASK_A);
 #else
 	unsigned long reg0;
 	asm ("mrc p15, 0, %0, c0, c0, 0\n": "=r" (reg0));
@@ -902,6 +893,7 @@ int exynos_ss_save_context(void *v_regs)
 {
 	unsigned long flags;
 	struct pt_regs *regs = (struct pt_regs *)v_regs;
+	struct pt_regs tmp;
 
 	if (unlikely(!ess_base.enabled))
 		return 0;
@@ -916,6 +908,8 @@ int exynos_ss_save_context(void *v_regs)
 		exynos_ss_save_reg(regs);
 		exynos_ss_dump();
 		exynos_ss_set_core_panic_stat(ESS_SIGN_PANIC, smp_processor_id());
+		crash_setup_regs(&tmp, regs);
+		crash_save_cpu(&tmp, smp_processor_id());
 		pr_emerg("exynos-snapshot: context saved(CPU:%d)\n",
 							smp_processor_id());
 	} else
@@ -1021,6 +1015,17 @@ static inline int exynos_ss_check_eob(struct exynos_ss_item *item,
 		return 0;
 }
 
+int exynos_smc(unsigned long cmd, unsigned long arg1, unsigned long arg2, unsigned long arg3)
+{
+	int smc_ret;
+
+	trace_exynos_smc_in(cmd, arg1, arg2, arg3);
+	smc_ret = _exynos_smc(cmd, arg1, arg2, arg3);
+	trace_exynos_smc_out(cmd, arg1, arg2, arg3);
+
+	return smc_ret;
+}
+
 #ifdef CONFIG_SEC_DEBUG_AUTO_SUMMARY
 void register_set_auto_comm_lastfreq(void (*func)(int type, int old_freq, int new_freq, u64 time))
 {
@@ -1048,12 +1053,6 @@ static inline void exynos_ss_hook_logger(const char *name,
 	if (likely(ess_base.enabled == true && item->entry.enabled == true)) {
 		if (unlikely((exynos_ss_check_eob(item, size))))
 			item->curr_ptr = item->head_ptr;
-		
-		/* purpose of debugging : should be removed */
-		debug_curr_ptr = item->curr_ptr;
-		debug_buf = buf;
-		debug_size = size;
-		
 		memcpy(item->curr_ptr, buf, size);
 		item->curr_ptr += size;
 	}
@@ -1064,15 +1063,14 @@ static inline void exynos_ss_hook_logger(const char *name,
 static inline void exynos_ss_hook_logbuf(const char buf)
 {
 	unsigned int last_buf;
-	struct exynos_ss_item *item = &ess_items[ess_desc.log_kernel_num];
+	struct exynos_ss_item *item = &ess_items[ess_desc.log_kernel];
 
 	if (likely(ess_base.enabled == true && item->entry.enabled == true)) {
 		if (exynos_ss_check_eob(item, 1)) {
 			item->curr_ptr = item->head_ptr;
-#ifdef CONFIG_SEC_PM_DEBUG
-			sec_log_full = true;
-#endif
+#ifdef CONFIG_SEC_DEBUG_LAST_KMSG
 			*((unsigned long long *)(item->head_ptr + item->entry.size - (size_t)0x08)) = SEC_LKMSG_MAGICKEY;
+#endif
 		}
 
 		item->curr_ptr[0] = buf;
@@ -1093,10 +1091,9 @@ static inline void exynos_ss_hook_logbuf(const char *buf, size_t size)
 
 		if (exynos_ss_check_eob(item, size)) {
 			item->curr_ptr = item->head_ptr;
-#ifdef CONFIG_SEC_PM_DEBUG
-			sec_log_full = true;
-#endif
+#ifdef CONFIG_SEC_DEBUG_LAST_KMSG
 			*((unsigned long long *)(item->head_ptr + item->entry.size - (size_t)0x08)) = SEC_LKMSG_MAGICKEY;
+#endif
 		}
 
 		memcpy(item->curr_ptr, buf, size);
@@ -1356,7 +1353,7 @@ void exynos_ss_check_crash_key(unsigned int code, int value)
 		check_crash_keys_in_user(code, value);
 #endif
 		return;
-	}	
+	}
 #endif
 
 	if (code == KEY_POWER)
@@ -1403,10 +1400,7 @@ static int exynos_ss_reboot_handler(struct notifier_block *nb,
 	exynos_ss_report_reason(ESS_SIGN_NORMAL_REBOOT);
 	exynos_ss_scratch_reg(ESS_SIGN_RESET);
 	exynos_ss_save_context(NULL);
-#ifdef CONFIG_SEC_DEBUG
 	sec_debug_reboot_handler();
-#endif
-
 	flush_cache_all();
 	return 0;
 }
@@ -1433,9 +1427,8 @@ static int exynos_ss_panic_handler(struct notifier_block *nb,
 	exynos_ss_dump_task_info();
 	flush_cache_all();
 #endif
-#ifdef CONFIG_SEC_DEBUG
 	sec_debug_panic_handler(buf, true);
-#endif
+
 	return 0;
 }
 
@@ -1547,15 +1540,12 @@ static int __init exynos_ss_init_desc(void)
 static int __init exynos_ss_setup(char *str)
 {
 	unsigned long i;
-	size_t size = 0;
-	size_t base = 0;
+	size_t base = 0, size = 0;
 
-#ifdef CONFIG_SEC_DEBUG
-	if (sec_debug_setup()) {
+	if (sec_debug_init()) {
 		pr_info("exynos-snapshot: disabled because sec_debug is not activated\n");
 		return -1;
 	}
-#endif
 
 	if (kstrtoul(str, 0, (unsigned long *)&base))
 		goto out;
@@ -1574,24 +1564,21 @@ static int __init exynos_ss_setup(char *str)
 	pr_info("exynos-snapshot: try to reserve dedicated memory : 0x%zx, 0x%zx\n",
 			base, size);
 
-#ifdef CONFIG_NO_BOOTMEM
-	if (!memblock_is_region_reserved(base, size) &&
-		!memblock_reserve(base, size)) {
-
-#else
-	if (!reserve_bootmem(base, size, BOOTMEM_EXCLUSIVE)) {
-#endif
+	if (!memblock_is_region_reserved(base, size) && !memblock_reserve(base, size)) {
 		ess_base.paddr = base;
-		ess_base.vaddr = exynos_ss_remap(base,size);
+		ess_base.vaddr = exynos_ss_remap(base, size);
 		ess_base.size = size;
 		ess_base.enabled = false;
 
 		pr_info("exynos-snapshot: memory reserved complete : 0x%zx, 0x%zx\n",
 			base, size);
 
-#ifdef CONFIG_SEC_DEBUG
-		sec_getlog_supply_kernel((void*)phys_to_virt(ess_items[ess_desc.log_kernel_num].entry.paddr));
-#endif
+		for (i = 0; ARRAY_SIZE(ess_items); ++i) {
+			if(!strcmp(ess_items[i].name, "log_kernel")) {
+				sec_getlog_supply_kernel((void*)phys_to_virt(ess_items[i].entry.paddr));
+				break;
+			}
+		}
 
 		return 0;
 	}
@@ -1613,17 +1600,19 @@ __setup("ess_setup=", exynos_ss_setup);
  *  ---------------------------------------------------------------------
  *  -		Cores CPU register(4K)					-
  *  ---------------------------------------------------------------------
- *  -		log buffer(3Mbyte - Headers(12K))			-
+ *  -		log buffer(8Mbyte - Headers(12K))			-
  *  ---------------------------------------------------------------------
  *  -		Hooked buffer of kernel's log_buf(2Mbyte)		-
  *  ---------------------------------------------------------------------
- *  -		Hooked main logger buffer of platform(3Mbyte)		-
+ *  -		Hooked main logger buffer of platform(4Mbyte Total)	-
  *  ---------------------------------------------------------------------
- *  -		Hooked system logger buffer of platform(1Mbyte)		-
+ *  -		Hooked system logger buffer of platform			-
  *  ---------------------------------------------------------------------
- *  -		Hooked radio logger buffer of platform(?Mbyte)		-
+ *  -		Hooked radio logger buffer of platform			-
  *  ---------------------------------------------------------------------
- *  -		Hooked events logger buffer of platform(?Mbyte)		-
+ *  -		Hooked events logger buffer of platform			-
+ *  ---------------------------------------------------------------------
+ *  -		Hooked pstore (2Mbyte)					-
  *  ---------------------------------------------------------------------
  */
 static int __init exynos_ss_output(void)
@@ -1783,7 +1772,8 @@ static int __init exynos_ss_fixmap(void)
 	exynos_ss_output();
 #ifdef CONFIG_SEC_DEBUG_LAST_KMSG
 	sec_debug_save_last_kmsg(ess_items[ess_desc.log_kernel_num].head_ptr,
-				 ess_items[ess_desc.log_kernel_num].curr_ptr, ess_items[ess_desc.log_kernel_num].entry.size);
+			ess_items[ess_desc.log_kernel_num].curr_ptr,
+			ess_items[ess_desc.log_kernel_num].entry.size);
 #endif
 	return 0;
 }
@@ -1846,16 +1836,9 @@ static int __init exynos_ss_init(void)
 		exynos_ss_init_dt();
 		exynos_ss_scratch_reg(ESS_SIGN_SCRATCH);
 		exynos_ss_set_enable("base", true);
-
 		register_hook_logbuf(exynos_ss_hook_logbuf);
-
 #ifdef CONFIG_EXYNOS_SNAPSHOT_HOOK_LOGGER
-#ifdef CONFIG_EXYNOS_SNAPSHOT_PSTORE
 		register_hook_logger(exynos_ss_hook_logger);
-#endif
-#ifdef CONFIG_ANDROID_LOGGER
-		register_hook_logger_sec(exynos_ss_hook_logger);
-#endif
 #endif
 		register_reboot_notifier(&nb_reboot_block);
 		atomic_notifier_chain_register(&panic_notifier_list, &nb_panic_block);
@@ -2373,18 +2356,18 @@ void exynos_ss_printk(const char *fmt, ...)
 		va_list args;
 		int ret;
 		unsigned long j, i = atomic_inc_return(&ess_idx.printk_log_idx) &
-				(ARRAY_SIZE(ess_log->printk) - 1);
+				(ARRAY_SIZE(ess_log->_printk) - 1);
 
 		va_start(args, fmt);
-		ret = vsnprintf(ess_log->printk[i].log,
-				sizeof(ess_log->printk[i].log), fmt, args);
+		ret = vsnprintf(ess_log->_printk[i].log,
+				sizeof(ess_log->_printk[i].log), fmt, args);
 		va_end(args);
 
-		ess_log->printk[i].time = cpu_clock(cpu);
-		ess_log->printk[i].cpu = cpu;
+		ess_log->_printk[i].time = cpu_clock(cpu);
+		ess_log->_printk[i].cpu = cpu;
 
 		for (j = 0; j < ess_desc.callstack; j++) {
-			ess_log->printk[i].caller[j] =
+			ess_log->_printk[i].caller[j] =
 				(void *)((size_t)return_address(j));
 		}
 	}
@@ -2444,7 +2427,6 @@ typedef struct __attribute__((__packed__)) {
 	int32_t tv_nsec;
 } ess_android_log_header_t;
 
-#ifdef CONFIG_EXYNOS_SNAPSHOT_PSTORE
 typedef struct ess_logger {
 	uint16_t	len;
 	uint16_t	id;
@@ -2470,387 +2452,7 @@ void register_hook_logger(void (*func)(const char *name, const char *buf, size_t
 		pr_info("exynos-snapshot: logger buffer alloc address: 0x%p\n", logger.buffer);
 }
 EXPORT_SYMBOL(register_hook_logger);
-#endif
-
-#ifdef CONFIG_EXYNOS_SNAPSHOT_PSTORE
-#ifdef CONFIG_SEC_EVENT_LOG
-struct event_log_tag_t {
-	int nTagNum;
-	char *event_msg;
-};
-
-enum event_type {
-	EVENT_TYPE_INT          = 0,
-	EVENT_TYPE_LONG         = 1,
-	EVENT_TYPE_STRING       = 2,
-	EVENT_TYPE_LIST         = 3,
-	EVENT_TYPE_FLOAT        = 4,
-};
-
-// NOTICE : it must have order.
-struct event_log_tag_t event_tags[] = {
-	{ 42 , "answer"},
-	{ 314 , "pi"},
-	{ 1003 , "auditd"},
-	{ 2718 , "e"},
-	{ 2719 , "configuration_changed"},
-	{ 2720 , "sync"},
-	{ 2721 , "cpu"},
-	{ 2722 , "battery_level"},
-	{ 2723 , "battery_status"},
-	{ 2724 , "power_sleep_requested"},
-	{ 2725 , "power_screen_broadcast_send"},
-	{ 2726 , "power_screen_broadcast_done"},
-	{ 2727 , "power_screen_broadcast_stop"},
-	{ 2728 , "power_screen_state"},
-	{ 2729 , "power_partial_wake_state"},
-	{ 2730 , "battery_discharge"},
-	{ 2740 , "location_controller"},
-	{ 2741 , "force_gc"},
-	{ 2742 , "tickle"},
-	{ 2744 , "free_storage_changed"},
-	{ 2745 , "low_storage"},
-	{ 2746 , "free_storage_left"},
-	{ 2747 , "contacts_aggregation"},
-	{ 2748 , "cache_file_deleted"},
-	{ 2750 , "notification_enqueue"},
-	{ 2751 , "notification_cancel"},
-	{ 2752 , "notification_cancel_all"},
-	{ 2753 , "idle_maintenance_window_start"},
-	{ 2754 , "idle_maintenance_window_finish"},
-	{ 2755 , "fstrim_start"},
-	{ 2756 , "fstrim_finish"},
-	{ 2802 , "watchdog"},
-	{ 2803 , "watchdog_proc_pss"},
-	{ 2804 , "watchdog_soft_reset"},
-	{ 2805 , "watchdog_hard_reset"},
-	{ 2806 , "watchdog_pss_stats"},
-	{ 2807 , "watchdog_proc_stats"},
-	{ 2808 , "watchdog_scheduled_reboot"},
-	{ 2809 , "watchdog_meminfo"},
-	{ 2810 , "watchdog_vmstat"},
-	{ 2811 , "watchdog_requested_reboot"},
-	{ 2820 , "backup_data_changed"},
-	{ 2821 , "backup_start"},
-	{ 2822 , "backup_transport_failure"},
-	{ 2823 , "backup_agent_failure"},
-	{ 2824 , "backup_package"},
-	{ 2825 , "backup_success"},
-	{ 2826 , "backup_reset"},
-	{ 2827 , "backup_initialize"},
-	{ 2830 , "restore_start"},
-	{ 2831 , "restore_transport_failure"},
-	{ 2832 , "restore_agent_failure"},
-	{ 2833 , "restore_package"},
-	{ 2834 , "restore_success"},
-	{ 2840 , "full_backup_package"},
-	{ 2841 , "full_backup_agent_failure"},
-	{ 2842 , "full_backup_transport_failure"},
-	{ 2843 , "full_backup_success"},
-	{ 2844 , "full_restore_package"},
-	{ 2850 , "backup_transport_lifecycle"},
-	{ 3000 , "boot_progress_start"},
-	{ 3010 , "boot_progress_system_run"},
-	{ 3020 , "boot_progress_preload_start"},
-	{ 3030 , "boot_progress_preload_end"},
-	{ 3040 , "boot_progress_ams_ready"},
-	{ 3050 , "boot_progress_enable_screen"},
-	{ 3060 , "boot_progress_pms_start"},
-	{ 3070 , "boot_progress_pms_system_scan_start"},
-	{ 3080 , "boot_progress_pms_data_scan_start"},
-	{ 3090 , "boot_progress_pms_scan_end"},
-	{ 3100 , "boot_progress_pms_ready"},
-	{ 3110 , "unknown_sources_enabled"},
-	{ 3120 , "pm_critical_info"},
-	{ 4000 , "calendar_upgrade_receiver"},
-	{ 4100 , "contacts_upgrade_receiver"},
-	{ 20003 , "dvm_lock_sample"},
-	{ 27500 , "notification_panel_revealed"},
-	{ 27501 , "notification_panel_hidden"},
-	{ 27510 , "notification_visibility_changed"},
-	{ 27511 , "notification_expansion"},
-	{ 27520 , "notification_clicked"},
-	{ 27530 , "notification_canceled"},
-	{ 27531 , "notification_visibility" },
-	{ 30001 , "am_finish_activity"},
-	{ 30002 , "am_task_to_front"},
-	{ 30003 , "am_new_intent"},
-	{ 30004 , "am_create_task"},
-	{ 30005 , "am_create_activity"},
-	{ 30006 , "am_restart_activity"},
-	{ 30007 , "am_resume_activity"},
-	{ 30008 , "am_anr"},
-	{ 30009 , "am_activity_launch_time"},
-	{ 30010 , "am_proc_bound"},
-	{ 30011 , "am_proc_died"},
-	{ 30012 , "am_failed_to_pause"},
-	{ 30013 , "am_pause_activity"},
-	{ 30014 , "am_proc_start"},
-	{ 30015 , "am_proc_bad"},
-	{ 30016 , "am_proc_good"},
-	{ 30017 , "am_low_memory"},
-	{ 30018 , "am_destroy_activity"},
-	{ 30019 , "am_relaunch_resume_activity"},
-	{ 30020 , "am_relaunch_activity"},
-	{ 30021 , "am_on_paused_called"},
-	{ 30022 , "am_on_resume_called"},
-	{ 30023 , "am_kill"},
-	{ 30024 , "am_broadcast_discard_filter"},
-	{ 30025 , "am_broadcast_discard_app"},
-	{ 30030 , "am_create_service"},
-	{ 30031 , "am_destroy_service"},
-	{ 30032 , "am_process_crashed_too_much"},
-	{ 30033 , "am_drop_process"},
-	{ 30034 , "am_service_crashed_too_much"},
-	{ 30035 , "am_schedule_service_restart"},
-	{ 30036 , "am_provider_lost_process"},
-	{ 30037 , "am_process_start_timeout"},
-	{ 30039 , "am_crash"},
-	{ 30040 , "am_wtf"},
-	{ 30041 , "am_switch_user"},
-	{ 30042 , "am_activity_fully_drawn_time"},
-	{ 30043 , "am_focused_activity"},	
-	{ 30044 , "am_focused_stack"},
-	{ 30045 , "am_pre_boot"},
-	{ 30046 , "am_meminfo"},	
-	{ 30047 , "am_pss"},	
-	{ 30048 , "am_stop_activity"},
-	{ 30049 , "am_on_stop_called"},	
-	{ 30050 , "am_mem_factor"},	
-	{ 31000 , "wm_no_surface_memory"},
-	{ 31001 , "wm_task_created"},
-	{ 31002 , "wm_task_moved"},
-	{ 31003 , "wm_task_removed"},
-	{ 31004 , "wm_stack_created"},
-	{ 31005 , "wm_home_stack_moved"},
-	{ 31006 , "wm_stack_removed"},
-	{ 31007 , "boot_progress_enable_screen"},
-	{ 32000 , "imf_force_reconnect_ime"},
-	{ 36000 , "sysui_statusbar_touch"},
-	{ 36001 , "sysui_heads_up_status"},
-	{ 36004 , "sysui_status_bar_state"},
-	{ 36010 , "sysui_panelbar_touch"},
-	{ 36020 , "sysui_notificationpanel_touch"},
-	{ 36030 , "sysui_quickpanel_touch"},
-	{ 36040 , "sysui_panelholder_touch"},
-	{ 36050 , "sysui_searchpanel_touch"},
-	{ 40000 , "volume_changed" },
-	{ 40001 , "stream_devices_changed" },
-	{ 50000 , "menu_item_selected"},
-	{ 50001 , "menu_opened"},
-	{ 50020 , "connectivity_state_changed"},
-	{ 50021 , "wifi_state_changed"},
-	{ 50022 , "wifi_event_handled"},
-	{ 50023 , "wifi_supplicant_state_changed"},
-	{ 50100 , "pdp_bad_dns_address"},
-	{ 50101 , "pdp_radio_reset_countdown_triggered"},
-	{ 50102 , "pdp_radio_reset"},
-	{ 50103 , "pdp_context_reset"},
-	{ 50104 , "pdp_reregister_network"},
-	{ 50105 , "pdp_setup_fail"},
-	{ 50106 , "call_drop"},
-	{ 50107 , "data_network_registration_fail"},
-	{ 50108 , "data_network_status_on_radio_off"},
-	{ 50109 , "pdp_network_drop"},
-	{ 50110 , "cdma_data_setup_failed"},
-	{ 50111 , "cdma_data_drop"},
-	{ 50112 , "gsm_rat_switched"},
-	{ 50113 , "gsm_data_state_change"},
-	{ 50114 , "gsm_service_state_change"},
-	{ 50115 , "cdma_data_state_change"},
-	{ 50116 , "cdma_service_state_change"},
-	{ 50117 , "bad_ip_address"},
-	{ 50118 , "data_stall_recovery_get_data_call_list"},
-	{ 50119 , "data_stall_recovery_cleanup"},
-	{ 50120 , "data_stall_recovery_reregister"},
-	{ 50121 , "data_stall_recovery_radio_restart"},
-	{ 50122 , "data_stall_recovery_radio_restart_with_prop"},
-	{ 50123 , "gsm_rat_switched_new"},
-	{ 50125 , "exp_det_sms_denied_by_user"},
-	{ 50128 , "exp_det_sms_sent_by_user"},
-	{ 51100 , "netstats_mobile_sample"},
-	{ 51101 , "netstats_wifi_sample"},
-	{ 51200 , "lockdown_vpn_connecting"},
-	{ 51201 , "lockdown_vpn_connected"},
-	{ 51202 , "lockdown_vpn_error"},
-	{ 51300 , "config_install_failed"},
-	{ 51400 , "ifw_intent_matched"},
-	{ 52000 , "db_sample"},
-	{ 52001 , "http_stats"},
-	{ 52002 , "content_query_sample"},
-	{ 52003 , "content_update_sample"},
-	{ 52004 , "binder_sample"},
-	{ 60000 , "viewroot_draw"},
-	{ 60001 , "viewroot_layout"},
-	{ 60002 , "view_build_drawing_cache"},
-	{ 60003 , "view_use_drawing_cache"},
-	{ 60100 , "sf_frame_dur"},
-	{ 60110 , "sf_stop_bootanim"},
-	{ 65537 , "exp_det_netlink_failure"},
-	{ 70000 , "screen_toggled"},
-	{ 70101 , "browser_zoom_level_change"},
-	{ 70102 , "browser_double_tap_duration"},
-	{ 70103 , "browser_bookmark_added"},
-	{ 70104 , "browser_page_loaded"},
-	{ 70105 , "browser_timeonpage"},
-	{ 70150 , "browser_snap_center"},
-	{ 70151 , "exp_det_attempt_to_call_object_getclass"},
-	{ 70200 , "aggregation"},
-	{ 70201 , "aggregation_test"},
-	{ 70300 , "telephony_event"},
-	{ 70301 , "phone_ui_enter"},
-	{ 70302 , "phone_ui_exit"},
-	{ 70303 , "phone_ui_button_click"},
-	{ 70304 , "phone_ui_ringer_query_elapsed"},
-	{ 70305 , "phone_ui_multiple_query"},
-	{ 70310 , "telecom_event"},
-	{ 70311 , "telecom_service"},
-	{ 71001 , "qsb_start"},
-	{ 71002 , "qsb_click"},
-	{ 71003 , "qsb_search"},
-	{ 71004 , "qsb_voice_search"},
-	{ 71005 , "qsb_exit"},
-	{ 71006 , "qsb_latency"},
-	{ 73001 , "input_dispatcher_slow_event_processing"},
-	{ 73002 , "input_dispatcher_stale_event"},
-	{ 73100 , "looper_slow_lap_time"},
-	{ 73200 , "choreographer_frame_skip"},
-	{ 75000 , "sqlite_mem_alarm_current"},
-	{ 75001 , "sqlite_mem_alarm_max"},
-	{ 75002 , "sqlite_mem_alarm_alloc_attempt"},
-	{ 75003 , "sqlite_mem_released"},
-	{ 75004 , "sqlite_db_corrupt"},
-	{ 76001 , "tts_speak_success"},
-	{ 76002 , "tts_speak_failure"},
-	{ 76003 , "tts_v2_speak_success"},
-	{ 76004 , "tts_v2_speak_failure"},
-	{ 78001 , "exp_det_dispatchCommand_overflow"},
-	{ 80100 , "bionic_event_memcpy_buffer_overflow"},
-	{ 80105 , "bionic_event_strcat_buffer_overflow"},
-	{ 80110 , "bionic_event_memmov_buffer_overflow"},
-	{ 80115 , "bionic_event_strncat_buffer_overflow"},
-	{ 80120 , "bionic_event_strncpy_buffer_overflow"},
-	{ 80125 , "bionic_event_memset_buffer_overflow"},
-	{ 80130 , "bionic_event_strcpy_buffer_overflow"},
-	{ 80200 , "bionic_event_strcat_integer_overflow"},
-	{ 80205 , "bionic_event_strncat_integer_overflow"},
-	{ 80300 , "bionic_event_resolver_old_response"},
-	{ 80305 , "bionic_event_resolver_wrong_server"},
-	{ 80310 , "bionic_event_resolver_wrong_query"},
-	{ 90100 , "exp_det_cert_pin_failure"},
-	{ 90200 , "lock_screen_type"},
-	{ 90201 , "exp_det_device_admin_activated_by_user"},
-	{ 90202 , "exp_det_device_admin_declined_by_user"},
-	{ 90300 , "install_package_attempt"},
-	{ 201001 , "system_update"},
-	{ 201002 , "system_update_user"},
-	{ 202001 , "vending_reconstruct"},
-	{ 202901 , "transaction_event"},
-	{ 203001 , "sync_details"},
-	{ 203002 , "google_http_request"},
-	{ 204001 , "gtalkservice"},
-	{ 204002 , "gtalk_connection"},
-	{ 204003 , "gtalk_conn_close"},
-	{ 204004 , "gtalk_heartbeat_reset"},
-	{ 204005 , "c2dm"},
-	{ 205001 , "setup_server_timeout"},
-	{ 205002 , "setup_required_captcha"},
-	{ 205003 , "setup_io_error"},
-	{ 205004 , "setup_server_error"},
-	{ 205005 , "setup_retries_exhausted"},
-	{ 205006 , "setup_no_data_network"},
-	{ 205007 , "setup_completed"},
-	{ 205008 , "gls_account_tried"},
-	{ 205009 , "gls_account_saved"},
-	{ 205010 , "gls_authenticate"},
-	{ 205011 , "google_mail_switch"},
-	{ 206001 , "snet"},
-	{ 206003 , "exp_det_snet"},
-	{ 1050101 , "nitz_information"},
-	{ 1230000 , "am_create_stack"},
-	{ 1230001 , "am_remove_stack"},
-	{ 1230002 , "am_move_task_to_stack"},
-	{ 1230003 , "am_exchange_task_to_stack"},
-	{ 1230004 , "am_create_task_to_stack"},
-	{ 1230005 , "am_focus_stack"},
-	{ 1260001 , "vs_move_task_to_display"},
-	{ 1260002 , "vs_create_display"},
-	{ 1260003 , "vs_remove_display"},
-	{ 1261000 , "am_start_user "},
-	{ 1261001 , "am_stop_user "},
-	{ 1397638484 , "snet_event_log"},
-};
-
-static const char * find_tag_name_from_id ( int id )
-{
-	int l = 0;
-	int r = ARRAY_SIZE(event_tags)-1;
-	int mid = 0;
-	
-	while ( l <= r )
-	{		
-		mid = (l+r)/2;
-
-		if (event_tags[mid].nTagNum == id )
-			return event_tags[mid].event_msg;
-		else if ( event_tags[mid].nTagNum < id )
-			l = mid + 1;
-		else
-			r = mid - 1;
-	}
-	
-	return NULL;	
-}
-
-static char * parse_buffer(char *buffer, unsigned char type)
-{
-	unsigned int buf_len =0;
-	char buf[64] = {0};
-	
-	switch(type)
-	{
-		case EVENT_TYPE_INT:
-		{
-			int val = *(int *)buffer;
-			buffer+=sizeof(int);
-			buf_len = snprintf(buf, 64, "%d", val);
-			logger.func_hook_logger("log_platform", buf, buf_len);
-		}
-		break;
-		case EVENT_TYPE_LONG:
-		{
-			long long val = *(long long *)buffer;
-			buffer+=sizeof(long long);
-			buf_len = snprintf(buf, 64, "%lld", val);
-			logger.func_hook_logger("log_platform", buf, buf_len);
-		}
-		break;
-		case EVENT_TYPE_FLOAT:
-		{
-//			float val = *(float  *)buffer;
-			buffer+=sizeof(float);
-//			buf_len = snprintf(buf, 64, "%f", val);
-//			logger.func_hook_logger("log_platform", buf, buf_len);
-		}
-		break;
-		case EVENT_TYPE_STRING:
-		{
-  			unsigned int len = *(int *)buffer;
-  			unsigned int _len = len;
-  			if ( len >= 64 ) len = 63;
-  			buffer+=sizeof(int);
-			memcpy(buf, buffer, len);
- 			logger.func_hook_logger("log_platform", buf, len);
-            buffer+=_len;
-		}
-		break;
-		
-	}
-	
-	return buffer;
-}
-#endif
-
+#ifdef CONFIG_EXYNOS_SNAPSHOT_HOOK_LOGGER
 static int exynos_ss_combine_pmsg(char *buffer, size_t count, unsigned int level)
 {
 	char *logbuf = logger.buffer;
@@ -2864,10 +2466,10 @@ static int exynos_ss_combine_pmsg(char *buffer, size_t count, unsigned int level
 			u64 tv_kernel;
 			unsigned int logbuf_len;
 			unsigned long rem_nsec;
-#ifndef	CONFIG_SEC_EVENT_LOG
+
 			if (logger.id == ESS_LOG_ID_EVENTS)
 				break;
-#endif
+
 			tv_kernel = local_clock();
 			rem_nsec = do_div(tv_kernel, 1000000000);
 			time_to_tm(logger.tv_sec, 0, &tmBuf);
@@ -2894,10 +2496,6 @@ static int exynos_ss_combine_pmsg(char *buffer, size_t count, unsigned int level
 			logbuf[0] = prio < strlen(kPrioChars) ? kPrioChars[prio] : '?';
 			logbuf[1] = ' ';
 
-#ifdef CONFIG_SEC_EVENT_LOG
-			logger.msg[0] = 0xff;
-#endif
-
 			logger.func_hook_logger("log_platform", logbuf, ESS_LOGGER_LEVEL_PREFIX);
 		}
 		break;
@@ -2906,80 +2504,16 @@ static int exynos_ss_combine_pmsg(char *buffer, size_t count, unsigned int level
 			char *eatnl = buffer + count - ESS_LOGGER_STRING_PAD;
 
 			if (logger.id == ESS_LOG_ID_EVENTS)
-			{
-#ifdef CONFIG_SEC_EVENT_LOG
-				unsigned int buf_len;
-				char buf[64] = {0};
-				int tag_id = *(int *)buffer;
-				const char * tag_name  = NULL;
-				
-				if ( count == 4 && (tag_name = find_tag_name_from_id(tag_id)) != NULL )
-				{					
-					buf_len = snprintf(buf, 64, "# %s ", tag_name);
-					logger.func_hook_logger("log_platform", buf, buf_len);
-				}
-				else
-				{
-					// SINGLE ITEM
-					// logger.msg[0] => count == 1 , if event log, it is type.
-					if ( logger.msg[0] == EVENT_TYPE_LONG || logger.msg[0] == EVENT_TYPE_INT || logger.msg[0] == EVENT_TYPE_FLOAT )
-						parse_buffer(buffer, logger.msg[0]);
-					else if ( count > 6 ) // TYPE(1) + ITEMS(1) + SINGLEITEM(5) or STRING(2+4+1>..)
-					// CASE 2,3:
-					// STRING OR LIST ITEM
-					{
-						if ( *buffer == EVENT_TYPE_LIST )
-						{
-							unsigned char items = *(buffer+1);
-							unsigned char i = 0;
-							buffer+=2;
-							
-							logger.func_hook_logger("log_platform", "[", 1);
-							
-							for (;i<items;++i)
-							{
-								unsigned char type = *buffer;
-								buffer++;
-								buffer = parse_buffer(buffer, type);
-								logger.func_hook_logger("log_platform", ":", 1);
-							}
-							
-							logger.func_hook_logger("log_platform", "]", 1);
-		
-						}
-						else if ( *buffer == EVENT_TYPE_STRING )
-							parse_buffer(buffer+1, EVENT_TYPE_STRING);
-					}
-						
-					logger.msg[0]=0xff; // dummy value;	
-				}
-#else
 				break;
+			if (count == ESS_LOGGER_SKIP_COUNT && *eatnl != '\0')
+				break;
+
+			logger.func_hook_logger("log_platform", buffer, count - 1);
+#ifdef CONFIG_SEC_BSP
+			if (strncmp(buffer, "!@Boot", 6) == 0) {
+				sec_boot_stat_add(buffer);
+			}
 #endif
-			}
-			else
-			{
-				if (count == ESS_LOGGER_SKIP_COUNT && *eatnl != '\0')
-					break;
-
-				logger.func_hook_logger("log_platform", buffer, count - 1);
-#ifdef CONFIG_SEC_EXT
-				if (count > 1 && strncmp(buffer, "!@", 2) == 0)
-				{
-					/* To prevent potential buffer overrun
-					 * put a null at the end of the buffer if required */
-
-					if(buffer[count-1]!='\0')
-						buffer[count-1]='\0';
-
-					pr_info("%s\n", buffer);
-#ifdef CONFIG_SEC_BOOTSTAT
-					if (count > 5 && strncmp(buffer, "!@Boot", 6) == 0)
-						sec_bootstat_add(buffer);
-#endif /* CONFIG_SEC_BOOTSTAT */
-				}
-#endif /* CONFIG_SEC_EXT */
-			}
 		}
 		break;
 	default:
@@ -2987,9 +2521,7 @@ static int exynos_ss_combine_pmsg(char *buffer, size_t count, unsigned int level
 	}
 	return 0;
 }
-#endif
 
-#ifdef CONFIG_EXYNOS_SNAPSHOT_PSTORE
 int exynos_ss_hook_pmsg(char *buffer, size_t count)
 {
 	ess_android_log_header_t header;
@@ -3040,7 +2572,6 @@ int exynos_ss_hook_pmsg(char *buffer, size_t count)
 }
 EXPORT_SYMBOL(exynos_ss_hook_pmsg);
 #endif
-
 /*
  *  To support pstore/pmsg/pstore_ram, following is implementation for exynos-snapshot
  *  ess_ramoops platform_device is used by pstore fs.
@@ -3121,6 +2652,10 @@ static ssize_t ess_enable_store(struct kobject *kobj,
 	char *name;
 
 	name = (char *)kstrndup(buf, count, GFP_KERNEL);
+	if (!name) {
+		pr_err("kstrndup failed\n");
+		return count;
+	}
 	name[count - 1] = '\0';
 
 	en = exynos_ss_get_enable(name, false);
@@ -3407,8 +2942,9 @@ static const struct file_operations sec_log_file_ops = {
 static int __init sec_log_late_init(void)
 {
 	struct proc_dir_entry *entry;
-	struct exynos_ss_item *item = &ess_items[ess_desc.log_kernel_num];
+	struct exynos_ss_item *item;
 
+	item = &ess_items[ess_desc.log_kernel_num];
 	if (!item->head_ptr)
 		return 0;
 
@@ -3424,133 +2960,4 @@ static int __init sec_log_late_init(void)
 }
 
 late_initcall(sec_log_late_init);
-#endif
-
-#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP) && defined(CONFIG_EXYNOS_SNAPSHOT_SAVE_SLUGGISHINFO)
-static int schedinfo_proc_show(struct seq_file *m, void *v)
-{
-	unsigned cpu=0;
-	unsigned start, curr;
-	unsigned long long ts, rem_nsec;
-	unsigned long long pretime, elapsedtime;
-	int len;
-	struct exynos_ss_item *item = &ess_items[ess_desc.kevents_num];
-
-	if (unlikely(!ess_base.enabled || !item->entry.enabled)) {
-		seq_printf(m, "exynos-ss is not enabled\n");
-		return 0;
-	}
-	
-	for(cpu = 0; cpu < CONFIG_NR_CPUS; cpu++) {
-		pretime=0;
-		elapsedtime=0;
-
-		start = (atomic_read(&ess_idx.task_log_idx[cpu]) + 1) & (ARRAY_SIZE(ess_log->task[0]) - 1);
-		curr = start;
-		seq_printf(m, "[ CPU%d sched log] pid     task                 elapsed time\n", cpu);
-		do {
-			if (ess_log->task[cpu][curr].time == 0)
-				break;
-			if(pretime) {
-				elapsedtime=ess_log->task[cpu][curr].time-pretime;
-				ts = elapsedtime;
-				rem_nsec = do_div(ts, 1000000000);
-				seq_printf(m, "  %3llu.%09llu \n", ts, rem_nsec);
-			}
-
-			pretime = ess_log->task[cpu][curr].time;
-			ts = ess_log->task[cpu][curr].time;
-			rem_nsec = do_div(ts, 1000000000);
-
-			for(len = 0; (len < TASK_COMM_LEN) && (ess_log->task[cpu][curr].task_comm)[len]; len++);
-			if(len < TASK_COMM_LEN) 
-				seq_printf(m, "[%5llu.%09llu] %-6d  %-15s  ", 
-					ts, rem_nsec,
-					ess_log->task[cpu][curr].task->pid,
-					ess_log->task[cpu][curr].task_comm);
-			else 
-				seq_printf(m, "[%5llu.%09llu]         %-15s  ", 
-					ts, rem_nsec, "exited");
-			
-			curr = (curr+1) & (ARRAY_SIZE(ess_log->task[0])-1);
-		} while (start != curr);
-		seq_printf(m, "\n\n");
-	}
-	return 0;
-}
-
-static int schedinfo_proc_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, schedinfo_proc_show, NULL);
-}
-
-static const struct file_operations schedinfo_proc_fops = {
-	.open		= schedinfo_proc_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
-static int __init proc_schedinfo_init(void)
-{
-	proc_create("schedinfo", 0, NULL, &schedinfo_proc_fops);
-	return 0;
-}
-late_initcall(proc_schedinfo_init);
-
-static int irqinfo_proc_show(struct seq_file *m, void *v)
-{
-	unsigned cpu=0;
-	unsigned start, curr;
-	unsigned long long ts, rem_nsec;
-	struct exynos_ss_item *item = &ess_items[ess_desc.kevents_num];
-	
-	if (unlikely(!ess_base.enabled || !item->entry.enabled)) {
-		seq_printf(m, "exynos-ss is not enabled\n");
-		return 0;
-	}
-	
-	for(cpu = 0; cpu < CONFIG_NR_CPUS; cpu++) {		
-		start = (atomic_read(&ess_idx.irq_log_idx[cpu]) + 1) & (ARRAY_SIZE(ess_log->irq[0]) - 1);
-		curr = start;
-		seq_printf(m, "[   CPU%d irq log] irq    fn          preempt     en \n", cpu);
-		do {
-			if (ess_log->irq[cpu][curr].time == 0)
-				break;
-			ts = ess_log->irq[cpu][curr].time;
-			rem_nsec = do_div(ts, 1000000000);
-			
-			seq_printf(m, "[%5llu.%09llu] %-5d  0x%p  0x%-8x  %d\n", 
-				ts, rem_nsec,
-				ess_log->irq[cpu][curr].irq, 
-				ess_log->irq[cpu][curr].fn,
-				ess_log->irq[cpu][curr].preempt,
-				ess_log->irq[cpu][curr].en);
-
-			curr = (curr+1) & (ARRAY_SIZE(ess_log->irq[0]) - 1);
-		} while (start != curr);
-		seq_printf(m, "\n");
-	}
-	return 0;
-}
-
-static int irqinfo_proc_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, irqinfo_proc_show, NULL);
-}
-
-static const struct file_operations irqinfo_proc_fops = {
-	.open		= irqinfo_proc_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
-static int __init proc_irqinfo_init(void)
-{
-	proc_create("irqinfo", 0, NULL, &irqinfo_proc_fops);
-	return 0;
-}
-
-late_initcall(proc_irqinfo_init);
 #endif

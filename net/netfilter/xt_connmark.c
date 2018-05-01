@@ -149,6 +149,7 @@ connmark_tg(struct sk_buff *skb, const struct xt_action_param *par)
 
 		break;
 	}
+
 	return XT_CONTINUE;
 }
 

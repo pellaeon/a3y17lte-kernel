@@ -65,16 +65,8 @@ enum dev_format {
 	MAX_DEV_FORMAT,
 };
 
-enum legacy_ipc_map {
-	IPC_MAP_FMT = 0,
-#ifdef CONFIG_MODEM_IF_QOS
-	IPC_MAP_HPRIO_RAW,
-#endif
-	IPC_MAP_NORM_RAW,
-	MAX_SIPC_MAP,
-};
-
-#define MAX_SIPC5_DEVICES	(IPC_RAW + 1) /* FMT, RAW */
+#define MAX_SIPC_DEVICES	(IPC_RFS + 1)	/* FMT, RAW, RFS */
+#define MAX_SIPC5_DEVICES	(IPC_RAW + 1)	/* FMT, RAW */
 
 #define MAX_SIPC_CHANNELS	256	/* 2 ^ 8		*/
 #define MAX_LINK_CHANNELS	32	/* up to 32 channels	*/
@@ -358,6 +350,7 @@ struct modem_mbox {
 	unsigned int mbx_cp2ap_wakeup;	/* AP_WAKEUP	*/
 	unsigned int mbx_ap2cp_status;	/* AP_STATUS	*/
 	unsigned int mbx_cp2ap_status;	/* CP_STATUS	*/
+	unsigned int mbx_cp2ap_evs_mode;	/* CP_EVS_MODE */
 
 	unsigned int int_ap2cp_msg;
 	unsigned int int_ap2cp_active;
@@ -389,9 +382,6 @@ struct modem_mbox {
 
 	unsigned int *mif_clk_table;
 	unsigned int mif_clk_cnt;
-
-	unsigned int *int_clk_table;
-	unsigned int int_clk_cnt;
 };
 #endif
 
@@ -441,6 +431,7 @@ struct modem_data {
 
 #ifdef CONFIG_LINK_DEVICE_SHMEM
 	struct modem_mbox *mbx;
+	struct mem_link_device *mld;
 #endif
 
 	/* Switch with 2 links in a modem */

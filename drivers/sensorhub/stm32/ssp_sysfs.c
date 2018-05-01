@@ -1170,7 +1170,7 @@ static long ssp_batch_ioctl(struct file *file, unsigned int cmd,
 static struct file_operations ssp_batch_fops = {
 	.owner = THIS_MODULE,
 	.open = nonseekable_open,
-	.compat_ioctl = ssp_batch_ioctl,
+	.unlocked_ioctl = ssp_batch_ioctl,
 };
 
 static void initialize_mcu_factorytest(struct ssp_data *data)
@@ -1213,7 +1213,7 @@ err_batch_io_dev:
 
 void remove_sysfs(struct ssp_data *data)
 {
-	ssp_batch_fops.compat_ioctl = NULL;
+	ssp_batch_fops.unlocked_ioctl = NULL;
 	misc_deregister(&data->batch_io_device);
 	remove_accel_factorytest(data);
 	remove_gyro_factorytest(data);

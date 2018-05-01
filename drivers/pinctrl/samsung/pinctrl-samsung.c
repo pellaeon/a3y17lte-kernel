@@ -22,6 +22,7 @@
 
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/slab.h>
 #include <linux/err.h>
@@ -1190,6 +1191,7 @@ static int samsung_pinctrl_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct samsung_pin_ctrl *ctrl;
 	struct resource *res;
+	struct clk *pinctrl_clk = NULL;
 	int ret;
 
 	if (!dev->of_node) {
@@ -1221,20 +1223,30 @@ static int samsung_pinctrl_probe(struct platform_device *pdev)
 	if (res)
 		drvdata->irq = res->start;
 
+	if (of_device_is_compatible(dev->of_node,
+			"samsung,exynos7880-pinctrl")) {
+		pinctrl_clk = devm_clk_get(&pdev->dev, "gate_pinctrl");
+		if (IS_ERR(pinctrl_clk))
+			dev_warn(&pdev->dev, "failed to find pinctrl clock\n");
+		else
+			clk_prepare_enable(pinctrl_clk);
+	}
+
 	ret = samsung_gpiolib_register(pdev, drvdata);
 	if (ret)
-		return ret;
+		goto err;
 
 	ret = samsung_pinctrl_register(pdev, drvdata);
 	if (ret) {
 		samsung_gpiolib_unregister(pdev, drvdata);
-		return ret;
+		goto err;
 	}
 
 	ctrl->pinctrl = devm_pinctrl_get(dev);
 	if (IS_ERR(ctrl->pinctrl)) {
 		dev_err(dev, "could not get pinctrl\n");
-		return PTR_ERR(ctrl->pinctrl);
+		ret = PTR_ERR(ctrl->pinctrl);
+		goto err;
 	}
 
 	ctrl->pins_default = pinctrl_lookup_state(ctrl->pinctrl,
@@ -1258,6 +1270,11 @@ static int samsung_pinctrl_probe(struct platform_device *pdev)
 	list_add_tail(&drvdata->node, &drvdata_list);
 
 	return 0;
+
+err:
+	if (pinctrl_clk)
+		clk_disable_unprepare(pinctrl_clk);
+	return ret;
 }
 
 #if defined(CONFIG_PM) || defined(CONFIG_CPU_IDLE)
@@ -1937,10 +1954,10 @@ static void check_gpio_status(unsigned char phonestate)
 }
 
 
-struct gpio_dvs_t exynos7870_secgpio_dvs = {
+struct gpio_dvs_t exynos7880_secgpio_dvs = {
 	.result = &gpiomap_result,
 	.check_gpio_status = check_gpio_status,
-	.get_nr_gpio = exynos7870_secgpio_get_nr_gpio,
+	.get_nr_gpio = exynos7880_secgpio_get_nr_gpio,
 };
 #endif
 
@@ -1964,6 +1981,8 @@ static const struct of_device_id samsung_pinctrl_dt_match[] = {
 		.data = (void *)exynos7870_pin_ctrl },
 	{ .compatible = "samsung,exynos8890-pinctrl",
 		.data = (void *)exynos8890_pin_ctrl },
+	{ .compatible = "samsung,exynos7880-pinctrl",
+		.data = (void *)exynos7880_pin_ctrl },
 #endif
 #ifdef CONFIG_PINCTRL_S3C64XX
 	{ .compatible = "samsung,s3c64xx-pinctrl",
@@ -1989,6 +2008,7 @@ static struct platform_driver samsung_pinctrl_driver = {
 		.name	= "samsung-pinctrl",
 		.owner	= THIS_MODULE,
 		.of_match_table = samsung_pinctrl_dt_match,
+		.suppress_bind_attrs = true,
 	},
 };
 

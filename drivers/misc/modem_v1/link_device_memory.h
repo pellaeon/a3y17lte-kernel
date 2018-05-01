@@ -60,21 +60,11 @@ enum mem_iface_type {
 
 #ifdef GROUP_MEM_TYPE_SHMEM
 
-#ifdef CONFIG_MODEM_IF_QOS
-#define SHM_4M_RESERVED_SZ	4040
-#define SHM_4M_FMT_TX_BUFF_SZ	4096
-#define SHM_4M_FMT_RX_BUFF_SZ	4096
-#define SHM_4M_RAW_HPRIO_TX_BUFF_SZ	518144
-#define SHM_4M_RAW_HPRIO_RX_BUFF_SZ	518144
-#define SHM_4M_RAW_TX_BUFF_SZ	1048576
-#define SHM_4M_RAW_RX_BUFF_SZ	2097152
-#else
 #define SHM_4M_RESERVED_SZ	4056
 #define SHM_4M_FMT_TX_BUFF_SZ	4096
 #define SHM_4M_FMT_RX_BUFF_SZ	4096
 #define SHM_4M_RAW_TX_BUFF_SZ	2084864
 #define SHM_4M_RAW_RX_BUFF_SZ	2097152
-#endif
 
 #define SHM_UL_USAGE_LIMIT	SZ_32K	/* Uplink burst limit */
 
@@ -88,14 +78,6 @@ struct __packed shmem_4mb_phys_map {
 	u32 fmt_rx_head;
 	u32 fmt_rx_tail;
 
-#ifdef CONFIG_MODEM_IF_QOS
-	u32 raw_hprio_tx_head;
-	u32 raw_hprio_tx_tail;
-
-	u32 raw_hprio_rx_head;
-	u32 raw_hprio_rx_tail;
-#endif
-
 	u32 raw_tx_head;
 	u32 raw_tx_tail;
 
@@ -106,11 +88,6 @@ struct __packed shmem_4mb_phys_map {
 
 	char fmt_tx_buff[SHM_4M_FMT_TX_BUFF_SZ];
 	char fmt_rx_buff[SHM_4M_FMT_RX_BUFF_SZ];
-
-#ifdef CONFIG_MODEM_IF_QOS
-	char raw_hprio_tx_buff[SHM_4M_RAW_HPRIO_TX_BUFF_SZ];
-	char raw_hprio_rx_buff[SHM_4M_RAW_HPRIO_RX_BUFF_SZ];
-#endif
 
 	char raw_tx_buff[SHM_4M_RAW_TX_BUFF_SZ];
 	char raw_rx_buff[SHM_4M_RAW_RX_BUFF_SZ];
@@ -206,8 +183,8 @@ struct __packed mem_snapshot {
 	unsigned int magic;
 	unsigned int access;
 
-	unsigned int head[MAX_SIPC_MAP][MAX_DIR];
-	unsigned int tail[MAX_SIPC_MAP][MAX_DIR];
+	unsigned int head[MAX_SIPC5_DEVICES][MAX_DIR];
+	unsigned int tail[MAX_SIPC5_DEVICES][MAX_DIR];
 
 	u16 int2ap;
 	u16 int2cp;
@@ -287,7 +264,7 @@ struct mem_link_device {
 	/**
 	 * Actual logical IPC devices (for IPC_FMT and IPC_RAW)
 	 */
-	struct mem_ipc_device ipc_dev[MAX_SIPC_MAP];
+	struct mem_ipc_device ipc_dev[MAX_SIPC5_DEVICES];
 
 	/**
 	 * Pointers (aliases) to IPC device map
@@ -295,7 +272,7 @@ struct mem_link_device {
 	u32 __iomem *magic;
 	u32 __iomem *access;
 	u32 __iomem *clk_table;
-	struct mem_ipc_device *dev[MAX_SIPC_MAP];
+	struct mem_ipc_device *dev[MAX_SIPC5_DEVICES];
 
 	struct sbd_link_device sbd_link_dev;
 	struct work_struct iosm_w;
@@ -310,19 +287,20 @@ struct mem_link_device {
 	unsigned int int_ap2cp_msg;	/* INTR# for IPC TX */
 
 	unsigned int mbx_perf_req;
-	unsigned int mbx_perf_req_cpu;
-	unsigned int mbx_perf_req_mif;
-	unsigned int mbx_perf_req_int;
 	unsigned int irq_perf_req;
 	unsigned int irq_perf_req_cpu;
 	unsigned int irq_perf_req_mif;
 	unsigned int irq_perf_req_int;
+
+	unsigned int mbx_perf_req_cpu;
+	unsigned int mbx_perf_req_mif;
+	unsigned int mbx_perf_req_int;
 	struct work_struct pm_qos_work;
 	struct work_struct pm_qos_work_cpu;
 	struct work_struct pm_qos_work_mif;
 	struct work_struct pm_qos_work_int;
-	
-	struct ect_table_data ect_table_data;	
+
+	struct ect_table_data ect_table_data;
 
 	unsigned int *ap_clk_table;
 	unsigned int ap_clk_cnt;
@@ -330,8 +308,7 @@ struct mem_link_device {
 	unsigned int *mif_clk_table;
 	unsigned int mif_clk_cnt;
 
-	unsigned int *int_clk_table;
-	unsigned int int_clk_cnt;
+	u32 requested_mif_clk;
 
 	unsigned int mbx_cp2ap_status;	/* MBOX# for TX FLOWCTL */
 	unsigned int irq_cp2ap_status;	/* INTR# for TX FLOWCTL */
@@ -347,8 +324,6 @@ struct mem_link_device {
 
 	struct hrtimer tx_timer;
 	struct hrtimer sbd_tx_timer;
-
-	struct work_struct page_reclaim_work;
 
 	/**
 	 * Member variables for CP booting and crash dump
@@ -644,20 +619,6 @@ static inline bool txq_empty(struct mem_ipc_device *dev)
 static inline enum dev_format dev_id(enum sipc_ch_id ch)
 {
 	return sipc5_fmt_ch(ch) ? IPC_FMT : IPC_RAW;
-}
-
-static inline enum dev_format get_mmap_idx(enum sipc_ch_id ch,
-		struct sk_buff *skb)
-{
-	if (sipc5_fmt_ch(ch))
-		return IPC_MAP_FMT;
-	else
-#ifdef CONFIG_MODEM_IF_QOS
-		return (skb->queue_mapping == 1) ?
-			IPC_MAP_HPRIO_RAW : IPC_MAP_NORM_RAW;
-#else
-		return IPC_MAP_NORM_RAW;
-#endif
 }
 
 #endif

@@ -591,7 +591,7 @@ void input_booster(struct input_dev *dev)
 		} else if (input_events[i].type == EV_ABS) {
 			if (input_events[i].code == ABS_MT_TRACKING_ID) {
 				iTouchID = i;
-				if(input_events[iTouchSlot].value < MAX_MULTI_TOUCH_EVENTS && input_events[iTouchSlot].value >= 0 && iTouchID < MAX_EVENTS && iTouchSlot <= MAX_EVENTS) {
+				if(input_events[iTouchSlot].value < MAX_MULTI_TOUCH_EVENTS && iTouchID < MAX_EVENTS) {
 					if(TouchIDs[input_events[iTouchSlot].value] < 0 && input_events[iTouchID].value >= 0) {
 						TouchIDs[input_events[iTouchSlot].value] = input_events[iTouchID].value;
 						if((input_events[iTouchSlot].value >= 0 && touch_booster.multi_events <= 0) || (input_events[iTouchSlot].value == 0 && TouchIDs[1] < 0)) {
@@ -1031,7 +1031,7 @@ int input_open_device(struct input_handle *handle)
 	if (retval) {
 		dev->users_private--;
 		if (!dev->disabled)
-		dev->users--;
+			dev->users--;
 		if (!--handle->open) {
 			/*
 			 * Make sure we are not delivering any more events
@@ -1147,15 +1147,18 @@ static int input_disable_device(struct input_dev *dev)
 static void input_dev_release_keys(struct input_dev *dev)
 {
 	int code;
+	bool need_sync = false;
 
 	if (is_event_supported(EV_KEY, dev->evbit, EV_MAX)) {
 		for (code = 0; code <= KEY_MAX; code++) {
 			if (is_event_supported(code, dev->keybit, KEY_MAX) &&
 			    __test_and_clear_bit(code, dev->key)) {
 				input_pass_event(dev, EV_KEY, code, 0);
+				need_sync = true;
 			}
 		}
-		input_pass_event(dev, EV_SYN, SYN_REPORT, 1);
+		if (need_sync)
+			input_pass_event(dev, EV_SYN, SYN_REPORT, 1);
 	}
 }
 
@@ -2168,20 +2171,15 @@ static void input_dev_toggle(struct input_dev *dev, bool activate)
  */
 void input_reset_device(struct input_dev *dev)
 {
+	unsigned long flags;
+
 	mutex_lock(&dev->mutex);
+	spin_lock_irqsave(&dev->event_lock, flags);
 
-	if (dev->users) {
-		input_dev_toggle(dev, true);
+	input_dev_toggle(dev, true);
+	input_dev_release_keys(dev);
 
-		/*
-		 * Keys that have been pressed at suspend time are unlikely
-		 * to be still pressed when we resume.
-		 */
-/*		spin_lock_irq(&dev->event_lock);
-		input_dev_release_keys(dev);
-		spin_unlock_irq(&dev->event_lock);*/
-	}
-
+	spin_unlock_irqrestore(&dev->event_lock, flags);
 	mutex_unlock(&dev->mutex);
 }
 EXPORT_SYMBOL(input_reset_device);
@@ -2191,12 +2189,20 @@ static int input_dev_suspend(struct device *dev)
 {
 	struct input_dev *input_dev = to_input_dev(dev);
 
-	mutex_lock(&input_dev->mutex);
+	spin_lock_irq(&input_dev->event_lock);
 
-	if (input_dev->users)
-		input_dev_toggle(input_dev, false);
+	/*
+	 * Keys that are pressed now are unlikely to be
+	 * still pressed when we resume.
+	 */
+#ifndef CONFIG_TOUCHKEY_GRIP
+	input_dev_release_keys(input_dev);
+#endif
 
-	mutex_unlock(&input_dev->mutex);
+	/* Turn off LEDs and sounds, if any are active. */
+	input_dev_toggle(input_dev, false);
+
+	spin_unlock_irq(&input_dev->event_lock);
 
 	return 0;
 }
@@ -2205,7 +2211,43 @@ static int input_dev_resume(struct device *dev)
 {
 	struct input_dev *input_dev = to_input_dev(dev);
 
-	input_reset_device(input_dev);
+	spin_lock_irq(&input_dev->event_lock);
+
+	/* Restore state of LEDs and sounds, if any were active. */
+	input_dev_toggle(input_dev, true);
+
+	spin_unlock_irq(&input_dev->event_lock);
+
+	return 0;
+}
+
+static int input_dev_freeze(struct device *dev)
+{
+	struct input_dev *input_dev = to_input_dev(dev);
+
+	spin_lock_irq(&input_dev->event_lock);
+
+	/*
+	 * Keys that are pressed now are unlikely to be
+	 * still pressed when we resume.
+	 */
+	input_dev_release_keys(input_dev);
+
+	spin_unlock_irq(&input_dev->event_lock);
+
+	return 0;
+}
+
+static int input_dev_poweroff(struct device *dev)
+{
+	struct input_dev *input_dev = to_input_dev(dev);
+
+	spin_lock_irq(&input_dev->event_lock);
+
+	/* Turn off LEDs and sounds, if any are active. */
+	input_dev_toggle(input_dev, false);
+
+	spin_unlock_irq(&input_dev->event_lock);
 
 	return 0;
 }
@@ -2213,7 +2255,8 @@ static int input_dev_resume(struct device *dev)
 static const struct dev_pm_ops input_dev_pm_ops = {
 	.suspend	= input_dev_suspend,
 	.resume		= input_dev_resume,
-	.poweroff	= input_dev_suspend,
+	.freeze		= input_dev_freeze,
+	.poweroff	= input_dev_poweroff,
 	.restore	= input_dev_resume,
 };
 #endif /* CONFIG_PM */

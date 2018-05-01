@@ -42,6 +42,7 @@
 #endif
 
 static struct snd_soc_card smdk7870_cod3025x_card;
+extern void set_ip_idle(bool value);
 
 struct cod3025x_machine_priv {
 	struct snd_soc_codec *codec;
@@ -70,6 +71,11 @@ static int smdk7870_aif1_hw_params(struct snd_pcm_substream *substream,
 
 	priv->aifrate = params_rate(params);
 
+	if ((substream->stream == SNDRV_PCM_STREAM_CAPTURE) &&
+				params_buffer_bytes(params) <= RX_SRAM_SIZE)
+		set_ip_idle(true);
+	else
+		set_ip_idle(false);
 	if (priv->aifrate == CODEC_SAMPLE_RATE_192KHZ) {
 		rfs = CODEC_RFS_192KHZ;
 		bfs = CODEC_BFS_192KHZ;

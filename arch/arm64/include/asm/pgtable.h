@@ -200,6 +200,7 @@ static inline pte_t pte_mkspecial(pte_t pte)
 {
 	return set_pte_bit(pte, __pgprot(PTE_SPECIAL));
 }
+
 #ifdef CONFIG_TIMA_RKP
 extern  int printk(const char *s, ...);
 extern void panic(const char *fmt, ...);

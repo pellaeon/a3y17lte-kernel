@@ -27,6 +27,7 @@
 #ifdef CONFIG_MUIC_NOTIFIER
 #include <linux/muic/muic.h>
 #include <linux/muic/muic_notifier.h>
+#include <linux/muic/s2mu005-muic.h>
 #endif
 
 #include <linux/mcu_ipc.h>
@@ -45,10 +46,6 @@ static void uart_dir_work(void)
 		mbox_set_value(MCU_CP, switch_data->mbx_uart_noti, info_value);
 		if (mbox_get_value(MCU_CP, switch_data->mbx_uart_noti))
 			mbox_set_interrupt(MCU_CP, switch_data->int_uart_noti);
-	}
-	else {
-		pr_info("%s: Fail change uart state. C[0x%02x] S[0x%02x] M[0x%02x]\n", __func__,
-			switch_data->uart_connect, switch_data->uart_switch_sel, mbox_get_value(MCU_CP, switch_data->mbx_uart_noti));
 	}
 }
 
@@ -193,6 +190,10 @@ static int uart_sel_probe(struct platform_device *pdev)
 	pr_err("%s: uart_sel probe start.\n", __func__);
 
 	switch_data = devm_kzalloc(dev, sizeof(struct uart_sel_data), GFP_KERNEL);
+	if (!switch_data) {
+		pr_err("Switch data alloc fail\n");
+		return -ENOMEM;
+	}
 
 	err = of_property_read_u32(dev->of_node, "int_ap2cp_uart_noti",
 			&switch_data->int_uart_noti);

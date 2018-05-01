@@ -53,106 +53,6 @@
 #define DECRYPT		0
 #define ENCRYPT		1
 
-#ifdef CONFIG_SDP_DUMP
-void ecryptfs_dump_hex2(char *data, struct page *page)
-{
-
-	printk(KERN_DEBUG "ecryptfs_db : index [%lu] : %.2x %.2x %.2x %.2x %.2x %.2x %.2x %.2x : %.2x %.2x %.2x %.2x %.2x %.2x %.2x %.2x\n",
-		page->index,
-		(unsigned char)data[0],
-		(unsigned char)data[1],
-		(unsigned char)data[2],
-		(unsigned char)data[3],
-		(unsigned char)data[4],
-		(unsigned char)data[5],
-		(unsigned char)data[6],
-		(unsigned char)data[7],
-		(unsigned char)data[16],
-		(unsigned char)data[17],
-		(unsigned char)data[18],
-		(unsigned char)data[19],
-		(unsigned char)data[20],
-		(unsigned char)data[21],
-		(unsigned char)data[22],
-		(unsigned char)data[23]);
-
-}
-#endif
-
-#ifdef CONFIG_CRYPTO_FIPS
-/**
- * crypto_cc_rng_get_bytes
- * @data: Buffer to get random bytes
- * @len: the lengh of random bytes
- */
-static void crypto_cc_rng_get_bytes(u8 *data, unsigned int len)
-{
-	struct crypto_rng *rng = NULL;
-	char *seed = NULL;
-	int read_bytes = 0;
-	int get_bytes = 0;
-	int trialcount = 10;
-	int ret = 0;
-	struct file *filp = NULL;
-	mm_segment_t oldfs;
-
-	seed = kmalloc(SEED_LEN, GFP_KERNEL);
-	if (!seed) {
-		ecryptfs_printk(KERN_ERR, "Failed to get memory space for seed\n");
-		goto err_out;
-	}
-
-	filp = filp_open("/dev/random", O_RDONLY, 0);
-	if (IS_ERR(filp)) {
-		ecryptfs_printk(KERN_ERR, "Failed to open /dev/random\n");
-		goto err_out;
-	}
-
-	oldfs = get_fs();
-	set_fs(KERNEL_DS);
-	memset((void *)seed, 0, SEED_LEN);
-
-	while (trialcount > 0) {
-                if ((get_bytes = (int)filp->f_op->read(filp, &(seed[read_bytes]), SEED_LEN-read_bytes, &filp->f_pos)) > 0)
-			read_bytes += get_bytes;
-		if (read_bytes != SEED_LEN)
-			trialcount--;
-		else
-			break;
-	}
-	set_fs(oldfs);
-
-	if (read_bytes != SEED_LEN) {
-		ecryptfs_printk(KERN_ERR, "Failed to get enough random bytes (read=%d/request=%d)\n", read_bytes, SEED_LEN);
-		goto err_out;
-	}
-
-	rng = crypto_alloc_rng("stdrng", 0, 0);
-	if (IS_ERR(rng)) {
-		ecryptfs_printk(KERN_ERR, "RNG allocateion fail \t Not Available: %ld\n", PTR_ERR(rng));
-		goto err_out;
-	}
-
-	ret = crypto_rng_reset(rng, seed, SEED_LEN);
-	if (ret < 0) {
- 		ecryptfs_printk(KERN_ERR, "rng reset fail (%d)\n", ret);
-	}
-
-	ret = crypto_rng_get_bytes(rng, data, len);
-	if (ret < 0) {
-		ecryptfs_printk(KERN_ERR, "generate_random failed to generate random number (%d)\n", ret);
-	} else {
-		ecryptfs_printk(KERN_ERR, "generate_random succesfully generated random number (%d)\n", ret);
-	}
-	crypto_free_rng(rng);
-
-err_out :
-	if (seed) kfree(seed);
-	if (filp) filp_close(filp, NULL);
-        return;
-}
-#endif
-
 /**
  * ecryptfs_to_hex
  * @dst: Buffer to take hex character representation of contents of
@@ -689,6 +589,7 @@ int ecryptfs_encrypt_page(struct page *page)
 	crypt_stat =
 		&(ecryptfs_inode_to_private(ecryptfs_inode)->crypt_stat);
 	BUG_ON(!(crypt_stat->flags & ECRYPTFS_ENCRYPTED));
+
 #ifdef CONFIG_SDP
 	if (!(crypt_stat->flags & ECRYPTFS_KEY_SET) ||
 			!(crypt_stat->flags & ECRYPTFS_KEY_VALID)) {
@@ -853,12 +754,6 @@ int ecryptfs_decrypt_page(struct page *page)
 	unsigned long extent_offset;
 	loff_t lower_offset;
 	int rc = 0;
-
-#ifdef CONFIG_SDP_DUMP
-	struct dentry *dentry = NULL;
-	void *tmp_page = NULL;
-#endif
-
 #ifdef CONFIG_SDP
 	sdp_fs_command_t *cmd = NULL;
 #endif
@@ -874,6 +769,7 @@ int ecryptfs_decrypt_page(struct page *page)
 	crypt_stat =
 		&(ecryptfs_inode_to_private(ecryptfs_inode)->crypt_stat);
 	BUG_ON(!(crypt_stat->flags & ECRYPTFS_ENCRYPTED));
+
 
 #ifdef CONFIG_SDP
 	if (!(crypt_stat->flags & ECRYPTFS_KEY_SET) ||
@@ -938,25 +834,6 @@ int ecryptfs_decrypt_page(struct page *page)
 		}
 	}
 out:
-
-#ifdef CONFIG_SDP_DUMP
-	spin_lock(&ecryptfs_inode->i_lock);
-	hlist_for_each_entry(dentry, &ecryptfs_inode->i_dentry, d_u.d_alias) {
-		if (!strcmp(dentry->d_name.name, "contacts2.db")) {
-			break;
-		}
-	}
-	spin_unlock(&ecryptfs_inode->i_lock);
-	if (dentry && !strcmp(dentry->d_name.name, "contacts2.db")) {
-		//Decrypted page
-		tmp_page = kmap(page);
-		if(tmp_page) {
-			ecryptfs_dump_hex2(tmp_page, page);
-			kunmap(tmp_page);
-		}
-	}
-#endif
-
 #ifdef CONFIG_SDP
 	if(cmd) {
 		sdp_fs_request(cmd, NULL);
@@ -1095,21 +972,12 @@ out:
 
 static void ecryptfs_generate_new_key(struct ecryptfs_crypt_stat *crypt_stat)
 {
-#ifdef CONFIG_CRYPTO_FIPS
-#if defined(CONFIG_DW_MMC_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
-	if (crypt_stat->mount_crypt_stat->cipher_code == RFC2440_CIPHER_AES_XTS_256)
-		crypto_cc_rng_get_bytes(crypt_stat->key, crypt_stat->key_size * 2);
-	else
-#endif
-		crypto_cc_rng_get_bytes(crypt_stat->key, crypt_stat->key_size);
-#else
 #if defined(CONFIG_DW_MMC_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
 	if (crypt_stat->mount_crypt_stat->cipher_code == RFC2440_CIPHER_AES_XTS_256)
 		get_random_bytes(crypt_stat->key, crypt_stat->key_size * 2);
 	else
 #endif
 		get_random_bytes(crypt_stat->key, crypt_stat->key_size);
-#endif
 	crypt_stat->flags |= ECRYPTFS_KEY_VALID;
 	ecryptfs_compute_root_iv(crypt_stat);
 	if (unlikely(ecryptfs_verbosity > 0)) {
@@ -1348,11 +1216,7 @@ static void write_ecryptfs_marker(char *page_virt, size_t *written)
 {
 	u32 m_1, m_2;
 
-#ifdef CONFIG_CRYPTO_FIPS
-	crypto_cc_rng_get_bytes((unsigned char*)&m_1, (MAGIC_ECRYPTFS_MARKER_SIZE_BYTES / 2));
-#else
 	get_random_bytes(&m_1, (MAGIC_ECRYPTFS_MARKER_SIZE_BYTES / 2));
-#endif
 	m_2 = (m_1 ^ MAGIC_ECRYPTFS_MARKER);
 	put_unaligned_be32(m_1, page_virt);
 	page_virt += (MAGIC_ECRYPTFS_MARKER_SIZE_BYTES / 2);
@@ -2128,11 +1992,7 @@ ecryptfs_process_key_cipher(struct crypto_blkcipher **key_tfm,
 
 		*key_size = alg->max_keysize;
 	}
-#ifdef CONFIG_CRYPTO_FIPS
-	crypto_cc_rng_get_bytes(dummy_key, *key_size);
-#else
 	get_random_bytes(dummy_key, *key_size);
-#endif
 	rc = crypto_blkcipher_setkey(*key_tfm, dummy_key, *key_size);
 	if (rc) {
 		printk(KERN_ERR "Error attempting to set key of size [%zd] for "

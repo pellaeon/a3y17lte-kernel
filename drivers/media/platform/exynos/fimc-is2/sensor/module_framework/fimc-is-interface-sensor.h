@@ -16,6 +16,7 @@
 #include "exynos-fimc-is-sensor.h"
 #include "fimc-is-metadata.h"
 #include "fimc-is-binary.h"
+#include "fimc-is-device-sensor.h"
 
 #define SENSOR_INTERFACE_MAGIC 0xFEDCBA98
 
@@ -66,8 +67,8 @@ enum DIFF_BET_SEN_ISP { /* Set to 0: 3AA 3frame delay, 1: 3AA 4frame delay, 3: M
 
 /* DEVICE SENSOR INTERFACE */
 #define SENSOR_REGISTER_FUNC_ADDR	(DDK_LIB_ADDR + 0x28)
+#define SENSOR_REGISTER_FUNC_ADDR_RTA	(RTA_LIB_ADDR + 0x40)
 typedef int (*register_sensor_interface)(void *itf);
-static const register_sensor_interface register_sensor_itf = (register_sensor_interface)SENSOR_REGISTER_FUNC_ADDR;
 
 struct ae_param {
 	union {
@@ -345,6 +346,7 @@ struct fimc_is_cis_ops {
         int (*cis_init)(struct v4l2_subdev *subdev);
         int (*cis_log_status)(struct v4l2_subdev *subdev);
         int (*cis_group_param_hold)(struct v4l2_subdev *subdev, bool hold);
+        int (*cis_set_global_setting)(struct v4l2_subdev *subdev);
         int (*cis_mode_change)(struct v4l2_subdev *subdev, u32 mode);
         int (*cis_set_size)(struct v4l2_subdev *subdev, cis_shared_data *cis_data);
         int (*cis_stream_on)(struct v4l2_subdev *subdev);
@@ -375,6 +377,11 @@ struct fimc_is_cis_ops {
 	cis_func_type cis_read_sysreg; /* TBD */
 	cis_func_type cis_read_userreg; /* TBD */
 	int (*cis_wait_streamoff)(struct v4l2_subdev *subdev);
+	int (*cis_wait_streamon)(struct v4l2_subdev *subdev);
+#ifdef CONFIG_SENSOR_RETENTION_USE
+	int (*cis_retention_prepare)(struct v4l2_subdev *subdev);
+	int (*cis_retention_crc_check)(struct v4l2_subdev *subdev);
+#endif
 };
 
 struct fimc_is_sensor_ctl
@@ -506,7 +513,9 @@ struct fimc_is_flash_ops {
 struct fimc_is_preprocessor_ops {
 	int (*preprocessor_stream_on)(struct v4l2_subdev *subdev);
 	int (*preprocessor_stream_off)(struct v4l2_subdev *subdev);
-	int (*preprocessor_mode_change)(struct v4l2_subdev *subdev, u32 mode);
+	int (*preprocessor_mode_change)(struct v4l2_subdev *subdev, struct fimc_is_device_sensor *device);
+	int (*preprocessor_debug)(struct v4l2_subdev *subdev);
+	int (*preprocessor_wait_s_input)(struct v4l2_subdev *subdev);
 };
 
 struct fimc_is_sensor_interface;
@@ -800,6 +809,28 @@ struct fimc_is_flash_interface_ops {
 					camera2_shot_t *shot);
 };
 
+/* MIPI-CSI interface */
+enum itf_vc_buf_data_type {
+	VC_BUF_DATA_TYPE_PDAF = 0,
+};
+
+struct fimc_is_csi_interface_ops {
+	int (*get_vc_dma_buf)(struct fimc_is_sensor_interface *itf,
+				enum itf_vc_buf_data_type data_type,
+				u32 *buf_index,
+				u64 *buf_addr,
+				u32 *frame_count);
+	int (*put_vc_dma_buf)(struct fimc_is_sensor_interface *itf,
+				enum itf_vc_buf_data_type data_type,
+				u32 index);
+	int (*get_vc_dma_buf_size)(struct fimc_is_sensor_interface *itf,
+				enum itf_vc_buf_data_type data_type,
+				u32 *width,
+				u32 *height,
+				u32 *element_size);
+	int (*reserved[5])(struct fimc_is_sensor_interface *itf);
+};
+
 struct fimc_is_sensor_interface {
 	u32					magic;
 	struct fimc_is_cis_interface_ops	cis_itf_ops;
@@ -823,6 +854,7 @@ struct fimc_is_sensor_interface {
 	u32			flash_intensity[NUM_FRAMES];
 	u32			flash_firing_duration[NUM_FRAMES];
 	struct fimc_is_cis_ext_interface_ops	cis_ext_itf_ops;
+	struct fimc_is_csi_interface_ops	csi_itf_ops;
 };
 
 int init_sensor_interface(struct fimc_is_sensor_interface *itf);

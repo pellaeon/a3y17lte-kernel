@@ -27,15 +27,10 @@
 #define DEFUALT_IR_CURRENT              100 //0xF0
 
 /* Proxy threshold */
-#ifdef CONFIG_SENSORS_SSP_TMD3700
-#define DEFUALT_HIGH_THRESHOLD			150
-#define DEFUALT_LOW_THRESHOLD			70
-#else
 #define DEFUALT_HIGH_THRESHOLD		50
 #define DEFUALT_LOW_THRESHOLD		35
 #define DEFUALT_DETECT_HIGH_THRESHOLD		200
 #define DEFUALT_DETECT_LOW_THRESHOLD		190
-#endif
 
 /* Magnetic */
 #define PDC_SIZE			27

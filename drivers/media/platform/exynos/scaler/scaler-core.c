@@ -238,15 +238,6 @@ static const struct sc_fmt sc_formats[] = {
 		.h_shift	= 1,
 		.v_shift	= 1,
 	}, {
-		.name		= "YUV 4:2:0 contiguous Y/CbCr 10-bit",
-		.pixelformat	= V4L2_PIX_FMT_NV12N_10B,
-		.cfg_val	= SCALER_CFG_FMT_YCBCR420_2P,
-		.bitperpixel	= { 15 },
-		.num_planes	= 1,
-		.num_comp	= 2,
-		.h_shift	= 1,
-		.v_shift	= 1,
-	}, {
 		.name		= "YUV 4:2:0 contiguous 3-planar Y/Cb/Cr",
 		.pixelformat	= V4L2_PIX_FMT_YUV420N,
 		.cfg_val	= SCALER_CFG_FMT_YCBCR420_3P,
@@ -425,8 +416,10 @@ static const struct sc_fmt sc_formats[] = {
 
 /* must specify in revers order of SCALER_VERSION(xyz) */
 static const u32 sc_version_table[][2] = {
+	{ 0x80063000, SCALER_VERSION(4, 2, 0) }, /* SC_BI */
 	{ 0x80062004, SCALER_VERSION(4, 2, 0) }, /* SC_BI */
 	{ 0x80060007, SCALER_VERSION(4, 2, 0) }, /* SC_BI */
+	{ 0x80053000, SCALER_VERSION(4, 0, 0) }, /* SC_POLY */
 	{ 0x80052004, SCALER_VERSION(4, 0, 0) }, /* SC_POLY */
 	{ 0x80050007, SCALER_VERSION(4, 0, 0) }, /* SC_POLY */
 	{ 0xA000000B, SCALER_VERSION(3, 0, 2) },
@@ -845,62 +838,12 @@ static int sc_v4l2_s_fmt_mplane(struct file *file, void *fh,
 	return 0;
 }
 
-static void sc_fence_work(struct work_struct *work)
-{
-	struct vb2_sc_buffer *svb =
-			container_of(work, struct vb2_sc_buffer, work);
-	struct sc_ctx *ctx = vb2_get_drv_priv(svb->mb.vb.vb2_queue);
-	struct sync_fence *fence;
-	int ret;
-
-	/* Buffers do not have acquire_fence are never pushed to workqueue */
-	BUG_ON(svb->mb.vb.acquire_fence == NULL);
-	BUG_ON(!ctx->m2m_ctx);
-
-	fence = svb->mb.vb.acquire_fence;
-	svb->mb.vb.acquire_fence = NULL;
-
-	ret = sync_fence_wait(fence, 1000);
-	if (ret == -ETIME) {
-		dev_warn(ctx->sc_dev->dev, "sync_fence_wait() timeout\n");
-		ret = sync_fence_wait(fence, 10 * MSEC_PER_SEC);
-
-		if (ret)
-			dev_warn(ctx->sc_dev->dev,
-					"sync_fence_wait() error (%d)\n", ret);
-	}
-
-	sync_fence_put(fence);
-
-	/* OK to preceed the timed out buffers: It does not harm the system */
-	v4l2_m2m_buf_queue(ctx->m2m_ctx, &svb->mb.vb);
-	v4l2_m2m_try_schedule(ctx->m2m_ctx);
-}
-
 static int sc_v4l2_reqbufs(struct file *file, void *fh,
 			    struct v4l2_requestbuffers *reqbufs)
 {
 	struct sc_ctx *ctx = fh_to_sc_ctx(fh);
-	struct vb2_queue *vq = v4l2_m2m_get_vq(ctx->m2m_ctx, reqbufs->type);
-	unsigned int i;
-	int ret;
 
-	ret = v4l2_m2m_reqbufs(file, ctx->m2m_ctx, reqbufs);
-	if (ret)
-		return ret;
-
-	for (i = 0; i < vq->num_buffers; i++) {
-		struct vb2_buffer *vb;
-		struct v4l2_m2m_buffer *mb;
-		struct vb2_sc_buffer *svb;
-
-		vb = vq->bufs[i];
-		mb = container_of(vb, typeof(*mb), vb);
-		svb = container_of(mb, typeof(*svb), mb);
-
-		INIT_WORK(&svb->work, sc_fence_work);
-	}
-	return 0;
+	return v4l2_m2m_reqbufs(file, ctx->m2m_ctx, reqbufs);
 }
 
 static int sc_v4l2_querybuf(struct file *file, void *fh,
@@ -1049,9 +992,10 @@ static int sc_v4l2_s_crop(struct file *file, void *fh,
 		return -EINVAL;
 	}
 
-	if (cr->c.left < 0 || cr->c.top < 0) {
+	if (cr->c.left < 0 || cr->c.top < 0 ||
+			(__s32)cr->c.width < 0 || (__s32)cr->c.height < 0) {
 		v4l2_err(&ctx->sc_dev->m2m.v4l2_dev,
-				"crop position is negative\n");
+				"crop value is negative\n");
 		return -EINVAL;
 	}
 
@@ -1095,8 +1039,8 @@ static int sc_v4l2_s_crop(struct file *file, void *fh,
 			x_align, &rect.top, 0, frame->height - rect.height,
 			y_align, 0);
 
-	if ((rect.height > frame->height) || (rect.top >= frame->height) ||
-		(rect.width > frame->width) || (rect.left >= frame->width)) {
+	if ((rect.height > frame->height) || (rect.top > frame->height) ||
+		(rect.width > frame->width) || (rect.left > frame->width)) {
 		v4l2_err(&ctx->sc_dev->m2m.v4l2_dev,
 			"Out of crop range: (%d,%d,%d,%d) from %dx%d\n",
 			rect.left, rect.top, rect.width, rect.height,
@@ -1599,7 +1543,7 @@ static int sc_prepare_denoise_filter(struct sc_ctx *ctx)
 		goto err_ft;
 	}
 
-	if (ctx->sc_dev->variant->prescale) {
+	if (ctx->sc_dev->version >= SCALER_VERSION(3, 0, 0)) {
 		BUG_ON(sc_down_min != SCALE_RATIO_CONST(16, 1));
 
 		if (ctx->h_ratio > SCALE_RATIO_CONST(8, 1))
@@ -1644,6 +1588,12 @@ err_ft:
 	free_intermediate_frame(ctx);
 	return -EINVAL;
 }
+
+/*
+ * GET_DSIZE_BY_RATIO(x, y) calculates dst size by src size and ratio.
+ * x is src size, y is scaling ratio.
+ */
+#define GET_DSIZE_BY_RATIO(x, y)	SCALE_RATIO(x, y)
 
 static int sc_find_scaling_ratio(struct sc_ctx *ctx)
 {
@@ -1738,14 +1688,18 @@ static int sc_find_scaling_ratio(struct sc_ctx *ctx)
 	}
 
 	if ((ctx->cp_enabled) && (h_ratio > sc_down_min)) {
-		dev_err(sc->dev, "Out of width range on protect(%d->%d)\n",
-				src_width, ctx->d_frame.crop.width);
-		return -EINVAL;
+		dev_info(sc->dev, "%s: %d h_ratio is not supported on drm\n",
+				__func__, h_ratio);
+		ctx->d_frame.crop.width =
+			GET_DSIZE_BY_RATIO(src_width, sc_down_min);
+		h_ratio = sc_down_min;
 	}
 	if ((ctx->cp_enabled) && (v_ratio > sc_down_min)) {
-		dev_err(sc->dev, "Out of height range on protect(%d->%d)\n",
-				src_height, ctx->d_frame.crop.height);
-		return -EINVAL;
+		dev_info(sc->dev, "%s: %d v_ratio is not supported on drm\n",
+				__func__, v_ratio);
+		ctx->d_frame.crop.height =
+			GET_DSIZE_BY_RATIO(src_height, sc_down_min);
+		v_ratio = sc_down_min;
 	}
 
 	if ((h_ratio > sc_down_min) || (v_ratio > sc_down_min)) {
@@ -1763,6 +1717,38 @@ static int sc_find_scaling_ratio(struct sc_ctx *ctx)
 	ctx->v_ratio = v_ratio;
 
 	return 0;
+}
+
+static void sc_fence_work(struct work_struct *work)
+{
+	struct vb2_sc_buffer *svb =
+			container_of(work, struct vb2_sc_buffer, work);
+	struct sc_ctx *ctx = vb2_get_drv_priv(svb->mb.vb.vb2_queue);
+	struct sync_fence *fence;
+	int ret;
+
+	/* Buffers do not have acquire_fence are never pushed to workqueue */
+	BUG_ON(svb->mb.vb.acquire_fence == NULL);
+	BUG_ON(!ctx->m2m_ctx);
+
+	fence = svb->mb.vb.acquire_fence;
+	svb->mb.vb.acquire_fence = NULL;
+
+	ret = sync_fence_wait(fence, 1000);
+	if (ret == -ETIME) {
+		dev_warn(ctx->sc_dev->dev, "sync_fence_wait() timeout\n");
+		ret = sync_fence_wait(fence, 10 * MSEC_PER_SEC);
+
+		if (ret)
+			dev_warn(ctx->sc_dev->dev,
+					"sync_fence_wait() error (%d)\n", ret);
+	}
+
+	sync_fence_put(fence);
+
+	/* OK to preceed the timed out buffers: It does not harm the system */
+	v4l2_m2m_buf_queue(ctx->m2m_ctx, &svb->mb.vb);
+	v4l2_m2m_try_schedule(ctx->m2m_ctx);
 }
 
 static int sc_vb2_queue_setup(struct vb2_queue *vq,
@@ -1795,6 +1781,16 @@ static int sc_vb2_queue_setup(struct vb2_queue *vq,
 		return ret;
 
 	return vb2_queue_init(vq);
+}
+
+static int sc_vb2_buf_init(struct vb2_buffer *vb)
+{
+	struct v4l2_m2m_buffer *mb = container_of(vb, typeof(*mb), vb);
+	struct vb2_sc_buffer *svb = container_of(mb, typeof(*svb), mb);
+
+	INIT_WORK(&svb->work, sc_fence_work);
+
+	return 0;
 }
 
 static int sc_vb2_buf_prepare(struct vb2_buffer *vb)
@@ -1876,6 +1872,7 @@ static void sc_vb2_stop_streaming(struct vb2_queue *vq)
 
 static struct vb2_ops sc_vb2_ops = {
 	.queue_setup		= sc_vb2_queue_setup,
+	.buf_init		= sc_vb2_buf_init,
 	.buf_prepare		= sc_vb2_buf_prepare,
 	.buf_finish		= sc_vb2_buf_finish,
 	.buf_queue		= sc_vb2_buf_queue,
@@ -1966,6 +1963,37 @@ static unsigned int sc_get_src_blend_pixelformat(struct sc_ctx *ctx,
 	default:
 		return SCALER_CFG_SRC_BLEND_FMT_INVALID;
 	}
+}
+
+struct sc_dev *g_sc_0;
+static wait_queue_head_t scaler_cp_ready_wq;
+static wait_queue_head_t scaler_cp_sync_wq;
+static unsigned long scaler_cp_state;
+static atomic_t cp_ref_cnt;
+
+enum {
+	MSCL_EMPTY,
+	MSCL_CP_REQ
+};
+
+static bool scaler_wait_done(struct sc_ctx *ctx)
+{
+	int ret = 0;
+	struct sc_dev *sc = ctx->sc_dev;
+
+	if(ctx->cp_enabled) {
+		set_bit(MSCL_CP_REQ, &scaler_cp_state);
+		wait_event(scaler_cp_ready_wq,
+				test_bit(MSCL_EMPTY, &scaler_cp_state));
+		atomic_inc(&cp_ref_cnt);
+		wake_up(&scaler_cp_sync_wq);
+		clear_bit(MSCL_CP_REQ, &scaler_cp_state);
+	} else {
+		atomic_dec(&cp_ref_cnt);
+	}
+	dev_info(sc->dev, "%s cp_enabled = %d, cp_refcnt = %d\n",
+			__func__, ctx->cp_enabled, atomic_read(&cp_ref_cnt));
+	return ret;
 }
 
 static int sc_s_ctrl(struct v4l2_ctrl *ctrl)
@@ -2060,7 +2088,10 @@ static int sc_s_ctrl(struct v4l2_ctrl *ctrl)
 		ctx->csc.csc_range = ctrl->val;
 		break;
 	case V4L2_CID_CONTENT_PROTECTION:
-		ctx->cp_enabled = !!ctrl->val;
+		if(ctx->cp_enabled != ctrl->val) {
+			ctx->cp_enabled = !!ctrl->val;
+			scaler_wait_done(ctx);
+		}
 		break;
 	case SC_CID_DNOISE_FT:
 		ctx->dnoise_ft.strength = ctrl->val;
@@ -2391,7 +2422,6 @@ static int sc_open(struct file *file)
 	struct sc_dev *sc = video_drvdata(file);
 	struct sc_ctx *ctx;
 	int ret;
-
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx) {
 		dev_err(sc->dev, "no memory for open context\n");
@@ -2418,40 +2448,19 @@ static int sc_open(struct file *file)
 	ctx->d_frame.sc_fmt = &sc_formats[0];
 	ctx->src_blend_frame.sc_fmt = &sc_formats[0];
 
-	if (!IS_ERR(sc->pclk)) {
-		ret = clk_prepare(sc->pclk);
-		if (ret) {
-			dev_err(sc->dev, "%s: failed to prepare PCLK(err %d)\n",
-					__func__, ret);
-			goto err_pclk_prepare;
-		}
-	}
-
-	if (!IS_ERR(sc->aclk)) {
-		ret = clk_prepare(sc->aclk);
-		if (ret) {
-			dev_err(sc->dev, "%s: failed to prepare ACLK(err %d)\n",
-					__func__, ret);
-			goto err_aclk_prepare;
-		}
-	}
-
 	/* Setup the device context for mem2mem mode. */
 	ctx->m2m_ctx = v4l2_m2m_ctx_init(sc->m2m.m2m_dev, ctx, queue_init);
 	if (IS_ERR(ctx->m2m_ctx)) {
 		ret = -EINVAL;
 		goto err_ctx;
 	}
+	dev_info(sc->dev, "%s cp_enabled = %d, cp_refcnt = %d\n",
+			__func__, ctx->cp_enabled, atomic_read(&cp_ref_cnt));
+
 
 	return 0;
 
 err_ctx:
-	if (!IS_ERR(sc->aclk))
-		clk_unprepare(sc->aclk);
-err_aclk_prepare:
-	if (!IS_ERR(sc->pclk))
-		clk_unprepare(sc->pclk);
-err_pclk_prepare:
 	v4l2_fh_del(&ctx->fh);
 err_fh:
 	v4l2_ctrl_handler_free(&ctx->ctrl_handler);
@@ -2469,16 +2478,14 @@ static int sc_release(struct file *file)
 
 	sc_dbg("refcnt= %d", atomic_read(&sc->m2m.in_use));
 
+	if (ctx->cp_enabled) {
+		atomic_dec(&cp_ref_cnt);
+		dev_info(sc->dev, "%s cp_enabled = %d, cp_refcnt = %d\n",
+			__func__, ctx->cp_enabled, atomic_read(&cp_ref_cnt));
+	}
 	atomic_dec(&sc->m2m.in_use);
-
 	v4l2_m2m_ctx_release(ctx->m2m_ctx);
-
 	destroy_intermediate_frame(ctx);
-
-	if (!IS_ERR(sc->aclk))
-		clk_unprepare(sc->aclk);
-	if (!IS_ERR(sc->pclk))
-		clk_unprepare(sc->pclk);
 	v4l2_ctrl_handler_free(&ctx->ctrl_handler);
 	v4l2_fh_del(&ctx->fh);
 	v4l2_fh_exit(&ctx->fh);
@@ -2517,6 +2524,9 @@ static void sc_job_finish(struct sc_dev *sc, struct sc_ctx *ctx)
 	struct vb2_buffer *src_vb, *dst_vb;
 
 	spin_lock_irqsave(&sc->slock, flags);
+
+	if ((!test_bit(DEV_CP, &sc->state)) && sc->cp_nosysmmu)
+		iovmm_deactivate(sc->dev);
 
 	if (ctx->context_type == SC_CTX_V4L2_TYPE) {
 		ctx = v4l2_m2m_get_curr_priv(sc->m2m.m2m_dev);
@@ -2591,13 +2601,11 @@ static void sc_watchdog(unsigned long arg)
 
 }
 
-static void sc_set_csc_coef(struct sc_ctx *ctx)
+static void sc_set_csc_coef(struct sc_dev *sc, struct sc_ctx *ctx)
 {
 	struct sc_frame *s_frame, *d_frame;
-	struct sc_dev *sc;
 	enum sc_csc_idx idx;
 
-	sc = ctx->sc_dev;
 	s_frame = &ctx->s_frame;
 	d_frame = &ctx->d_frame;
 
@@ -2694,9 +2702,8 @@ static bool sc_process_2nd_stage(struct sc_dev *sc, struct sc_ctx *ctx)
 	return true;
 }
 
-static void sc_set_dithering(struct sc_ctx *ctx)
+static void sc_set_dithering(struct sc_dev *sc, struct sc_ctx *ctx)
 {
-	struct sc_dev *sc = ctx->sc_dev;
 	unsigned int val = 0;
 
 	if (ctx->dith)
@@ -2768,10 +2775,8 @@ static void sc_set_prefetch_buffers(struct sc_dev *sc, struct sc_ctx *ctx)
 	sysmmu_set_prefetch_buffer_by_region(sc->dev, pb_reg, i);
 }
 
-static void sc_set_initial_phase(struct sc_ctx *ctx)
+static void sc_set_initial_phase(struct sc_dev *sc, struct sc_ctx *ctx)
 {
-	struct sc_dev *sc = ctx->sc_dev;
-
 	/* TODO: need to check scaling, csc, rot according to H/W Goude  */
 	sc_hwset_src_init_phase(sc, &ctx->init_phase);
 }
@@ -2794,6 +2799,10 @@ static int sc_run_next_job(struct sc_dev *sc)
 
 	if (sc->current_ctx || list_empty(&sc->context_list)) {
 		/* a job is currently being processed or no job is to run */
+		if (sc->dev_id == 1 && list_empty(&sc->context_list)) {
+			set_bit(MSCL_EMPTY, &scaler_cp_state);
+			wake_up(&scaler_cp_ready_wq);
+		}
 		spin_unlock_irqrestore(&sc->ctxlist_lock, flags);
 		return 0;
 	}
@@ -2828,7 +2837,7 @@ static int sc_run_next_job(struct sc_dev *sc)
 		d_frame = &ctx->i_frame->frame;
 	}
 
-	sc_set_csc_coef(ctx);
+	sc_set_csc_coef(sc, ctx);
 
 	sc_hwset_src_image_format(sc, s_frame->sc_fmt);
 	sc_hwset_dst_image_format(sc, d_frame->sc_fmt);
@@ -2893,12 +2902,12 @@ static int sc_run_next_job(struct sc_dev *sc)
 	sc_hwset_dst_wh(sc, d_frame->crop.width, d_frame->crop.height);
 
 	if (sc->variant->initphase)
-		sc_set_initial_phase(ctx);
+		sc_set_initial_phase(sc, ctx);
 
 	sc_hwset_src_addr(sc, &s_frame->addr);
 	sc_hwset_dst_addr(sc, &d_frame->addr);
 
-	sc_set_dithering(ctx);
+	sc_set_dithering(sc, ctx);
 	if (ctx->bl_op) {
 		if (sc->variant->blending) {
 			src_blend_frame = &ctx->src_blend_frame;
@@ -2951,6 +2960,10 @@ static int sc_run_next_job(struct sc_dev *sc)
 			set_bit(DEV_CP, &sc->state);
 	}
 #endif
+
+	if (!ctx->cp_enabled && sc->cp_nosysmmu)
+		iovmm_activate(sc->dev);
+
 	sc_hwset_start(sc);
 
 	return 0;
@@ -2960,11 +2973,23 @@ static int sc_add_context_and_run(struct sc_dev *sc, struct sc_ctx *ctx)
 {
 	unsigned long flags;
 
-	spin_lock_irqsave(&sc->ctxlist_lock, flags);
-	list_add_tail(&ctx->node, &sc->context_list);
-	spin_unlock_irqrestore(&sc->ctxlist_lock, flags);
+	if (sc->dev_id == 1 && test_bit(MSCL_CP_REQ, &scaler_cp_state))
+		wait_event(scaler_cp_sync_wq,
+				!test_bit(MSCL_CP_REQ, &scaler_cp_state));
 
-	return sc_run_next_job(sc);
+	if (!atomic_read(&cp_ref_cnt)) {
+		spin_lock_irqsave(&sc->ctxlist_lock, flags);
+		list_add_tail(&ctx->node, &sc->context_list);
+		if (sc->dev_id == 1)
+			clear_bit(MSCL_EMPTY, &scaler_cp_state);
+		spin_unlock_irqrestore(&sc->ctxlist_lock, flags);
+		return sc_run_next_job(sc);
+	} else {
+		spin_lock_irqsave(&g_sc_0->ctxlist_lock, flags);
+		list_add_tail(&ctx->node, &g_sc_0->context_list);
+		spin_unlock_irqrestore(&g_sc_0->ctxlist_lock, flags);
+		return sc_run_next_job(g_sc_0);
+	}
 }
 
 static irqreturn_t sc_irq_handler(int irq, void *priv)
@@ -2993,6 +3018,9 @@ static irqreturn_t sc_irq_handler(int irq, void *priv)
 
 	del_timer(&sc->wdt.timer);
 
+	if ((!test_bit(DEV_CP, &sc->state)) && sc->cp_nosysmmu)
+		iovmm_deactivate(sc->dev);
+
 #ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
 	if (test_bit(DEV_CP, &sc->state)) {
 		sc_ctrl_protection(sc, ctx, false);
@@ -3004,7 +3032,7 @@ static irqreturn_t sc_irq_handler(int irq, void *priv)
 	clear_bit(CTX_RUN, &ctx->flags);
 
 	if (ctx->context_type == SC_CTX_V4L2_TYPE) {
-		BUG_ON(ctx != v4l2_m2m_get_curr_priv(sc->m2m.m2m_dev));
+		BUG_ON(ctx != v4l2_m2m_get_curr_priv(ctx->sc_dev->m2m.m2m_dev));
 
 		src_vb = v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
 		dst_vb = v4l2_m2m_dst_buf_remove(ctx->m2m_ctx);
@@ -3032,7 +3060,7 @@ static irqreturn_t sc_irq_handler(int irq, void *priv)
 			sc_dbg("wake up blocked process by suspend\n");
 			wake_up(&sc->wait);
 		} else {
-			v4l2_m2m_job_finish(sc->m2m.m2m_dev, ctx->m2m_ctx);
+			v4l2_m2m_job_finish(ctx->sc_dev->m2m.m2m_dev, ctx->m2m_ctx);
 		}
 
 		/* Wake up from CTX_ABORT state */
@@ -3040,7 +3068,7 @@ static irqreturn_t sc_irq_handler(int irq, void *priv)
 			wake_up(&sc->wait);
 	} else {
 		struct m2m1shot_task *task =
-					m2m1shot_get_current_task(sc->m21dev);
+					m2m1shot_get_current_task(ctx->sc_dev->m21dev);
 
 		BUG_ON(ctx->context_type != SC_CTX_M2M1SHOT_TYPE);
 
@@ -3049,7 +3077,7 @@ static irqreturn_t sc_irq_handler(int irq, void *priv)
 				(unsigned long)ktime_us_delta(
 					ktime_get(), ctx->ktime_m2m1shot);
 
-		m2m1shot_task_finish(sc->m21dev, task,
+		m2m1shot_task_finish(ctx->sc_dev->m21dev, task,
 					SCALER_INT_OK(irq_status));
 	}
 
@@ -3065,9 +3093,10 @@ isr_unlock:
 	return IRQ_HANDLED;
 }
 
-static int sc_get_bufaddr(struct sc_dev *sc, struct vb2_buffer *vb2buf,
+static int sc_get_bufaddr(struct sc_ctx *ctx, struct vb2_buffer *vb2buf,
 		struct sc_frame *frame, struct sc_frame *src_blend_frame)
 {
+	struct sc_dev *sc = ctx->sc_dev;
 	int ret;
 	unsigned int pixsize, bytesize, src_blend_pixsize;
 	void *cookie;
@@ -3079,7 +3108,7 @@ static int sc_get_bufaddr(struct sc_dev *sc, struct vb2_buffer *vb2buf,
 	if (!cookie)
 		return -EINVAL;
 
-	ret = sc_get_dma_address(cookie, &frame->addr.y);
+	ret = sc_get_dma_address(ctx, cookie, &frame->addr.y);
 	if (ret != 0)
 		return ret;
 
@@ -3101,13 +3130,6 @@ static int sc_get_bufaddr(struct sc_dev *sc, struct vb2_buffer *vb2buf,
 					NV12N_CBCR_BASE(frame->addr.y, w, h);
 				frame->addr.ysize = NV12N_Y_SIZE(w, h);
 				frame->addr.cbsize = NV12N_CBCR_SIZE(w, h);
-			} else if (frame->sc_fmt->pixelformat == V4L2_PIX_FMT_NV12N_10B) {
-				unsigned int w = frame->width;
-				unsigned int h = frame->height;
-				frame->addr.cb =
-					NV12N_10B_CBCR_BASE(frame->addr.y, w, h);
-				frame->addr.ysize = NV12N_Y_SIZE(w, h);
-				frame->addr.cbsize = NV12N_CBCR_SIZE(w, h);
 			} else {
 				frame->addr.cb = frame->addr.y + pixsize;
 				frame->addr.ysize = pixsize;
@@ -3118,7 +3140,7 @@ static int sc_get_bufaddr(struct sc_dev *sc, struct vb2_buffer *vb2buf,
 			if (!cookie)
 				return -EINVAL;
 
-			ret = sc_get_dma_address(cookie, &frame->addr.cb);
+			ret = sc_get_dma_address(ctx, cookie, &frame->addr.cb);
 			if (ret != 0)
 				return ret;
 			frame->addr.ysize =
@@ -3159,7 +3181,7 @@ static int sc_get_bufaddr(struct sc_dev *sc, struct vb2_buffer *vb2buf,
 			cookie = vb2_plane_cookie(vb2buf, 1);
 			if (!cookie)
 				return -EINVAL;
-			ret = sc_get_dma_address(cookie, &frame->addr.cb);
+			ret = sc_get_dma_address(ctx, cookie, &frame->addr.cb);
 			if (ret != 0)
 				return ret;
 			cookie = vb2_plane_cookie(vb2buf, 2);
@@ -3169,7 +3191,7 @@ static int sc_get_bufaddr(struct sc_dev *sc, struct vb2_buffer *vb2buf,
 			if (frame->sc_fmt->is_alphablend_fmt) {
 				BUG_ON(!sc->variant->blending);
 				BUG_ON(src_blend_frame == NULL);
-				ret = sc_get_dma_address(cookie,
+				ret = sc_get_dma_address(ctx, cookie,
 						&src_blend_frame->addr.y);
 				src_blend_pixsize =
 					src_blend_frame->width *
@@ -3193,7 +3215,7 @@ static int sc_get_bufaddr(struct sc_dev *sc, struct vb2_buffer *vb2buf,
 						src_blend_frame->addr.ysize);
 				return 0;
 			}
-			ret = sc_get_dma_address(cookie, &frame->addr.cr);
+			ret = sc_get_dma_address(ctx, cookie, &frame->addr.cr);
 			if (ret != 0)
 				return ret;
 			frame->addr.ysize =
@@ -3209,7 +3231,7 @@ static int sc_get_bufaddr(struct sc_dev *sc, struct vb2_buffer *vb2buf,
 					return -EINVAL;
 				BUG_ON(!sc->variant->blending);
 				BUG_ON(src_blend_frame == NULL);
-				ret = sc_get_dma_address(cookie,
+				ret = sc_get_dma_address(ctx, cookie,
 						&src_blend_frame->addr.y);
 				src_blend_pixsize =
 					src_blend_frame->width *
@@ -3264,7 +3286,7 @@ static int sc_get_bufaddr(struct sc_dev *sc, struct vb2_buffer *vb2buf,
 					return -EINVAL;
 				BUG_ON(!sc->variant->blending);
 				BUG_ON(src_blend_frame == NULL);
-				ret = sc_get_dma_address(cookie,
+				ret = sc_get_dma_address(ctx, cookie,
 						&src_blend_frame->addr.y);
 				src_blend_pixsize =
 					src_blend_frame->width *
@@ -3334,15 +3356,15 @@ static void sc_m2m_device_run(void *priv)
 		ctx->src_blend_cfg.blend_src_crop_width = d_frame->crop.width;
 		ctx->src_blend_cfg.blend_src_crop_height = d_frame->crop.height;
 
-		sc_get_bufaddr(sc, v4l2_m2m_next_src_buf(ctx->m2m_ctx),
+		sc_get_bufaddr(ctx, v4l2_m2m_next_src_buf(ctx->m2m_ctx),
 							s_frame,
 							src_blend_frame);
 	} else {
-		sc_get_bufaddr(sc, v4l2_m2m_next_src_buf(ctx->m2m_ctx),
+		sc_get_bufaddr(ctx, v4l2_m2m_next_src_buf(ctx->m2m_ctx),
 							s_frame,
 							NULL);
 	}
-	sc_get_bufaddr(sc, v4l2_m2m_next_dst_buf(ctx->m2m_ctx), d_frame, NULL);
+	sc_get_bufaddr(ctx, v4l2_m2m_next_dst_buf(ctx->m2m_ctx), d_frame, NULL);
 
 	sc_add_context_and_run(sc, ctx);
 }
@@ -3435,31 +3457,12 @@ static int sc_m2m1shot_init_context(struct m2m1shot_context *m21ctx)
 {
 	struct sc_dev *sc = dev_get_drvdata(m21ctx->m21dev->dev);
 	struct sc_ctx *ctx;
-	int ret;
 
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
 		return -ENOMEM;
 
 	atomic_inc(&sc->m2m.in_use);
-
-	if (!IS_ERR(sc->pclk)) {
-		ret = clk_prepare(sc->pclk);
-		if (ret) {
-			dev_err(sc->dev, "%s: failed to prepare PCLK(err %d)\n",
-					__func__, ret);
-			goto err_pclk;
-		}
-	}
-
-	if (!IS_ERR(sc->aclk)) {
-		ret = clk_prepare(sc->aclk);
-		if (ret) {
-			dev_err(sc->dev, "%s: failed to prepare ACLK(err %d)\n",
-					__func__, ret);
-			goto err_aclk;
-		}
-	}
 
 	ctx->context_type = SC_CTX_M2M1SHOT_TYPE;
 	INIT_LIST_HEAD(&ctx->node);
@@ -3472,12 +3475,6 @@ static int sc_m2m1shot_init_context(struct m2m1shot_context *m21ctx)
 	ctx->m21_ctx = m21ctx;
 
 	return 0;
-err_aclk:
-	if (!IS_ERR(sc->pclk))
-		clk_unprepare(sc->pclk);
-err_pclk:
-	kfree(ctx);
-	return ret;
 }
 
 static int sc_m2m1shot_free_context(struct m2m1shot_context *m21ctx)
@@ -3485,10 +3482,6 @@ static int sc_m2m1shot_free_context(struct m2m1shot_context *m21ctx)
 	struct sc_ctx *ctx = m21ctx->priv;
 
 	atomic_dec(&ctx->sc_dev->m2m.in_use);
-	if (!IS_ERR(ctx->sc_dev->aclk))
-		clk_unprepare(ctx->sc_dev->aclk);
-	if (!IS_ERR(ctx->sc_dev->pclk))
-		clk_unprepare(ctx->sc_dev->pclk);
 	BUG_ON(!list_empty(&ctx->node));
 	destroy_intermediate_frame(ctx);
 	kfree(ctx);
@@ -3671,13 +3664,6 @@ static void sc_m2m1shot_get_bufaddr(struct sc_dev *sc,
 				unsigned int h = frame->height;
 				frame->addr.cb =
 					NV12N_CBCR_BASE(frame->addr.y, w, h);
-				frame->addr.ysize = NV12N_Y_SIZE(w, h);
-				frame->addr.cbsize = NV12N_CBCR_SIZE(w, h);
-			} else if (frame->sc_fmt->pixelformat == V4L2_PIX_FMT_NV12N_10B) {
-				unsigned int w = frame->width;
-				unsigned int h = frame->height;
-				frame->addr.cb =
-					NV12N_10B_CBCR_BASE(frame->addr.y, w, h);
 				frame->addr.ysize = NV12N_Y_SIZE(w, h);
 				frame->addr.cbsize = NV12N_CBCR_SIZE(w, h);
 			} else {
@@ -3977,6 +3963,9 @@ static int sc_runtime_resume(struct device *dev)
 	if (sc->qosreq_int_level > 0)
 		pm_qos_update_request(&sc->qosreq_int, sc->qosreq_int_level);
 
+	iovmm_activate(dev);
+	iovmm_deactivate(dev);
+
 	return 0;
 }
 
@@ -4098,10 +4087,16 @@ static int sc_probe(struct platform_device *pdev)
 				(u32 *)&sc->cfw))
 		sc->cfw = 0;
 
-	ret = vb2_ion_attach_iommu(sc->alloc_ctx);
-	if (ret) {
-		dev_err(&pdev->dev, "failed to vb2 ion attach iommu\n");
-		goto err_iommu;
+	if (of_property_read_u32(pdev->dev.of_node, "mscl,cp-nosysmmu",
+				(u32 *)&sc->cp_nosysmmu))
+		sc->cp_nosysmmu = 0;
+
+	if (!sc->cp_nosysmmu) {
+		ret = vb2_ion_attach_iommu(sc->alloc_ctx);
+		if (ret) {
+			dev_err(&pdev->dev, "failed to vb2 ion attach iommu\n");
+			goto err_iommu;
+		}
 	}
 
 	ret = pm_runtime_get_sync(&pdev->dev);
@@ -4131,6 +4126,24 @@ static int sc_probe(struct platform_device *pdev)
 		}
 	}
 
+	if (!IS_ERR(sc->pclk)) {
+		ret = clk_prepare(sc->pclk);
+		if (ret) {
+			dev_err(sc->dev, "%s: failed to prepare PCLK(err %d)\n",
+					__func__, ret);
+			goto err_ver_pclk_get;
+		}
+	}
+
+	if (!IS_ERR(sc->aclk)) {
+		ret = clk_prepare(sc->aclk);
+		if (ret) {
+			dev_err(sc->dev, "%s: failed to prepare ACLK(err %d)\n",
+					__func__, ret);
+			goto err_ver_aclk_get;
+		}
+	}
+
 	sc->version = SCALER_VERSION(2, 0, 0);
 
 	hwver = __raw_readl(sc->regs + SCALER_VER);
@@ -4150,10 +4163,11 @@ static int sc_probe(struct platform_device *pdev)
 	}
 
 	if (!IS_ERR(sc->aclk))
-		clk_disable_unprepare(sc->aclk);
+		clk_disable(sc->aclk);
 	if (!IS_ERR(sc->pclk))
-		clk_disable_unprepare(sc->pclk);
-	pm_runtime_put(&pdev->dev);
+		clk_disable(sc->pclk);
+
+	pm_runtime_put(sc->dev);
 
 	iovmm_set_fault_handler(&pdev->dev, sc_sysmmu_fault_handler, sc);
 	sc->busmon_nb = sc_busmon_nb;
@@ -4162,6 +4176,12 @@ static int sc_probe(struct platform_device *pdev)
 	dev_info(&pdev->dev,
 		"Driver probed successfully(version: %08x(%x))\n",
 		hwver, sc->version);
+	if (sc->dev_id == 0)
+		g_sc_0 = sc;
+
+	set_bit(MSCL_EMPTY, &scaler_cp_state);
+	init_waitqueue_head(&scaler_cp_ready_wq);
+	init_waitqueue_head(&scaler_cp_sync_wq);
 
 	return 0;
 err_ver_aclk_get:
@@ -4170,7 +4190,8 @@ err_ver_aclk_get:
 err_ver_pclk_get:
 	pm_runtime_put(&pdev->dev);
 err_ver_rpm_get:
-	vb2_ion_detach_iommu(sc->alloc_ctx);
+	if (!sc->cp_nosysmmu)
+		vb2_ion_detach_iommu(sc->alloc_ctx);
 err_iommu:
 	if (sc->qosreq_int_level > 0)
 		pm_qos_remove_request(&sc->qosreq_int);
@@ -4191,12 +4212,17 @@ static int sc_remove(struct platform_device *pdev)
 
 	destroy_workqueue(sc->fence_wq);
 
-	vb2_ion_detach_iommu(sc->alloc_ctx);
+	if (!sc->cp_nosysmmu)
+		vb2_ion_detach_iommu(sc->alloc_ctx);
 
 	vb2_ion_destroy_context(sc->alloc_ctx);
 
-	sc_clk_put(sc);
+	if (!IS_ERR(sc->aclk))
+		clk_unprepare(sc->aclk);
+	if (!IS_ERR(sc->pclk))
+		clk_unprepare(sc->pclk);
 
+	sc_clk_put(sc);
 	if (timer_pending(&sc->wdt.timer))
 		del_timer(&sc->wdt.timer);
 

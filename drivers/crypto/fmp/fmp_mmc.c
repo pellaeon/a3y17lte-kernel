@@ -65,7 +65,7 @@ int fmp_map_sg(struct dw_mci *host, struct idmac_desc_64addr *desc, int idx,
 		int ret;
 		unsigned int aes_alg = 0;
 		unsigned int j;
-		unsigned int last_index = 0;
+		pgoff_t last_index = 0;
 		unsigned long last_inode = 0;
 #ifdef CONFIG_CRYPTO_FIPS
 		char extent_iv[SHA256_HASH_SIZE];
@@ -96,10 +96,11 @@ int fmp_map_sg(struct dw_mci *host, struct idmac_desc_64addr *desc, int idx,
 			desc->des2 |= IDMAC_DES2_FKL;
 			break;
 		default:
-			printk(KERN_ERR "Invalid file key length: %lx\n", sg_page(&data->sg[idx])->mapping->key_length);
+			printk(KERN_ERR "Invalid file key length: %x\n", sg_page(&data->sg[idx])->mapping->key_length);
 			return -1;
 		}
 
+		memset(extent_iv, 0, sizeof(extent_iv));
 		index = sg_page(&data->sg[idx])->index;
 		if ((last_index != index) || (last_inode != sg_page(&data->sg[idx])->mapping->host->i_ino)) {
 			index = index - sg_page(&data->sg[idx])->mapping->sensitive_data_index;

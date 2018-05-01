@@ -11,6 +11,7 @@
 #include "fimc-is-hw-scp.h"
 #include "api/fimc-is-hw-api-scp.h"
 #include "../interface/fimc-is-interface-ischain.h"
+#include "fimc-is-err.h"
 
 static int fimc_is_hw_scp_handle_interrupt(u32 id, void *context)
 {
@@ -37,7 +38,7 @@ static int fimc_is_hw_scp_handle_interrupt(u32 id, void *context)
 	}
 
 	if (status & (1 << INTR_SCALER_CORE_START)) {
-		hw_ip->fs_time = cpu_clock(raw_smp_processor_id());
+		hw_ip->fs_time = lock_clock();
 		if (!atomic_read(&hw_ip->hardware->stream_on))
 			info_hw("[ID:%d][F:%d]F.S\n", hw_ip->id, hw_ip->fcount);
 
@@ -47,7 +48,7 @@ static int fimc_is_hw_scp_handle_interrupt(u32 id, void *context)
 	}
 
 	if (status & (1 << INTR_SCALER_CORE_END)) {
-		hw_ip->fe_time = cpu_clock(raw_smp_processor_id());
+		hw_ip->fe_time = local_clock();
 		if (!atomic_read(&hw_ip->hardware->stream_on))
 			info_hw("[ID:%d][F:%d]F.E\n", hw_ip->id, hw_ip->fcount);
 
@@ -60,17 +61,17 @@ static int fimc_is_hw_scp_handle_interrupt(u32 id, void *context)
 		}
 		atomic_inc(&hw_ip->count.fe);
 		fimc_is_hardware_frame_done(hw_ip, NULL, -1, FIMC_IS_HW_CORE_END,
-			0, FRAME_DONE_NORMAL);
+			FRAME_DONE_NORMAL);
 	}
 
 	if (status & (1 << INTR_SCALER_FRAME_END)) {
-		hw_ip->dma_time = cpu_clock(raw_smp_processor_id());
+		hw_ip->dma_time = local_clock();
 		if (!atomic_read(&hw_ip->hardware->stream_on))
 			info_hw("[ID:%d][F:%d]F.E DMA\n", hw_ip->id, hw_ip->fcount);
 
 		atomic_inc(&hw_ip->count.dma);
 		fimc_is_hardware_frame_done(hw_ip, NULL, WORK_SCP_FDONE, ENTRY_SCP,
-			0, FRAME_DONE_NORMAL);
+			FRAME_DONE_NORMAL);
 	}
 
 	fimc_is_scp_clear_intr_src(hw_ip->regs, status);
@@ -163,12 +164,8 @@ int fimc_is_hw_scp_init(struct fimc_is_hw_ip *hw_ip, struct fimc_is_group *group
 	bool flag, u32 module_id)
 {
 	int ret = 0;
-	u32 instance = 0;
 
 	BUG_ON(!hw_ip);
-
-	instance = group->instance;
-	hw_ip->group[instance] = group;
 
 	return ret;
 }
@@ -394,13 +391,13 @@ int fimc_is_hw_scp_reset(struct fimc_is_hw_ip *hw_ip)
 	return ret;
 }
 
-int fimc_is_hw_scp_load_setfile(struct fimc_is_hw_ip *hw_ip, int index,
-	u32 instance, ulong hw_map)
+int fimc_is_hw_scp_load_setfile(struct fimc_is_hw_ip *hw_ip, u32 instance, ulong hw_map)
 {
 	int ret = 0;
 	struct fimc_is_hw_scp *hw_scp = NULL;
-	struct fimc_is_setfile_info *info;
-	u32 setfile_index = 0;
+	struct fimc_is_hw_ip_setfile *setfile;
+	enum exynos_sensor_position sensor_position;
+	u32 index;
 
 	BUG_ON(!hw_ip);
 
@@ -417,7 +414,8 @@ int fimc_is_hw_scp_load_setfile(struct fimc_is_hw_ip *hw_ip, int index,
 		return -EINVAL;
 	}
 	hw_scp = (struct fimc_is_hw_scp *)hw_ip->priv_info;
-	info = &hw_ip->setfile_info;
+	sensor_position = hw_ip->hardware->sensor_position[instance];
+	setfile = &hw_ip->setfile[sensor_position];
 
 	switch (info->version) {
 	case SETFILE_V2:
@@ -430,12 +428,13 @@ int fimc_is_hw_scp_load_setfile(struct fimc_is_hw_ip *hw_ip, int index,
 		return -EINVAL;
 	}
 
-	setfile_index = info->index[index];
-	hw_scp->setfile = (struct hw_api_scaler_setfile *)info->table[setfile_index].addr;
-	if (hw_scp->setfile->setfile_version != SCP_SETFILE_VERSION) {
-		err_hw("[%d][ID:%d] setfile version(0x%x) is incorrect\n",
-			instance, hw_ip->id, hw_scp->setfile->setfile_version);
-		return -EINVAL;
+	for (index = 0; index < setfile->using_count; index++) {
+		hw_scp->setfile = (struct hw_api_scaler_setfile *)setfile->table[index].addr;
+		if (hw_scp->setfile->setfile_version != SCP_SETFILE_VERSION) {
+			err_hw("[%d][ID:%d] setfile version(0x%x) is incorrect\n",
+				instance, hw_ip->id, hw_scp->setfile->setfile_version);
+			return -EINVAL;
+		}
 	}
 
 	set_bit(HW_TUNESET, &hw_ip->state);
@@ -443,12 +442,13 @@ int fimc_is_hw_scp_load_setfile(struct fimc_is_hw_ip *hw_ip, int index,
 	return ret;
 }
 
-int fimc_is_hw_scp_apply_setfile(struct fimc_is_hw_ip *hw_ip, int index,
+int fimc_is_hw_scp_apply_setfile(struct fimc_is_hw_ip *hw_ip, u32 scenario,
 	u32 instance, ulong hw_map)
 {
 	int ret = 0;
 	struct fimc_is_hw_scp *hw_scp = NULL;
-	struct fimc_is_setfile_info *info;
+	struct fimc_is_hw_ip_setfile *setfile;
+	enum exynos_sensor_position sensor_position;
 	u32 setfile_index = 0;
 
 	if (!test_bit(hw_ip->id, &hw_map))
@@ -465,14 +465,21 @@ int fimc_is_hw_scp_apply_setfile(struct fimc_is_hw_ip *hw_ip, int index,
 	}
 
 	hw_scp = (struct fimc_is_hw_scp *)hw_ip->priv_info;
-	info = &hw_ip->setfile_info;
+	sensor_position = hw_ip->hardware->sensor_position[instance];
+	setfile = &hw_ip->setfile[sensor_position];
 
 	if (!hw_scp->setfile)
 		return 0;
 
-	setfile_index = info->index[index];
+	setfile_index = setfile->index[scenario];
+	if (setfile_index >= setfile->using_count) {
+		err_hw("[%d][ID:%d] setfile index is out-of-range, [%d:%d]",
+				instance, hw_ip->id, scenario, setfile_index);
+		return -EINVAL;
+	}
+
 	info_hw("[%d][ID:%d] setfile (%d) scenario (%d)\n", instance, hw_ip->id,
-		setfile_index, index);
+		setfile_index, scenario);
 
 	return ret;
 }
@@ -500,28 +507,22 @@ int fimc_is_hw_scp_delete_setfile(struct fimc_is_hw_ip *hw_ip, u32 instance,
 }
 
 int fimc_is_hw_scp_frame_ndone(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
-	u32 instance, bool late_flag)
+	u32 instance, enum ShotErrorType done_type)
 {
 	int ret = 0;
 	int wq_id, output_id;
-	enum fimc_is_frame_done_type done_type;
-
-	if (late_flag == true)
-		done_type = FRAME_DONE_LATE_SHOT;
-	else
-		done_type = FRAME_DONE_FORCE;
 
 	wq_id     = WORK_SCP_FDONE;
 	output_id = ENTRY_SCP;
 	if (test_bit(output_id, &frame->out_flag))
 		ret = fimc_is_hardware_frame_done(hw_ip, frame, wq_id, output_id,
-				1, done_type);
+				done_type);
 
 	wq_id     = -1;
 	output_id = FIMC_IS_HW_CORE_END;
 	if (test_bit(hw_ip->id, &frame->core_flag))
 		ret = fimc_is_hardware_frame_done(hw_ip, frame, wq_id, output_id,
-				1, done_type);
+				done_type);
 
 	return ret;
 }
@@ -589,12 +590,12 @@ int fimc_is_hw_scp_input_crop(u32 instance, struct fimc_is_hw_ip *hw_ip)
 	struct param_otf_output *otf_output = &(param->otf_output);
 	struct param_dma_output *dma_output = &(param->dma_output);
 
-	if (dma_output->cmd == DMA_OUTPUT_COMMAND_ENABLE) {
-		dst_width  = dma_output->width;
-		dst_height = dma_output->height;
-	} else {
+	if (param->otf_output.cmd == OTF_OUTPUT_COMMAND_ENABLE) {
 		dst_width  = otf_output->width;
 		dst_height = otf_output->height;
+	} else if (dma_output->cmd == DMA_OUTPUT_COMMAND_ENABLE) {
+		dst_width  = dma_output->width;
+		dst_height = dma_output->height;
 	}
 
 	fimc_is_hw_scp_adjust_pre_ratio(otf_input->width, otf_input->height,

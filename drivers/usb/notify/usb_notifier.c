@@ -318,13 +318,6 @@ static int muic_usb_handle_notification(struct notifier_block *nb,
 		else
 			pr_err("%s - ACTION Error!\n", __func__);
 		break;
-	case ATTACHED_DEV_POGO_MUIC:
-		if (action == MUIC_NOTIFY_CMD_DETACH)
-			send_otg_notify(o_notify, NOTIFY_EVENT_POGO, 0);
-		else if (action == MUIC_NOTIFY_CMD_ATTACH)
-			send_otg_notify(o_notify, NOTIFY_EVENT_POGO, 1);
-		else
-			pr_err("%s - ACTION Error!\n", __func__);		
 	default:
 		break;
 	}

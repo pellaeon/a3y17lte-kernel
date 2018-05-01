@@ -143,6 +143,7 @@ struct rb_root *ext4_system_zone_root(struct super_block *sb)
 	return &EXT4_SB(sb)->system_blks;
 }
 #endif
+
 int ext4_setup_system_zone(struct super_block *sb)
 {
 	ext4_group_t ngroups = ext4_get_groups_count(sb);
@@ -207,7 +208,6 @@ int ext4_data_block_valid(struct ext4_sb_info *sbi, ext4_fsblk_t start_blk,
 	struct ext4_system_zone *entry;
 	struct rb_node *n = sbi->system_blks.rb_node;
 #endif
-
 	if ((start_blk <= le32_to_cpu(sbi->s_es->s_first_data_block)) ||
 	    (start_blk + count < start_blk) ||
 	    (start_blk + count > ext4_blocks_count(sbi->s_es))) {

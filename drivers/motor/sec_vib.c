@@ -25,21 +25,17 @@
 #include <linux/workqueue.h>
 
 #include "../staging/android/timed_output.h"
-#if defined(CONFIG_IMM_VIB)
-#include "imm_vib.h"
-#endif
 
 #define SEC_VIB_NAME "sec_vib"
-
 #define INTERNAL_LDO	0
 #define EXTERNAL_LDO	1
 
 #define LDO_EN		1
 #define LDO_DIS		0
-
 struct sec_vib_pdata {
 	const char *regulator;
 	int max_timeout;
+
 	int ldo_type;
 	int gpio_ldo_en;
 };
@@ -63,11 +59,9 @@ int sec_vib_vdd_en(struct timed_output_dev *dev, bool en)
 	struct sec_vib_drvdata *ddata =
 		container_of(dev, struct sec_vib_drvdata, dev);
 	int ret = 0;
-
 	if (en) {
 		if (ddata->ldo_type == INTERNAL_LDO) {		/* pmic ldo */
-			if (!regulator_is_enabled(ddata->regulator))
-				ret = regulator_enable(ddata->regulator);
+			ret = regulator_enable(ddata->regulator);
 		}
 		else if (ddata->ldo_type == EXTERNAL_LDO) {	/* external ldo */
 			ret = gpio_direction_output(ddata->gpio_ldo_en, 1);
@@ -75,17 +69,14 @@ int sec_vib_vdd_en(struct timed_output_dev *dev, bool en)
 	}
 	else {
 		if (ddata->ldo_type == INTERNAL_LDO) {		/* pmic ldo */
-			if (regulator_is_enabled(ddata->regulator))
-				ret = regulator_disable(ddata->regulator);
+			ret = regulator_disable(ddata->regulator);
 		}
 		else if (ddata->ldo_type == EXTERNAL_LDO) {	/* external ldo */
 			ret = gpio_direction_output(ddata->gpio_ldo_en, 0);
 		}
 	}
-
 	return 0;
 }
-
 static enum hrtimer_restart sec_vib_timer_func(struct hrtimer *timer)
 {
 	struct sec_vib_drvdata *ddata =
@@ -116,23 +107,22 @@ static void sec_vib_enable(struct timed_output_dev *dev, int value)
 	unsigned long	flags;
 
 	printk("[VIB] %s, timedout = %d \n", __func__, value);
-
 	hrtimer_cancel(&ddata->timer);
 
 	if (value > 0) {
-		if (value > ddata->max_timeout)
-			value = ddata->max_timeout;
-		
-		ddata->timeout = value;
+
+	if (value > ddata->max_timeout)
+		value = ddata->max_timeout;
+
+	ddata->timeout = value;
 		queue_work(ddata->workqueue, &ddata->work);
 
 		spin_lock_irqsave(&ddata->lock, flags);
-
 		hrtimer_start(&ddata->timer,
 			ktime_set(value / 1000, (value % 1000) * 1000000),
 			HRTIMER_MODE_REL);
 
-		spin_unlock_irqrestore(&ddata->lock, flags);
+	spin_unlock_irqrestore(&ddata->lock, flags);
 	} else {
 		ddata->timeout = 0;
 		queue_work(ddata->workqueue, &ddata->work);
@@ -141,7 +131,7 @@ static void sec_vib_enable(struct timed_output_dev *dev, int value)
 
 static void sec_vib_work(struct work_struct *work)
 {
-	struct sec_vib_drvdata *ddata = 
+	struct sec_vib_drvdata *ddata =
 		container_of(work, struct sec_vib_drvdata, work);
 
 	printk("[VIB] %s, timedout = %d , running = %d \n", __func__, ddata->timeout, ddata->running );
@@ -157,6 +147,7 @@ static void sec_vib_work(struct work_struct *work)
 		sec_vib_vdd_en(&ddata->dev, LDO_DIS);
 		ddata->running = false;
 	}
+
 	return;
 }
 
@@ -189,9 +180,8 @@ static struct sec_vib_pdata *sec_vib_get_dt(struct device *dev)
 
 	of_property_read_u32(child_node, "sec_vib,max_timeout", &pdata->max_timeout);
 	of_property_read_u32(child_node, "sec_vib,ldo_type", &pdata->ldo_type);
-
 	if (pdata->ldo_type == INTERNAL_LDO) {
-		of_property_read_string(child_node, "sec_vib,regulator", &pdata->regulator);
+	of_property_read_string(child_node, "sec_vib,regulator", &pdata->regulator);
 	}
 	else if (pdata->ldo_type == EXTERNAL_LDO) {
 		pdata->gpio_ldo_en = of_get_named_gpio(child_node, "sec_vib,ldo_en", 0);
@@ -206,6 +196,9 @@ err_out:
 }
 #endif
 
+
+
+
 static int sec_vib_probe(struct platform_device *pdev)
 {
 	struct sec_vib_pdata *pdata = pdev->dev.platform_data;
@@ -213,7 +206,6 @@ static int sec_vib_probe(struct platform_device *pdev)
 	int ret = 0;
 
 	pr_info("[VIB] %s \n", __func__);
-
 	if (!pdata) {
 #if defined(CONFIG_OF)
 		pdata = sec_vib_get_dt(&pdev->dev);
@@ -238,10 +230,10 @@ static int sec_vib_probe(struct platform_device *pdev)
 
 	ddata->ldo_type = pdata->ldo_type;
 	if (ddata->ldo_type == INTERNAL_LDO) {
-		ddata->regulator = regulator_get(NULL, pdata->regulator);
-		if (IS_ERR(ddata->regulator)) {
-			printk(KERN_ERR "[VIB] failed get %s\n", pdata->regulator);
-			ret = PTR_ERR(ddata->regulator);
+	ddata->regulator = regulator_get(NULL, pdata->regulator);
+	if (IS_ERR(ddata->regulator)) {
+		printk(KERN_ERR "[VIB] failed get %s\n", pdata->regulator);
+		ret = PTR_ERR(ddata->regulator);
 			goto err_regulator_get;
 		}
 	}	
@@ -263,7 +255,6 @@ static int sec_vib_probe(struct platform_device *pdev)
 		printk(KERN_ERR "[VIB] Failed to create workqueue \n");
 		goto err_work_queue;
 	}
-
 	INIT_WORK(&(ddata->work), sec_vib_work);
 
 	ddata->dev.name = "vibrator";
@@ -291,7 +282,6 @@ err_ddata:
 	kfree(pdata);
 #endif
 err_pdata:
-
 	return ret;
 }
 
@@ -305,7 +295,6 @@ static int sec_vib_remove(struct platform_device *pdev)
 	}
 	timed_output_dev_unregister(&ddata->dev);
 	kfree(ddata);
-
 	return 0;
 }
 

@@ -32,10 +32,7 @@
 #include <linux/mfd/samsung/s2mu005-private.h>
 #include <linux/regulator/machine.h>
 
-//#include <linux/muic/muic.h>
-//#include <linux/muic/s2mu005-muic.h>
-
-#if defined (CONFIG_OF)
+#if defined(CONFIG_OF)
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
 #endif /* CONFIG_OF */
@@ -77,7 +74,8 @@ int s2mu005_read_reg(struct i2c_client *i2c, u8 reg, u8 *dest)
 	ret = i2c_smbus_read_byte_data(i2c, reg);
 	mutex_unlock(&s2mu005->i2c_lock);
 	if (ret < 0) {
-		pr_info("%s:%s reg(0x%x), ret(%d)\n", MFD_DEV_NAME, __func__, reg, ret);
+		pr_info("%s:%s reg(0x%x), ret(%d)\n", MFD_DEV_NAME,
+						 __func__, reg, ret);
 		return ret;
 	}
 
@@ -179,7 +177,8 @@ int s2mu005_update_reg(struct i2c_client *i2c, u8 reg, u8 val, u8 mask)
 EXPORT_SYMBOL_GPL(s2mu005_update_reg);
 
 #if defined(CONFIG_OF)
-static int of_s2mu005_dt(struct device *dev, struct s2mu005_platform_data *pdata)
+static int of_s2mu005_dt(struct device *dev,
+				struct s2mu005_platform_data *pdata)
 {
 	struct device_node *np_s2mu005 = dev->of_node;
 
@@ -189,12 +188,13 @@ static int of_s2mu005_dt(struct device *dev, struct s2mu005_platform_data *pdata
 	pdata->irq_gpio = of_get_named_gpio(np_s2mu005, "s2mu005,irq-gpio", 0);
 	pdata->wakeup = of_property_read_bool(np_s2mu005, "s2mu005,wakeup");
 
-	pr_info("%s: irq-gpio: %u \n", __func__, pdata->irq_gpio);
+	pr_info("%s: irq-gpio: %u\n", __func__, pdata->irq_gpio);
 
 	return 0;
 }
 #else
-static int of_s2mu005_dt(struct device *dev, struct max77834_platform_data *pdata)
+static int of_s2mu005_dt(struct device *dev,
+				struct max77834_platform_data *pdata)
 {
 	return 0;
 }
@@ -214,22 +214,23 @@ static int s2mu005_i2c_probe(struct i2c_client *i2c,
 
 	s2mu005 = kzalloc(sizeof(struct s2mu005_dev), GFP_KERNEL);
 	if (!s2mu005) {
-		dev_err(&i2c->dev, "%s: Failed to alloc mem for s2mu005\n", __func__);
+		dev_err(&i2c->dev, "%s: Failed to alloc mem for s2mu005\n",
+								__func__);
 		return -ENOMEM;
 	}
 
 	if (i2c->dev.of_node) {
-		pdata = devm_kzalloc(&i2c->dev, sizeof(struct s2mu005_platform_data),
-				GFP_KERNEL);
+		pdata = devm_kzalloc(&i2c->dev,
+			 sizeof(struct s2mu005_platform_data), GFP_KERNEL);
 		if (!pdata) {
-			dev_err(&i2c->dev, "Failed to allocate memory \n");
+			dev_err(&i2c->dev, "Failed to allocate memory\n");
 			ret = -ENOMEM;
 			goto err;
 		}
 
 		ret = of_s2mu005_dt(&i2c->dev, pdata);
-		if (ret < 0){
-			dev_err(&i2c->dev, "Failed to get device of_node \n");
+		if (ret < 0) {
+			dev_err(&i2c->dev, "Failed to get device of_node\n");
 			goto err;
 		}
 
@@ -246,7 +247,7 @@ static int s2mu005_i2c_probe(struct i2c_client *i2c,
 		pdata->irq_base = irq_alloc_descs(-1, 0, S2MU005_IRQ_NR, -1);
 		if (pdata->irq_base < 0) {
 			pr_err("%s:%s irq_alloc_descs Fail! ret(%d)\n",
-					MFD_DEV_NAME, __func__, pdata->irq_base);
+				MFD_DEV_NAME, __func__, pdata->irq_base);
 			ret = -EINVAL;
 			goto err;
 		} else
@@ -263,11 +264,11 @@ static int s2mu005_i2c_probe(struct i2c_client *i2c,
 	i2c_set_clientdata(i2c, s2mu005);
 
 	s2mu005_read_reg(s2mu005->i2c, S2MU005_REG_REV_ID, &temp);
-	if(temp < 0)
-		pr_err( "[s2mu005 mfd] %s : i2c read error\n", __func__);
+	if (temp < 0)
+		pr_err("[s2mu005 mfd] %s : i2c read error\n", __func__);
 
 	s2mu005->pmic_ver = temp & 0x0F;
-	pr_err( "[s2mu005 mfd] %s : ver=0x%x\n", __func__, s2mu005->pmic_ver);
+	pr_err("[s2mu005 mfd] %s : ver=0x%x\n", __func__, s2mu005->pmic_ver);
 
 	ret = s2mu005_irq_init(s2mu005);
 
@@ -312,10 +313,9 @@ MODULE_DEVICE_TABLE(i2c, s2mu005_i2c_id);
 
 #if defined(CONFIG_OF)
 static struct of_device_id s2mu005_i2c_dt_ids[] = {
-	{ .compatible = "samsung,s2mu005mfd" },
+	{.compatible = "samsung,s2mu005mfd"},
 	{ },
 };
-//MODULE_DEVICE_TABLE(of, s2mu005_i2c_dt_ids);
 #endif /* CONFIG_OF */
 
 #if defined(CONFIG_PM)

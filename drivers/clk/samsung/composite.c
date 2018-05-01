@@ -53,7 +53,7 @@ struct samsung_clk_reg_dump *samsung_clk_alloc_reg_dump(
 						unsigned long nr_rdump)
 {
 	struct samsung_clk_reg_dump *rd;
-	unsigned int i;
+	unsigned long i;
 
 	rd = kcalloc(nr_rdump, sizeof(*rd), GFP_KERNEL);
 	if (!rd)

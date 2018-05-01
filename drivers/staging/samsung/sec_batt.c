@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Samsung Electronics, Inc.
+ * Copyright (C) 2016 Samsung Electronics, Inc.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -13,10 +13,12 @@
  */
 #include <linux/sec_batt.h>
 
-#if defined(CONFIG_BATTERY_SAMSUNG)
-
+#ifdef CONFIG_BATTERY_SAMSUNG
 unsigned int lpcharge;
 EXPORT_SYMBOL(lpcharge);
+
+int charging_night_mode;
+EXPORT_SYMBOL(charging_night_mode);
 
 static int sec_bat_is_lpm_check(char *str)
 {
@@ -29,7 +31,24 @@ static int sec_bat_is_lpm_check(char *str)
 }
 __setup("androidboot.mode=", sec_bat_is_lpm_check);
 
-#endif
+static int __init charging_mode(char *str)
+{
+	int mode;
+
+	/*
+	 * Only update loglevel value when a correct setting was passed,
+	 * to prevent blind crashes (when loglevel being set to 0) that
+	 * are quite hard to debug
+	 */
+	if (get_option(&str, &mode)) {
+		charging_night_mode = mode & 0x000000FF;
+		printk(KERN_ERR "charging_mode() : 0x%x(%d)\n", charging_night_mode, charging_night_mode);
+		return 0;
+	}
+	printk(KERN_ERR "charging_mode() : %d\n", -EINVAL);
+	return -EINVAL;
+}
+early_param("charging_mode", charging_mode);
 
 int fg_reset;
 EXPORT_SYMBOL(fg_reset);
@@ -38,7 +57,7 @@ static int sec_bat_get_fg_reset(char *val)
 {
 	fg_reset = strncmp(val, "1", 1) ? 0 : 1;
 	pr_info("%s, fg_reset:%d\n", __func__, fg_reset);
-        return 1;
+	return 1;
 }
 __setup("fg_reset=", sec_bat_get_fg_reset);
 
@@ -52,3 +71,4 @@ static int sec_bat_get_factory_mode(char *val)
         return 1;
 }
 __setup("factory_mode=", sec_bat_get_factory_mode);
+#endif

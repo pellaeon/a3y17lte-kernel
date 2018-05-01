@@ -1184,7 +1184,7 @@ static struct ect_info ect_list[] = {
 
 static struct ect_info* ect_get_info(char *block_name)
 {
-	int i;
+	unsigned int i;
 
 	for (i = 0; i < ARRAY_SIZE(ect_list); ++i) {
 		if (ect_strcmp(block_name, ect_list[i].block_name) == 0)
@@ -1716,7 +1716,8 @@ static int dump_open(struct inode *inode, struct file *file)
 
 static int ect_dump_all(struct seq_file *s, void *data)
 {
-	int i, j, ret;
+	unsigned int i, j;
+	int ret;
 
 	ret = ect_header_info.dump(s, data);
 	if (ret)
@@ -1750,7 +1751,7 @@ static struct file_operations ops_all_dump = {
 
 static int ect_dump_init(void)
 {
-	int i;
+	unsigned int i;
 	struct dentry *root, *d;
 
 	root = debugfs_create_dir("ect", NULL);
@@ -1803,7 +1804,7 @@ void __init ect_init(phys_addr_t address, phys_addr_t size)
 
 void *ect_get_block(char *block_name)
 {
-	int i;
+	unsigned int i;
 
 	for (i = 0; i < ARRAY_SIZE(ect_list); ++i) {
 		if (ect_strcmp(block_name, ect_list[i].block_name) == 0)
@@ -2054,7 +2055,8 @@ struct ect_bin *ect_binary_get_bin(void *block, char *binary_name)
 int ect_parse_binary_header(void)
 {
 	int ret = 0;
-	int i, j;
+	int i;
+	unsigned int j;
 	char *block_name;
 	void *address;
 	unsigned int length, offset;

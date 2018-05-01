@@ -19,11 +19,11 @@
 
 /*
  * Function signature:
- * int exynos_smc(unsigned long cmd, unsigned long arg1, unsigned long arg2, unsigned long arg3)
+ * int _exynos_smc(unsigned long cmd, unsigned long arg1, unsigned long arg2, unsigned long arg3)
  * int exynos_smc_readsfr(unsigned long addr, unsigned long* val)
  */
 
-ENTRY(__exynos_smc)
+ENTRY(_exynos_smc)
 #ifdef CONFIG_EXYNOS_SNAPSHOT_LOGGING_SMC_CALL
 	stp	x29, x30, [sp, #-48]!
 	mov	x29, sp
@@ -57,7 +57,7 @@ save_smc_id:
 	.quad	0x0
 	.previous
 
-ENDPROC(__exynos_smc)
+ENDPROC(_exynos_smc)
 
 ENTRY(exynos_smc_readsfr)
 	stp	x1, x3, [sp, #-16]!

@@ -34,7 +34,7 @@
 #define S2MU005_REG_RCUR_CC		0x06
 #define S2MU005_REG_RSOC		0x08
 #define S2MU005_REG_MONOUT		0x0A
-#define S2MU005_REG_MONOUT_SEL		0x0C
+#define S2MU005_REG_MONOUT_SEL	0x0C
 #define S2MU005_REG_RBATCAP		0x0E
 #define S2MU005_REG_RZADJ		0x12
 #define S2MU005_REG_RBATZ0		0x16
@@ -68,16 +68,15 @@ struct sec_fg_info {
 
 	/* copy from platform data /
 	 * DTS or update by shell script */
-	int battery_table1[88]; // evt1
-	int battery_table2[22]; // evt1
-	int battery_table3[88]; // evt2
-	int battery_table4[22]; // evt2
+	int battery_table1[88]; /* evt1 */
+	int battery_table2[22]; /* evt1 */
+	int battery_table3[88]; /* evt2 */
+	int battery_table4[22]; /* evt2 */
 	int soc_arr_evt1[22];
 	int ocv_arr_evt1[22];
 	int soc_arr_evt2[22];
 	int ocv_arr_evt2[22];
 	int batcap[4];
-	int fg_accumulative_rate_evt2[4];
 
 	/* miscellaneous */
 	unsigned long fullcap_check_interval;
@@ -90,11 +89,9 @@ struct s2mu005_platform_data {
 	int capacity_max_margin;
 	int capacity_min;
 	int capacity_calculation_type;
-	int evt2_val;
 	int fuel_alert_soc;
 	int fullsocthr;
 	int fg_irq;
-	int fg_log_enable;
 
 	char *fuelgauge_name;
 
@@ -130,7 +127,6 @@ struct s2mu005_fuelgauge_data {
 	unsigned int standard_capacity;
 
 	bool initial_update_of_soc;
-	bool sleep_initial_update_of_soc;
 	struct mutex fg_lock;
 	struct delayed_work isr_work;
 

@@ -24,7 +24,6 @@
 #include <linux/moduleparam.h>
 #include <linux/platform_device.h>
 #include <linux/of_gpio.h>
-#include <asm/neon.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-subdev.h>
@@ -62,6 +61,10 @@ int sensor_module_init(struct v4l2_subdev *subdev, u32 val)
 	struct v4l2_subdev *subdev_cis = NULL;
 	struct v4l2_subdev *subdev_actuator = NULL;
 	struct v4l2_subdev *subdev_flash = NULL;
+	struct v4l2_subdev *subdev_preprocessor = NULL;
+	struct fimc_is_preprocessor *preprocessor = NULL;
+	register_sensor_interface register_sensor_itf =
+		(register_sensor_interface)SENSOR_REGISTER_FUNC_ADDR;
 
 	BUG_ON(!subdev);
 
@@ -75,6 +78,30 @@ int sensor_module_init(struct v4l2_subdev *subdev, u32 val)
 	memset(&sensor_peri->actuator.pre_position, 0, sizeof(u32 [EXPECT_DM_NUM]));
 	memset(&sensor_peri->actuator.pre_frame_cnt, 0, sizeof(u32 [EXPECT_DM_NUM]));
 
+	ret = init_sensor_interface(&sensor_peri->sensor_interface);
+	if (ret) {
+		err("fimc_is_resource_get is fail");
+		goto p_err;
+	}
+
+	subdev_preprocessor = sensor_peri->subdev_preprocessor;
+	if (!subdev_preprocessor)
+		err("[SEN:%d] no subdev_preprocessor", module->sensor_id);
+
+	if (subdev_preprocessor){
+		preprocessor = (struct fimc_is_preprocessor *)v4l2_get_subdevdata(subdev_preprocessor);
+		BUG_ON(!preprocessor);
+	}
+
+	/* wait preproc s_input before init sensor mode change */
+	if (subdev_preprocessor) {
+		ret = CALL_PREPROPOPS(preprocessor, preprocessor_wait_s_input, subdev_preprocessor);
+		if (ret) {
+			err("[SEN:%d] preprocessor wait s_input timeout\n", module->sensor_id);
+			goto p_err;
+		}
+	}
+
 #if !defined(DISABLE_LIB)
 	ret = sensor_module_load_bin();
 	if (ret) {
@@ -82,21 +109,21 @@ int sensor_module_init(struct v4l2_subdev *subdev, u32 val)
 		goto p_err;
 	}
 
-	ret = init_sensor_interface(&sensor_peri->sensor_interface);
-	if (ret) {
-		err("fimc_is_resource_get is fail");
-		goto p_err;
-	}
-#ifdef ENABLE_FPSIMD_FOR_USER
-	fpsimd_get();
+	register_sensor_itf = (register_sensor_interface)SENSOR_REGISTER_FUNC_ADDR;
 	ret = register_sensor_itf((void *)&sensor_peri->sensor_interface);
-	fpsimd_put();
-#else
-	ret = register_sensor_itf((void *)&sensor_peri->sensor_interface);
-#endif
 	if (ret < 0) {
 		goto p_err;
 	}
+
+#ifdef USE_RTA_BINARY
+	register_sensor_itf = (register_sensor_interface)SENSOR_REGISTER_FUNC_ADDR_RTA;
+	ret = register_sensor_itf((void *)&sensor_peri->sensor_interface);
+	if (ret < 0) {
+		/* HACK : for check register sensor itf fail */
+		BUG_ON(1);
+		goto p_err;
+	}
+#endif
 #endif
 
 	pdata = module->pdata;
@@ -610,22 +637,23 @@ int sensor_module_s_format(struct v4l2_subdev *subdev, struct v4l2_mbus_framefmt
 	device = (struct fimc_is_device_sensor *)v4l2_get_subdev_hostdata(subdev);
 	BUG_ON(!device);
 
-	if (cis->cis_data->sens_config_index_cur != device->cfg->mode || sensor_peri->mode_change_flag == true) {
+	if (cis->cis_data->sens_config_index_cur != device->cfg->mode || sensor_peri->mode_change_first == true) {
 		dbg_sensor("[%s] mode changed(%d->%d)\n", __func__,
 				cis->cis_data->sens_config_index_cur, device->cfg->mode);
 
-		sensor_peri->mode_change_flag = false;
 		cis->cis_data->sens_config_index_cur = device->cfg->mode;
 		cis->cis_data->cur_width = fmt->width;
 		cis->cis_data->cur_height = fmt->height;
+
 		ret = fimc_is_sensor_mode_change(cis, device->cfg->mode);
 		if (ret) {
 			err("[SEN:%d] sensor_mode_change(cis_mode_change) is fail(%d)",
 					module->sensor_id, ret);
 			goto p_err;
 		}
+
 		if (subdev_preprocessor)
-			ret = CALL_PREPROPOPS(preprocessor, preprocessor_mode_change, subdev_preprocessor, device->cfg->mode);
+			ret = CALL_PREPROPOPS(preprocessor, preprocessor_mode_change, subdev_preprocessor, device);
 		if (ret) {
 			err("[SEN:%d] sensor_mode_change(preprocessor_mode_change) is fail(%d)",
 					module->sensor_id, ret);

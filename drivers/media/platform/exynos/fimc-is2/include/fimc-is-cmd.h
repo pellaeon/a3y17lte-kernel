@@ -126,7 +126,8 @@ enum is_subscenario_id {
 	ISS_SUB_SCENARIO_STILL_CAPTURE_LONG = 30,
 	ISS_SUB_SCENARIO_STILL_CAPTURE_MANUAL_ISO = 31,
 	ISS_SUB_SCENARIO_STILL_PREVIEW_BINNING = 40, /* 40: binning mode for low power */
-	ISS_SUB_END,
+	ISS_SUB_SCENARIO_STILL_CAPTURE_BDS = 41,            /* 41: still capture bds */
+	ISS_SUB_SCENARIO_STILL_PREVIEW_LLS = 42,            /* 42: still preview lls */
 
 	ISS_SUB_SCENARIO_FRONT_VT1 = 31,		/*  31: front camera VT1 */
 	ISS_SUB_SCENARIO_FRONT_VT2 = 32,		/* 32: front camera VT2 */
@@ -138,6 +139,11 @@ enum is_subscenario_id {
 	ISS_SUB_SCENARIO_FRONT_VT4 = 38,		/* 38: front camera VT4 */
 	ISS_SUB_SCENARIO_FRONT_VT1_STILL_CAPTURE = 39,	/* 39: front camera VT1 still capture */
 	ISS_SUB_SCENARIO_FRONT_STILL_PREVIEW_BINNING = 40, /* 40: front camera binning mode for low power */
+	ISS_SUB_END,
+};
+
+enum is_scenario_is {
+	FIMC_IS_SCENARIO_SWVDIS = 1,
 };
 
 enum is_system_control_id {

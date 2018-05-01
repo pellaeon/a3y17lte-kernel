@@ -52,3 +52,4 @@ usb_f_accessory-y               := f_accessory.o
 obj-$(CONFIG_USB_F_ACC)         += usb_f_accessory.o
 
 obj-$(CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE)	+= multi_config.o
+

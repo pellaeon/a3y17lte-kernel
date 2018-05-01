@@ -492,15 +492,22 @@ static void update_temperature(struct thermal_zone_device *tz)
 
 void thermal_zone_device_update(struct thermal_zone_device *tz)
 {
-	int count;
+	int count, result;
+	enum thermal_device_mode mode;
 
 	if (!tz->ops->get_temp)
 		return;
 
 	update_temperature(tz);
 
-	for (count = 0; count < tz->trips; count++)
-		handle_thermal_trip(tz, count);
+	result = tz->ops->get_mode(tz, &mode);
+	if (result)
+		return;
+
+	if (mode == THERMAL_DEVICE_ENABLED) {
+		for (count = 0; count < tz->trips; count++)
+			handle_thermal_trip(tz, count);
+	}
 }
 EXPORT_SYMBOL_GPL(thermal_zone_device_update);
 
@@ -523,21 +530,6 @@ type_show(struct device *dev, struct device_attribute *attr, char *buf)
 	struct thermal_zone_device *tz = to_thermal_zone(dev);
 
 	return sprintf(buf, "%s\n", tz->type);
-}
-
-static ssize_t
-temp_show(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	struct thermal_zone_device *tz = to_thermal_zone(dev);
-	long temperature;
-	int ret;
-
-	ret = thermal_zone_get_temp(tz, &temperature);
-
-	if (ret)
-		return ret;
-
-	return sprintf(buf, "%ld\n", temperature);
 }
 
 #ifdef CONFIG_SEC_PM
@@ -565,6 +557,21 @@ curr_temp_show(struct device *dev, struct device_attribute *attr, char *buf)
 	return len; 
 }
 #endif
+
+static ssize_t
+temp_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct thermal_zone_device *tz = to_thermal_zone(dev);
+	long temperature;
+	int ret;
+
+	ret = thermal_zone_get_temp(tz, &temperature);
+
+	if (ret)
+		return ret;
+
+	return sprintf(buf, "%ld\n", temperature);
+}
 
 static ssize_t
 mode_show(struct device *dev, struct device_attribute *attr, char *buf)

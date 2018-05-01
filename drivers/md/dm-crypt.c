@@ -32,12 +32,7 @@
 
 #define DM_MSG_PREFIX "crypt"
 #define FMP_KEY_STORAGE_OFFSET 0x0FC0
-#ifdef CONFIG_SOC_EXYNOS8890_EVT1
-#define EXYNOS8890_PA_SRAM_NS		0x0206F000
-#else
-#define EXYNOS8890_PA_SRAM_NS		0x0207A000
-#endif
-#define EXYNOS7870_PA_SRAM_NS		0x0206B000
+#define EXYNOS7880_PA_SRAM_NS		0x0206B000
 #define FMP_SYSRAM_NS(soc)	EXYNOS##soc##_PA_SRAM_NS
 
 volatile unsigned int disk_key_flag;
@@ -1497,14 +1492,7 @@ static int crypt_setkey_allcpus(struct crypt_config *cc)
 		uint32_t base;
 		volatile u8 __iomem *key_storage;
 
-#if defined(CONFIG_SOC_EXYNOS8890)
-		base = FMP_SYSRAM_NS(8890);
-#elif defined(CONFIG_SOC_EXYNOS7870)
-		base = FMP_SYSRAM_NS(7870);
-#else
-		printk("Error for SoC NS base\n");
-		return -1;
-#endif
+		base = FMP_SYSRAM_NS(7880);
 		key_storage = ioremap(base + FMP_KEY_STORAGE_OFFSET, SZ_4K);
 		if (!key_storage) {
 			pr_err("dm-crypt: Failure of ioremap for FMP key\n");

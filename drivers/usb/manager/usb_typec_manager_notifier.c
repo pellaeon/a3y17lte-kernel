@@ -16,9 +16,7 @@
 #endif
 #include <linux/usb_notify.h>
 #include <linux/delay.h>
-#if defined(CONFIG_CCIC_S2MM005)
 #include <linux/ccic/s2mm005_ext.h>
-#endif
 #include <linux/time.h>
 #include <linux/ktime.h>
 #include <linux/rtc.h>
@@ -491,9 +489,6 @@ static int manager_handle_ccic_notification(struct notifier_block *nb,
 					pr_info("usb: [M] %s: CCIC_NOTIFY_ATTACH\n", __func__);
 					typec_manager.water_det = 0;
 #ifdef MANAGER_WATER_EVENT_ENABLE
-#if defined(CONFIG_CCIC_S2MM005)
-					if (!typec_manager.run_dry_support)
-#endif	
 					complete(&ccic_attach_done);
 #endif
 					typec_manager.pd_con_state = 0;
@@ -528,16 +523,10 @@ static int manager_handle_ccic_notification(struct notifier_block *nb,
 	case CCIC_NOTIFY_ID_WATER:
 		if (p_noti.sub1) {	/* attach */
 #ifdef MANAGER_WATER_EVENT_ENABLE
-#if defined(CONFIG_CCIC_S2MM005)
-			if (!typec_manager.water_det) {
-#endif	
 			typec_manager.water_det = 1;
 			typec_manager.water_count++;
-#if defined(CONFIG_CCIC_S2MM005)
-			typec_manager.run_dry_support = p_noti.sub3;
-#else
 			complete(&ccic_attach_done);
-#endif
+
 			muic_noti.src = CCIC_NOTIFY_DEV_CCIC;
 			muic_noti.dest = CCIC_NOTIFY_DEV_MUIC;
 			muic_noti.id = CCIC_NOTIFY_ID_WATER;
@@ -556,13 +545,6 @@ static int manager_handle_ccic_notification(struct notifier_block *nb,
 				/* If the cable is not connected, skip the battery event. */
 				return 0;
 			}
-#if defined(CONFIG_CCIC_S2MM005)	
-			}
-			else {
-				/* Ignore duplicate events */
-				return 0;
-			}
-#endif			
 #else
 			if(!typec_manager.water_det) {
 				typec_manager.water_det = 1;
@@ -582,7 +564,6 @@ static int manager_handle_ccic_notification(struct notifier_block *nb,
 		} else {
 			typec_manager.water_det = 0;
 			typec_manager.dry_count++;
-			#if defined(CONFIG_CCIC_S2MU004)
 			muic_noti.src = CCIC_NOTIFY_DEV_CCIC;
 			muic_noti.dest = CCIC_NOTIFY_DEV_MUIC;
 			muic_noti.id = CCIC_NOTIFY_ID_WATER;
@@ -591,7 +572,6 @@ static int manager_handle_ccic_notification(struct notifier_block *nb,
 			muic_noti.cable_type = 0;
 			muic_noti.pd = NULL;
 			manager_notifier_notify(&muic_noti);
-			#endif
 
 			/* update run_dry time */
 			water_dry_time_update((int)p_noti.sub1);
@@ -734,16 +714,10 @@ static int manager_handle_vbus_notification(struct notifier_block *nb,
 	typec_manager.vbus_state = vbus_type;
 
 #ifdef MANAGER_WATER_EVENT_ENABLE
-#if defined(CONFIG_CCIC_S2MM005)
-	if (!typec_manager.run_dry_support) {
-#endif		
 	init_completion(&ccic_attach_done);
 	if ((typec_manager.water_det == 1) && (vbus_type == STATUS_VBUS_HIGH) )
 		wait_for_completion_timeout(&ccic_attach_done,
 					    msecs_to_jiffies(2000));
-#if defined(CONFIG_CCIC_S2MM005)
-	}
-#endif	
 #endif
 
 	switch (vbus_type) {
@@ -1018,9 +992,6 @@ static int manager_notifier_init(void)
 	typec_manager.muic_data_refresh = 0;
 	typec_manager.usb_enum_state = 0;
 	typec_manager.water_det = 0;
-#if defined(CONFIG_CCIC_S2MM005)	
-	typec_manager.run_dry_support = 1;
-#endif	
 	typec_manager.water_count =0;
 	typec_manager.dry_count = 0;
 	typec_manager.usb210_count = 0;

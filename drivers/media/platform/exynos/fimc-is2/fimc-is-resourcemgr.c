@@ -23,6 +23,7 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/platform_device.h>
+#include <linux/smc.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-subdev.h>
@@ -44,6 +45,7 @@
 #endif
 #include <linux/memblock.h>
 #include <asm/map.h>
+#include <trace/events/exynos.h>
 
 #define CLUSTER_MIN_MASK			0x0000FFFF
 #define CLUSTER_MIN_SHIFT			0
@@ -54,6 +56,7 @@ struct pm_qos_request exynos_isp_qos_int;
 struct pm_qos_request exynos_isp_qos_mem;
 struct pm_qos_request exynos_isp_qos_cam;
 struct pm_qos_request exynos_isp_qos_disp;
+struct pm_qos_request exynos_isp_qos_hpg;
 struct pm_qos_request exynos_isp_qos_cluster0_min;
 struct pm_qos_request exynos_isp_qos_cluster0_max;
 struct pm_qos_request exynos_isp_qos_cluster1_min;
@@ -236,12 +239,28 @@ static int fimc_is_resourcemgr_allocmem(struct fimc_is_resourcemgr *resourcemgr)
 	minfo->total_size += minfo->pb_front_cal->size;
 
 	/* library logging */
-	minfo->pb_debug = CALL_PTR_MEMOP(mem, alloc, mem->default_ctx, DEBUG_REGION_SIZE + 0x10, 16);
+	minfo->pb_debug = mem->kmalloc(DEBUG_REGION_SIZE + 0x10, 16);
 	if (IS_ERR(minfo->pb_debug)) {
-		err("failed to allocate buffer for DEBUG_REGION");
-		return -ENOMEM;
+		/* retry by ION */
+		minfo->pb_debug = CALL_PTR_MEMOP(mem, alloc, mem->default_ctx, DEBUG_REGION_SIZE + 0x10, 16);
+		if (IS_ERR(minfo->pb_debug)) {
+			err("failed to allocate buffer for DEBUG_REGION");
+			return -ENOMEM;
+		}
 	}
 	minfo->total_size += minfo->pb_debug->size;
+
+	/* library event logging */
+	minfo->pb_event = mem->kmalloc(EVENT_REGION_SIZE + 0x10, 16);
+	if (IS_ERR(minfo->pb_event)) {
+		/* retry by ION */
+		minfo->pb_event = CALL_PTR_MEMOP(mem, alloc, mem->default_ctx, EVENT_REGION_SIZE + 0x10, 16);
+		if (IS_ERR(minfo->pb_event)) {
+			err("failed to allocate buffer for EVENT_REGION");
+			return -ENOMEM;
+		}
+	}
+	minfo->total_size += minfo->pb_event->size;
 
 	/* data region */
 	minfo->pb_dregion = CALL_PTR_MEMOP(mem, alloc, mem->default_ctx, DATA_REGION_SIZE, 16);
@@ -349,6 +368,11 @@ static int fimc_is_resourcemgr_initmem(struct fimc_is_resourcemgr *resourcemgr)
 
 	resourcemgr->minfo.dvaddr_debug = CALL_BUFOP(minfo->pb_debug, dvaddr, minfo->pb_debug);
 	resourcemgr->minfo.kvaddr_debug = CALL_BUFOP(minfo->pb_debug, kvaddr, minfo->pb_debug);
+	resourcemgr->minfo.phaddr_debug = CALL_BUFOP(minfo->pb_debug, phaddr, minfo->pb_debug);
+
+	resourcemgr->minfo.dvaddr_event = CALL_BUFOP(minfo->pb_event, dvaddr, minfo->pb_event);
+	resourcemgr->minfo.kvaddr_event = CALL_BUFOP(minfo->pb_event, kvaddr, minfo->pb_event);
+	resourcemgr->minfo.phaddr_event = CALL_BUFOP(minfo->pb_event, phaddr, minfo->pb_event);
 
 	resourcemgr->minfo.dvaddr_fshared = CALL_BUFOP(minfo->pb_fshared, dvaddr, minfo->pb_fshared);
 	resourcemgr->minfo.kvaddr_fshared = CALL_BUFOP(minfo->pb_fshared, kvaddr, minfo->pb_fshared);
@@ -381,8 +405,10 @@ static int fimc_is_resourcemgr_initmem(struct fimc_is_resourcemgr *resourcemgr)
 	resourcemgr->minfo.dvaddr_tpu = 0;
 	resourcemgr->minfo.kvaddr_tpu = 0;
 #endif
-	resourcemgr->minfo.kvaddr_debug_cnt =  CALL_BUFOP(minfo->pb_debug, kvaddr, minfo->pb_debug)
+	resourcemgr->minfo.kvaddr_debug_cnt =  resourcemgr->minfo.kvaddr_debug
 						+ DEBUG_REGION_SIZE;
+	resourcemgr->minfo.kvaddr_event_cnt =  resourcemgr->minfo.kvaddr_event
+						+ EVENT_REGION_SIZE;
 	resourcemgr->minfo.kvaddr_setfile = CALL_BUFOP(minfo->pb_setfile, kvaddr, minfo->pb_setfile);
 	resourcemgr->minfo.kvaddr_rear_cal = CALL_BUFOP(minfo->pb_rear_cal, kvaddr, minfo->pb_rear_cal);
 	resourcemgr->minfo.kvaddr_front_cal = CALL_BUFOP(minfo->pb_front_cal, kvaddr, minfo->pb_front_cal);
@@ -396,20 +422,30 @@ p_err:
 
 static int __init fimc_is_init_static_mem(char *str)
 {
+	ulong addr = 0;
 	struct fimc_is_static_mem static_mem[] = {{0, LIB_START, LIB_SIZE}};
 	struct map_desc fimc_iodesc[ARRAY_SIZE(static_mem)];
-	u32 i;
+	size_t i;
+
+	if (kstrtoul(str, 0, (ulong *)&addr) || !addr) {
+		probe_warn("[RSC] fimc_is_init_static_mem input address(0x%lx) invalid\n", addr);
+		addr = LIB_START;
+	}
+
+	if (addr != LIB_START)
+		probe_warn("[RSC] reserve-fimc=0x%lx is not equal to LIB_START:0x%lx", addr, LIB_START);
 
 	for (i = 0; i < ARRAY_SIZE(static_mem); i++) {
 		static_mem[i].paddr = memblock_alloc(static_mem[i].size, SZ_4K);
 
-		fimc_iodesc[i].virtual = static_mem[i].vaddr;
+		fimc_iodesc[i].virtual = addr;
 		fimc_iodesc[i].pfn = __phys_to_pfn(static_mem[i].paddr);
 		fimc_iodesc[i].length = static_mem[i].size;
 		fimc_iodesc[i].type = MT_MEMORY;
 	}
 	iotable_init_exec(fimc_iodesc, ARRAY_SIZE(static_mem));
 
+	probe_info("[RSC] fimc_is_init_static_mem done\n");
 	return 0;
 }
 __setup("reserve-fimc=", fimc_is_init_static_mem);
@@ -447,7 +483,9 @@ static int fimc_is_tmu_notifier(struct notifier_block *nb,
 #ifdef CONFIG_EXYNOS_THERMAL
 	int ret = 0;
 	struct fimc_is_resourcemgr *resourcemgr;
-
+#ifdef CONFIG_EXYNOS_SNAPSHOT_THERMAL
+	char *cooling_device_name = "ISP";
+#endif
 	resourcemgr = container_of(nb, struct fimc_is_resourcemgr, tmu_notifier);
 
 	switch (state) {
@@ -488,6 +526,10 @@ static int fimc_is_tmu_notifier(struct notifier_block *nb,
 		break;
 	}
 
+#ifdef CONFIG_EXYNOS_SNAPSHOT_THERMAL
+	exynos_ss_thermal(NULL, 0, cooling_device_name, resourcemgr->limited_fps);
+	trace_exynos_thermal(NULL, 0, cooling_device_name, resourcemgr->limited_fps);
+#endif
 	return ret;
 #else
 	return 0;
@@ -545,6 +587,41 @@ static int fimc_is_bm_notifier(struct notifier_block *nb,
 }
 #endif /* CONFIG_EXYNOS_BUSMONITOR */
 
+#ifdef ENABLE_FW_SHARE_DUMP
+static int fimc_is_fw_share_dump(void)
+{
+	int ret = 0;
+	u8 *buf;
+	struct fimc_is_core *core = NULL;
+	struct fimc_is_resourcemgr *resourcemgr;
+
+	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
+	if (!core)
+		goto p_err;
+
+	resourcemgr = &core->resourcemgr;
+	buf = (u8 *)resourcemgr->fw_share_dump_buf;
+
+	/* dump share region in fw area */
+	if (IS_ERR_OR_NULL(buf)) {
+		err("%s: fail to alloc", __func__);
+		ret = -ENOMEM;
+		goto p_err;
+	}
+
+	/* sync with fw for memory */
+	vb2_ion_sync_for_cpu(resourcemgr->minfo.fw_cookie, 0,
+			SHARED_OFFSET, DMA_BIDIRECTIONAL);
+
+	memcpy(buf, (u8 *)resourcemgr->minfo.kvaddr_fshared, SHARED_SIZE);
+
+	info("%s: dumped ramdump addr(virt/phys/size): (%p/%p/0x%X)", __func__, buf,
+			(void *)virt_to_phys(buf), SHARED_SIZE);
+p_err:
+	return ret;
+}
+#endif
+
 int fimc_is_resource_dump(void)
 {
 	struct fimc_is_core *core = NULL;
@@ -574,7 +651,7 @@ int fimc_is_resource_dump(void)
 #else
 		/* ddk log dump */
 		fimc_is_lib_logdump();
-		fimc_is_hardware_dump(&core->hardware);
+		fimc_is_hardware_clk_gate_dump(&core->hardware);
 		fimc_is_hardware_sfr_dump(&core->hardware);
 #endif
 		break;
@@ -590,7 +667,13 @@ exit:
 static int fimc_is_panic_handler(struct notifier_block *nb, ulong l,
 	void *buf)
 {
+#if !defined(ENABLE_IS_CORE)
 	fimc_is_resource_dump();
+#endif
+#ifdef ENABLE_FW_SHARE_DUMP
+	/* dump share area in fw region */
+	fimc_is_fw_share_dump();
+#endif
 	return 0;
 }
 
@@ -672,6 +755,14 @@ int fimc_is_resourcemgr_probe(struct fimc_is_resourcemgr *resourcemgr,
 	atomic_notifier_chain_register(&panic_notifier_list, &notify_panic_block);
 #endif
 
+#ifdef ENABLE_SHARED_METADATA
+	spin_lock_init(&resourcemgr->shared_meta_lock);
+#endif
+#ifdef ENABLE_FW_SHARE_DUMP
+	/* to dump share region in fw area */
+	resourcemgr->fw_share_dump_buf = (ulong)kzalloc(SHARED_SIZE, GFP_KERNEL);
+#endif
+
 p_err:
 	probe_info("[RSC] %s(%d)\n", __func__, ret);
 	return ret;
@@ -748,6 +839,7 @@ p_err:
 	return ret;
 }
 
+#define SMC_DRM_ENABLED_CHECK           ((unsigned int)(0x82002200))
 int fimc_is_resource_get(struct fimc_is_resourcemgr *resourcemgr, u32 rsc_type)
 {
 	int ret = 0;
@@ -758,6 +850,16 @@ int fimc_is_resource_get(struct fimc_is_resourcemgr *resourcemgr, u32 rsc_type)
 	BUG_ON(!resourcemgr);
 	BUG_ON(!resourcemgr->private_data);
 	BUG_ON(rsc_type >= RESOURCE_TYPE_MAX);
+
+	/*
+	 * HACK: check DRM playback
+	 * Camera cannot be runned when DRM playback is being runned.
+	 */
+	if (exynos_smc(SMC_DRM_ENABLED_CHECK, 0, 0, 0) && rsc_type == RESOURCE_TYPE_ISCHAIN) {
+		err("[RSC] Camera cannot be runned when DRM playback is being runned.");
+		ret = -EBUSY;
+		goto p_err;
+	}
 
 	core = (struct fimc_is_core *)resourcemgr->private_data;
 	rsccount = atomic_read(&core->rsccount);
@@ -890,6 +992,10 @@ int fimc_is_resource_get(struct fimc_is_resourcemgr *resourcemgr, u32 rsc_type)
 
 			/* W/A for a lower version MCUCTL */
 			fimc_is_interface_reset(&core->interface);
+
+#if !defined(ENABLE_IS_CORE) && defined(USE_MCUCTL)
+			fimc_is_hw_s_ctrl(&core->interface, 0, HW_S_CTRL_CHAIN_IRQ, 0);
+#endif
 
 #ifdef ENABLE_CLOCK_GATE
 			if (sysfs_debug.en_clk_gate &&

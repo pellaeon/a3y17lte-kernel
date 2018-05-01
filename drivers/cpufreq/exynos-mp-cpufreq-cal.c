@@ -31,6 +31,8 @@
 #include "../../drivers/soc/samsung/pwrcal/S5E8890/S5E8890-vclk.h"
 #elif defined(CONFIG_SOC_EXYNOS7870)
 #include "../../drivers/soc/samsung/pwrcal/S5E7870/S5E7870-vclk.h"
+#elif defined(CONFIG_SOC_EXYNOS7880)
+#include "../../drivers/soc/samsung/pwrcal/S5E7880/S5E7880-vclk.h"
 #endif
 
 #ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
@@ -158,7 +160,7 @@ static int exynos_mp_cpufreq_init_cal_table(cluster_type cluster)
 	int table_size, cl_id, i;
 	struct dvfs_rate_volt *ptr_temp_table;
 	struct exynos_dvfs_info *ptr = exynos_info[cluster];
-	unsigned int cal_max_freq;
+	unsigned long cal_max_freq;
 	unsigned int cal_max_support_idx = 0;
 
 	if (!ptr->freq_table || !ptr->volt_table) {

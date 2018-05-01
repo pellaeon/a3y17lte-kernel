@@ -61,7 +61,6 @@ static int kbasep_gpu_memory_seq_show(struct seq_file *sfile, void *data)
 	return 0;
 }
 #endif
-
 /*
  *  File operations related to debugfs entry for gpu_memory
  */

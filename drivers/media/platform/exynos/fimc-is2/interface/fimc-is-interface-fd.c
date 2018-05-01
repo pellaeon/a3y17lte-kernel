@@ -864,13 +864,14 @@ int fimc_is_lib_fd_thread_init(struct fimc_is_lib *fd_lib)
 	init_kthread_worker(&fd_lib->worker);
 
 	fd_lib->task = kthread_run(kthread_worker_fn, &fd_lib->worker, "fimc_is_lib_fd");
-
 	if (IS_ERR(fd_lib->task)) {
-		err("failed to create fd_task\n");
+		err("failed to create thread for FD, err(%ld)",
+			PTR_ERR(fd_lib->task));
+		ret = PTR_ERR(fd_lib->task);
 		fd_lib->task = NULL;
-		ret = -ENOMEM;
 		goto p_err;
 	}
+
 #ifdef FD_LIB_NORMAL_THREAD
 	ret = sched_setscheduler_nocheck(fd_lib->task, SCHED_NORMAL, &param);
 #else

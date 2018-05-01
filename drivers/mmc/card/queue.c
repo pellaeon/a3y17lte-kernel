@@ -63,7 +63,7 @@ static int mmc_queue_thread(void *d)
 		spin_lock_irq(q->queue_lock);
 		set_current_state(TASK_INTERRUPTIBLE);
 		if (mq->mqrq_prev->req &&
-					(mq->card && (mq->card->type == MMC_TYPE_SD)))
+				(mq->card && (mq->card->type == MMC_TYPE_SD)))
 			req = NULL;
 		else
 			req = blk_fetch_request(q);
@@ -437,9 +437,10 @@ int mmc_queue_suspend(struct mmc_queue *mq, int wait)
 			rc = -EBUSY;
 		} else if (wait) {
 			printk("%s: mq->flags: %x, q->queue_flags: 0x%lx, \
-					q->in_flight (%d, %d) \n",
+					q->in_flight (%d, %d), rc: %d sem_count: %d \n",
 					mmc_hostname(mq->card->host), mq->flags,
-					q->queue_flags, q->in_flight[0], q->in_flight[1]);
+					q->queue_flags, q->in_flight[0], q->in_flight[1],
+					rc,  mq->thread_sem.count);
 			mutex_lock(&q->sysfs_lock);
 			if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)) {
 				queue_flag_set_unlocked(QUEUE_FLAG_DYING, q);

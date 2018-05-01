@@ -34,7 +34,6 @@ static inline bool selinux_is_enabled(void)
 {
 	return false;
 }
-
 static inline bool selinux_is_enforcing(void)
 {
 	return false;

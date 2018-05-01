@@ -1,7 +1,7 @@
 /*
 * Samsung debugging features for Samsung's SoC's.
 *
-* Copyright (c) 2014 Samsung Electronics Co., Ltd.
+* Copyright (c) 2016 Samsung Electronics Co., Ltd.
 *      http://www.samsung.com
 *
 * This program is free software; you can redistribute it and/or modify
@@ -24,7 +24,7 @@
 #define SEC_DEBUG_DUMPER_LOG_VA (SEC_DEBUG_MAGIC_VA + 0x800)
 
 #ifdef CONFIG_SEC_DEBUG
-extern int  sec_debug_setup(void);
+extern int  sec_debug_init(void);
 extern void sec_debug_reboot_handler(void);
 extern void sec_debug_panic_handler(void *buf, bool dump);
 extern void sec_debug_post_panic_handler(void);
@@ -37,10 +37,10 @@ extern void sec_getlog_supply_kernel(void *klog_buf);
 extern void sec_getlog_supply_platform(unsigned char *buffer, const char *name);
 extern void sec_gaf_supply_rqinfo(unsigned short curr_offset, unsigned short rq_offset);
 #else
-#define sec_debug_setup()			(-1)
+#define sec_debug_init()			(-1)
 #define sec_debug_reboot_handler()		do { } while(0)
 #define sec_debug_panic_handler(a,b)		do { } while(0)
-#define sec_debug_post_panic_handler()		do { } while(0)	
+#define sec_debug_post_panic_handler()		do { } while(0)
 
 #define sec_debug_get_debug_level()		(0)
 #define sec_debug_disable_printk_process()	do { } while(0)
@@ -50,12 +50,6 @@ extern void sec_gaf_supply_rqinfo(unsigned short curr_offset, unsigned short rq_
 
 #define sec_gaf_supply_rqinfo(a,b)		do { } while(0)
 #endif /* CONFIG_SEC_DEBUG */
-
-#ifdef CONFIG_SEC_DEBUG_MDM_SEPERATE_CRASH
-extern int  sec_debug_is_enabled_for_ssr(void);
-else
-#define sec_debug_is_enabled_for_ssr()		(0)
-#endif /* CONFIG_SEC_DEBUG_MDM_SEPERATE_CRASH */
 
 #ifdef CONFIG_SEC_DEBUG_RESET_REASON
 
@@ -74,6 +68,14 @@ enum sec_debug_reset_reason_t {
 
 extern unsigned reset_reason;
 #endif
+
+union sec_debug_level_t {
+	struct {
+		u16 kernel_fault;
+		u16 user_fault;
+	} en;
+	u32 uint_val;
+};
 
 #ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
 
@@ -235,6 +237,11 @@ extern void sec_debug_save_last_kmsg(unsigned char *head_ptr, unsigned char *cur
 #else
 #define sec_debug_save_last_kmsg(a, b, c)		do { } while (0)
 #endif /* CONFIG_SEC_DEBUG_LAST_KMSG */
+
+extern bool exynos_ss_hardkey_triger;
+extern int dbglv_mid;
+extern union sec_debug_level_t sec_debug_level;
+extern void (*mach_restart)(enum reboot_mode mode, const char *cmd);
 
 /*
  * Samsung TN Logging Options

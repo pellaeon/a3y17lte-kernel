@@ -10,17 +10,33 @@ gpu_sysfs-y :=	gpu_sysfs_main.o \
 
 # ==================================
 # Start ----- Mali T8xx device -----
-ifeq ($(CONFIG_MALI_T83X),y)
+ifeq ($(CONFIG_MALI_T8XX),y)
 
-# --- For EXYNOS7870(MaliT830) Device. 
-ifeq ($(CONFIG_SOC_EXYNOS7870),y)
-gpu_sysfs-y +=	gpu_sysfs_target_exynos7870.o 
+# --- For EXYNOS8890(MaliT880) Device. 
+ifeq ($(CONFIG_SOC_EXYNOS8890),y)
+gpu_sysfs-y +=	gpu_sysfs_target_exynos8890.o 
 # Verify: target specific file is defined.
 GPU_SYSFS_TARGET_FILE_DEFINED=1
 endif
 
 endif
 # End ----- Mali T8xx device -------
+# ==================================
+
+
+# ==================================
+# Start ----- Mali T83x device -----
+ifeq ($(CONFIG_MALI_T83X),y)
+
+# --- For EXYNOS7880(MaliT830) Device. 
+ifeq ($(CONFIG_SOC_EXYNOS7880),y)
+gpu_sysfs-y +=	gpu_sysfs_target_exynos7880.o 
+# Verify: target specific file is defined.
+GPU_SYSFS_TARGET_FILE_DEFINED=1
+endif
+
+endif
+# End ----- Mali T83x device -------
 # ==================================
 
 

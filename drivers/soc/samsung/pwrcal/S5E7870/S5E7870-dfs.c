@@ -16,45 +16,6 @@
 #include <mach/ect_parser.h>
 #endif
 
-extern int set_lit_volt;
-extern int set_int_volt;
-extern int set_mif_volt;
-extern int set_g3d_volt;
-extern int set_disp_volt;
-extern int set_cam_volt;
-
-static int common_get_margin_param(unsigned int target_type)
-{
-        int add_volt = 0;
-
-        switch (target_type) {
-        case dvfs_cpucl0:
-                add_volt = set_lit_volt;
-                break;
-        case dvfs_cpucl1:
-                add_volt = set_lit_volt;
-                break;
-        case dvfs_g3d:
-                add_volt = set_g3d_volt;
-                break;
-        case dvfs_mif:
-                add_volt = set_mif_volt;
-                break;
-        case dvfs_int:
-                add_volt = set_int_volt;
-                break;
-        case dvfs_disp:
-                add_volt = set_disp_volt;
-                break;
-        case dvfs_cam:
-                add_volt = set_cam_volt;
-                break;
-        default:
-                return add_volt;
-        }
-        return add_volt;
-}
-
 static struct dfs_switch dfscpucl0_switches[] = {
 	{ 800000,	0,	0	},
 	{ 400000,	0,	1	},
@@ -206,15 +167,25 @@ static void dfsmif_switch_post(unsigned int rate_from, unsigned int rate_to)
 	pwrcal_clk_wait_mif_pause();
 }
 
+static inline unsigned int dfsmif_set_rate_switch(unsigned int rate_from,
+					unsigned int rate_to,
+					struct dfs_table *table)
+{
+	int switch_index = 1;
+
+	if (rate_from >= 800000 && rate_to >= 800000)
+		switch_index = 0;
+	else
+		switch_index = 1;
+
+	pwrcal_div_set_ratio(table->switch_src_div, table->switches[switch_index].div_value + 1);
+	pwrcal_mux_set_src(table->switch_src_mux, table->switches[switch_index].mux_value);
+	return table->switches[switch_index].switch_rate;
+}
+
 static int dfsmif_transition_switch(unsigned int rate_from, unsigned int rate_switch, struct dfs_table *table)
 {
 	int lv_from, lv_switch;
-	unsigned int pause_mux;
-
-	pause_mux = pwrcal_getf(CLK_CON_MUX_CLK_MIF_PHY_CLK2X, 12, 0x1);
-
-	if (pause_mux == 1)
-		return 0;
 
 	lv_from = dfs_get_lv(rate_from, table);
 
@@ -282,52 +253,6 @@ errorout:
 	return -1;
 }
 
-static unsigned long dfs_mif_get_rate(struct dfs_table *table)
-{
-	int l, m;
-	unsigned int cur[128];
-	unsigned long long rate;
-	struct pwrcal_clk *clk;
-	unsigned int pause_mux;
-
-	pause_mux = pwrcal_getf(CLK_CON_MUX_CLK_MIF_PHY_CLK2X, 12, 0x1);
-
-	if (pause_mux == 1)
-		return (unsigned long)676000;
-
-	for (m = 1; m < table->num_of_members; m++) {
-		clk = table->members[m];
-		cur[m] = 0;
-		if (is_pll(clk)) {
-			rate = pwrcal_pll_get_rate(clk);
-			do_div(rate, 1000);
-			cur[m] = (unsigned int)rate;
-		}
-		if (is_mux(clk))
-			cur[m] = pwrcal_mux_get_src(clk);
-		if (is_div(clk))
-			cur[m] = pwrcal_div_get_ratio(clk) - 1;
-		if (is_gate(clk))
-			cur[m] = pwrcal_gate_is_enabled(clk);
-	}
-
-	for (l = 0; l < table->num_of_lv; l++) {
-		for (m = 1; m < table->num_of_members; m++)
-			if (cur[m] != get_value(table, l, m))
-				break;
-
-		if (m == table->num_of_members)
-			return get_value(table, l, 0);
-	}
-
-	for (m = 1; m < table->num_of_members; m++) {
-		clk = table->members[m];
-		pr_err("dfs_get_rate mid : %s : %d\n", clk->name, cur[m]);
-	}
-
-	return 0;
-}
-
 static struct dfs_switch dfsmif_switches[] = {
 	{	1334000,	0,	0	},
 };
@@ -340,7 +265,6 @@ static struct dfs_table dfsmif_table = {
 	.switch_notuse = 0,
 	.private_trans = dfsmif_transition,
 	.private_switch = dfsmif_transition_switch,
-	.private_getrate = dfs_mif_get_rate,
 };
 
 struct pwrcal_clk_set dfsmif_en_list[] = {
@@ -386,10 +310,15 @@ static struct dfs_table dfscam_table = {
 };
 
 struct pwrcal_clk_set dfscam_en_list[] = {
-	{CLK(ISP_DIV_CLK_ISP_APB),	3,	-1},
-	{CLK(ISP_DIV_CLK_ISP_CAM_HALF),	1,	-1},
 	{CLK_NONE,	0,	-1},
 };
+
+static int dfscpucl0_set_ema(unsigned int volt)
+{
+	pwrcal_writel(CPUCL0_EMA_CON, 0x12492);
+
+	return 0;
+}
 
 static int dfscpucl0_init_smpl(void)
 {
@@ -416,13 +345,20 @@ static int dfscpucl0_idle_clock_down(unsigned int enable)
 	return 0;
 }
 static struct vclk_dfs_ops dfscpucl0_dfsops = {
+	.set_ema = dfscpucl0_set_ema,
 	.init_smpl = dfscpucl0_init_smpl,
 	.set_smpl = dfscpucl0_set_smpl,
 	.get_smpl = dfscpucl0_get_smpl,
 	.get_rate_table = dfscpucl0_get_rate_table,
 	.cpu_idle_clock_down = dfscpucl0_idle_clock_down,
-        .get_margin_param = common_get_margin_param,
 };
+
+static int dfscpucl1_set_ema(unsigned int volt)
+{
+	pwrcal_writel(CPUCL1_EMA_CON, 0x12492);
+
+	return 0;
+}
 
 static int dfscpucl1_get_rate_table(unsigned long *table)
 {
@@ -435,10 +371,22 @@ static int dfscpucl1_idle_clock_down(unsigned int enable)
 }
 
 static struct vclk_dfs_ops dfscpucl1_dfsops = {
+	.set_ema = dfscpucl1_set_ema,
 	.get_rate_table = dfscpucl1_get_rate_table,
 	.cpu_idle_clock_down = dfscpucl1_idle_clock_down,
-        .get_margin_param = common_get_margin_param,
 };
+
+static int dfsg3d_set_ema(unsigned int volt)
+{
+	pwrcal_writel(G3D_EMA_RA1_HS_CON, 0x12);
+	pwrcal_writel(G3D_EMA_RF1_HS_CON, 0x12);
+
+	if (volt > 750000)
+		pwrcal_writel(G3D_EMA_RF2_HS_CON, 0x22);
+	else
+		pwrcal_writel(G3D_EMA_RF2_HS_CON, 0x24);
+	return 0;
+}
 
 static int dfsg3d_dvs(int on)
 {
@@ -451,9 +399,9 @@ static int dfsg3d_get_rate_table(unsigned long *table)
 }
 
 static struct vclk_dfs_ops dfsg3d_dfsops = {
+	.set_ema = dfsg3d_set_ema,
 	.dvs = dfsg3d_dvs,
 	.get_rate_table = dfsg3d_get_rate_table,
-        .get_margin_param = common_get_margin_param,
 };
 
 static int dfsmif_get_rate_table(unsigned long *table)
@@ -469,7 +417,6 @@ static int dfsmif_is_dll_on(void)
 static struct vclk_dfs_ops dfsmif_dfsops = {
 	.get_rate_table = dfsmif_get_rate_table,
 	.is_dll_on = dfsmif_is_dll_on,
-        .get_margin_param = common_get_margin_param,
 };
 
 static int dfsint_get_rate_table(unsigned long *table)
@@ -479,7 +426,6 @@ static int dfsint_get_rate_table(unsigned long *table)
 
 static struct vclk_dfs_ops dfsint_dfsops = {
 	.get_rate_table = dfsint_get_rate_table,
-        .get_margin_param = common_get_margin_param,
 };
 
 static int dfsdisp_get_rate_table(unsigned long *table)
@@ -489,7 +435,6 @@ static int dfsdisp_get_rate_table(unsigned long *table)
 
 static struct vclk_dfs_ops dfsdisp_dfsops = {
 	.get_rate_table = dfsdisp_get_rate_table,
-        .get_margin_param = common_get_margin_param,
 };
 
 static int dfscam_get_rate_table(unsigned long *table)
@@ -499,7 +444,6 @@ static int dfscam_get_rate_table(unsigned long *table)
 
 static struct vclk_dfs_ops dfscam_dfsops = {
 	.get_rate_table = dfscam_get_rate_table,
-        .get_margin_param = common_get_margin_param,
 };
 
 

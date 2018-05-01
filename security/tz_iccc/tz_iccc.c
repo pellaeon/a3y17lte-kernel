@@ -223,7 +223,7 @@ iccc_ret:
 static ssize_t iccc_write(struct file *fp, const char __user *buf, size_t len, loff_t *off)
 {
 	uint32_t ret;
-	printk(KERN_ERR "%s:\n", __func__);
+	printk(KERN_INFO"%s:\n", __func__);
 	is_iccc_ready = 1;
 
 #if defined(CONFIG_SECURITY_SELINUX)

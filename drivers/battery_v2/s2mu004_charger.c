@@ -209,8 +209,7 @@ static void s2mu004_enable_charger_switch(
 #if defined(CONFIG_BATTERY_SWELLING)
 				swelling_mode ||
 #endif
-				(cable_type == POWER_SUPPLY_TYPE_PDIC) ||
-				(cable_type == POWER_SUPPLY_TYPE_UARTOFF)) {
+				(cable_type == POWER_SUPPLY_TYPE_PDIC)) {
 				/* Digital IVR */
 				s2mu004_analog_ivr_switch(charger, DISABLE);
 			}
@@ -244,7 +243,6 @@ static void s2mu004_enable_charger_switch(
 			s2mu004_analog_ivr_switch(charger, DISABLE);
 		}
 #endif
-		mdelay(30);
 		s2mu004_update_reg(charger->i2c, S2MU004_CHG_CTRL0, BUCK_MODE, REG_MODE_MASK);
 
 		/* async on */
@@ -581,6 +579,9 @@ static bool s2mu004_chg_init(struct s2mu004_charger_data *charger)
 	/* Top off debounce time set 1 sec */
 	s2mu004_update_reg(charger->i2c, 0xC0, 0x3 << 6 , 0x3 << 6);
 
+	/* SC_CTRL21 register Minumum Charging OCP Level set to 6A */
+	s2mu004_write_reg(charger->i2c, 0x29, 0x04);
+
 	switch (charger->pdata->chg_switching_freq) {
 	case S2MU004_OSC_BUCK_FRQ_750kHz :
 		s2mu004_update_reg(charger->i2c, S2MU004_CHG_CTRL12,
@@ -837,7 +838,7 @@ static int s2mu004_chg_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CHARGE_TYPE:
 		val->intval = s2mu004_get_charge_type(charger);
 		break;
-#if defined(CONFIG_BATTERY_SWELLING) || defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING)
+#if defined(CONFIG_BATTERY_SWELLING)
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		val->intval = s2mu004_get_regulation_voltage(charger);
 		break;
@@ -927,7 +928,7 @@ static int s2mu004_chg_set_property(struct power_supply *psy,
 			s2mu004_set_topoff_current(charger, 1, val->intval);
 		break;
 
-#if defined(CONFIG_BATTERY_SWELLING) || defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING)
+#if defined(CONFIG_BATTERY_SWELLING)
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		pr_info("[DEBUG]%s: float voltage(%d)\n", __func__, val->intval);
 		charger->pdata->chg_float_voltage = val->intval;

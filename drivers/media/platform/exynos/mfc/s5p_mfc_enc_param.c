@@ -1095,15 +1095,15 @@ int s5p_mfc_set_enc_params_hevc(struct s5p_mfc_ctx *ctx)
 	}
 	MFC_WRITEL(reg, S5P_FIMV_E_NUM_T_LAYER);
 	mfc_debug(2, "set Temporal SVC : hier_qp_enable %d, enable_ltr %d "
-		"num_hier_layer %d, hier_ref_type %d, NUM_T_LAYER 0x%x\n",
-		p_hevc->hier_qp_enable, p_hevc->enable_ltr,
-		p_hevc->num_hier_layer, p_hevc->hier_ref_type, reg);
+			"num_hier_layer %d, hier_ref_type %d, NUM_T_LAYER 0x%x\n",
+			p_hevc->hier_qp_enable, p_hevc->enable_ltr,
+			p_hevc->num_hier_layer, p_hevc->hier_ref_type, reg);
 	/* QP & Bitrate for each layer */
 	for (i = 0; i < 7; i++) {
 		MFC_WRITEL(p_hevc->hier_qp_layer[i],
-			S5P_FIMV_E_HIERARCHICAL_QP_LAYER0 + i * 4);
+				S5P_FIMV_E_HIERARCHICAL_QP_LAYER0 + i * 4);
 		MFC_WRITEL(p_hevc->hier_bit_layer[i],
-			S5P_FIMV_E_HIERARCHICAL_BIT_RATE_LAYER0 + i * 4);
+				S5P_FIMV_E_HIERARCHICAL_BIT_RATE_LAYER0 + i * 4);
 	}
 
 	/* rate control config. */
@@ -1160,12 +1160,6 @@ int s5p_mfc_set_enc_params_hevc(struct s5p_mfc_ctx *ctx)
 	reg &= ~(0xFF);
 	reg |= (p_hevc->rc_frame_qp & 0xFF);
 	MFC_WRITEL(reg, S5P_FIMV_E_FIXED_PICTURE_QP);
-
-	/* ROI enable: it must set on SEQ_START only for HEVC encoder */
-	reg = MFC_READL(S5P_FIMV_E_RC_ROI_CTRL);
-	reg &= ~(0x1);
-	reg |= (p_hevc->roi_enable);
-	MFC_WRITEL(reg, S5P_FIMV_E_RC_ROI_CTRL);
 
 	mfc_debug_leave();
 

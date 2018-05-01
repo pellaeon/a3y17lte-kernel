@@ -25,22 +25,6 @@
 #include "fimc-is-core.h"
 #include "fimc-is-dvfs.h"
 
-#ifdef CONFIG_CAMERA_USE_SOC_SENSOR
-#include <linux/kernel.h>
-#include <linux/types.h>
-#include <linux/gpio.h>
-#include <linux/clk.h>
-#include <linux/err.h>
-#include <linux/platform_device.h>
-#include <linux/io.h>
-#include <linux/regulator/consumer.h>
-#include <linux/delay.h>
-#include <linux/clk-provider.h>
-#include <linux/clkdev.h>
-#include <mach/map.h>
-#include <media/v4l2-subdev.h>
-#endif
-
 #ifdef CONFIG_OF
 static int get_pin_lookup_state(struct pinctrl *pinctrl,
 	struct exynos_sensor_pin (*pin_ctrls)[GPIO_SCENARIO_MAX][GPIO_CTRL_MAX])
@@ -171,6 +155,9 @@ static int parse_dvfs_data(struct exynos_platform_fimc_is *pdata, struct device_
 
 		sprintf(buf, "%s%s", fimc_is_dvfs_dt_arr[i].parse_scenario_nm, "i2c");
 		DT_READ_U32(np, buf, pdata->dvfs_data[index][fimc_is_dvfs_dt_arr[i].scenario_id][FIMC_IS_DVFS_I2C]);
+
+		sprintf(buf, "%s%s", fimc_is_dvfs_dt_arr[i].parse_scenario_nm, "hpg");
+		DT_READ_U32(np, buf, pdata->dvfs_data[index][fimc_is_dvfs_dt_arr[i].scenario_id][FIMC_IS_DVFS_HPG]);
 	}
 
 #ifdef DBG_DUMP_DVFS_DT
@@ -180,6 +167,7 @@ static int parse_dvfs_data(struct exynos_platform_fimc_is *pdata, struct device_
 		probe_info("[%d][%d][CAM] = %d", index, i, pdata->dvfs_data[index][i][FIMC_IS_DVFS_CAM]);
 		probe_info("[%d][%d][MIF] = %d", index, i, pdata->dvfs_data[index][i][FIMC_IS_DVFS_MIF]);
 		probe_info("[%d][%d][I2C] = %d", index, i, pdata->dvfs_data[index][i][FIMC_IS_DVFS_I2C]);
+		probe_info("[%d][%d][HPG] = %d", index, i, pdata->dvfs_data[index][i][FIMC_IS_DVFS_HPG]);
 	}
 #endif
 	return 0;
@@ -340,6 +328,18 @@ int fimc_is_sensor_parse_dt(struct platform_device *pdev)
 		goto p_err;
 	}
 
+	if (of_property_read_bool(dnode, "use_ssvc0_internal"))
+		set_bit(SUBDEV_SSVC0_INTERNAL_USE, &pdata->internal_state);
+
+	if (of_property_read_bool(dnode, "use_ssvc1_internal"))
+		set_bit(SUBDEV_SSVC1_INTERNAL_USE, &pdata->internal_state);
+
+	if (of_property_read_bool(dnode, "use_ssvc2_internal"))
+		set_bit(SUBDEV_SSVC2_INTERNAL_USE, &pdata->internal_state);
+
+	if (of_property_read_bool(dnode, "use_ssvc3_internal"))
+		set_bit(SUBDEV_SSVC3_INTERNAL_USE, &pdata->internal_state);
+
 	pdev->id = pdata->id;
 	dev->platform_data = pdata;
 
@@ -387,20 +387,6 @@ int fimc_is_preprocessor_parse_dt(struct platform_device *pdev)
 	if (ret) {
 		probe_err("csi_ch read is fail(%d)", ret);
 		goto p_err;
-	}
-
-	ret = of_property_read_string(dnode, "pinctrl_name", (const char **)&pdata->pinctrl_name);
-	if (ret) {
-		probe_warn("fail to read, pinctrl_name");
-		pdata->pinctrl_name = NULL;
-		ret = 0;
-	}
-
-	ret = of_property_read_string(dnode, "int_pin_name", (const char **)&pdata->int_pin_name);
-	if (ret) {
-		probe_warn("fail to read, int_pin_name");
-		pdata->int_pin_name = NULL;
-		ret = 0;
 	}
 
 	pdata->iclk_cfg = exynos_fimc_is_preproc_iclk_cfg;
@@ -468,6 +454,91 @@ static int parse_ois_data(struct exynos_platform_fimc_is_module *pdata, struct d
 	return 0;
 }
 
+static int parse_power_seq_data(struct exynos_platform_fimc_is_module *pdata, struct device_node *dnode)
+{
+	u32 temp;
+	char *pprop;
+	char *name;
+	struct device_node *sn_np, *seq_np;
+
+	for_each_child_of_node(dnode, sn_np) {
+		u32 sensor_scenario, gpio_scenario;
+
+		DT_READ_U32(sn_np, "sensor_scenario", sensor_scenario);
+		DT_READ_U32(sn_np, "gpio_scenario",gpio_scenario);
+
+		pr_info("power_seq[%s] : sensor_scenario=%d, gpio_scenario=%d\n",
+			sn_np->name, sensor_scenario, gpio_scenario);
+
+		SET_PIN_INIT(pdata, sensor_scenario, gpio_scenario);
+
+		for_each_child_of_node(sn_np, seq_np) {
+			struct exynos_sensor_pin sensor_pin;
+			char* pin_name;
+
+			memset(&sensor_pin, 0, sizeof(struct exynos_sensor_pin));
+
+			DT_READ_STR(seq_np, "pin", pin_name);
+			if(!strcmp(pin_name, "gpio_none"))
+				sensor_pin.pin = 0;
+			else
+				sensor_pin.pin = of_get_named_gpio(dnode->parent, pin_name, 0);
+
+			DT_READ_STR(seq_np, "pname", sensor_pin.name);
+			if(sensor_pin.name[0] == '\0')
+				sensor_pin.name = NULL;
+
+			DT_READ_U32(seq_np, "act", sensor_pin.act);
+			DT_READ_U32(seq_np, "value", sensor_pin.value);
+			DT_READ_U32(seq_np, "delay", sensor_pin.delay);
+			DT_READ_U32(seq_np, "voltage", sensor_pin.voltage);
+
+			pr_debug("power_seq node_name=%s\n", seq_np->full_name);
+			pr_info("power_seq SET_PIN: pin_name=%s, name=%s, act=%d, value=%d, delay=%d, voltage=%d\n",
+				pin_name, sensor_pin.name, sensor_pin.act, sensor_pin.value, sensor_pin.delay, sensor_pin.voltage);
+
+			SET_PIN_VOLTAGE(pdata, sensor_scenario, gpio_scenario, sensor_pin.pin, sensor_pin.name,
+				sensor_pin.act, sensor_pin.value, sensor_pin.delay, sensor_pin.voltage);
+		}
+	}
+
+	return 0;
+}
+
+static int parse_internal_vc_data(struct exynos_platform_fimc_is_module *pdata, struct device_node *dnode)
+{
+	int ret = 0;
+	int vc_count = 0;
+	int i;
+	u32 ch = 0;
+
+	vc_count = of_property_count_elems_of_size(dnode, "vc_list", sizeof(u32)) / 2;
+	if (vc_count >= CSI_VIRTUAL_CH_MAX) {
+		probe_err("vc_list exceed to csi ch max(%d)", vc_count);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < vc_count; i++) {
+		/* parse channel info */
+		ret = of_property_read_u32_index(dnode, "vc_list", i * 2, &ch);
+		if (ret) {
+			probe_err("internal vc read fail(%d)", ret);
+			return ret;
+		}
+
+		/* parse internal vc type info */
+		ret = of_property_read_u32_index(dnode, "vc_list", i * 2 + 1, &pdata->internal_vc[ch]);
+		if (ret) {
+			probe_err("internal vc_type read fail(%d)", ret);
+			return ret;
+		}
+
+		probe_info("internal vc(%d), type(%d)", ch, pdata->internal_vc[ch]);
+	}
+
+	return ret;
+}
+
 /* Deprecated. Use  fimc_is_module_parse_dt */
 int fimc_is_sensor_module_parse_dt(struct platform_device *pdev,
 	fimc_is_moudle_dt_callback module_callback)
@@ -479,6 +550,8 @@ int fimc_is_sensor_module_parse_dt(struct platform_device *pdev,
 	struct device_node *flash_np;
 	struct device_node *preprocessor_np;
 	struct device_node *ois_np;
+	struct device_node *power_np;
+	struct device_node *internal_vc_np;
 	struct device *dev;
 
 	BUG_ON(!pdev);
@@ -496,10 +569,7 @@ int fimc_is_sensor_module_parse_dt(struct platform_device *pdev,
 
 	pdata->gpio_cfg = exynos_fimc_is_module_pins_cfg;
 	pdata->gpio_dbg = exynos_fimc_is_module_pins_dbg;
-#ifdef CONFIG_CAMERA_USE_SOC_SENSOR
-	pdata->gpio_soc_cfg = NULL;
-	pdata->gpio_soc_dbg = NULL;
-#endif
+
 	ret = of_property_read_u32(dnode, "id", &pdata->id);
 	if (ret) {
 		probe_err("id read is fail(%d)", ret);
@@ -558,10 +628,21 @@ int fimc_is_sensor_module_parse_dt(struct platform_device *pdev,
 		parse_ois_data(pdata, ois_np);
 	}
 
-	ret = module_callback(pdev, pdata);
-	if (ret) {
-		probe_err("sensor dt callback is fail(%d)", ret);
-		goto p_err;
+	pdata->power_seq_dt = of_property_read_bool(dnode, "use_power_seq");
+	if(pdata->power_seq_dt == true) {
+		power_np = of_find_node_by_name(dnode, "power_seq");
+		if (!power_np) {
+			probe_err("power sequence is not declared to DT");
+			goto p_err;
+		} else {
+			parse_power_seq_data(pdata, power_np);
+		}
+	} else {
+		ret = module_callback(pdev, pdata);
+		if (ret) {
+			probe_err("sensor dt callback is fail(%d)", ret);
+			goto p_err;
+		}
 	}
 
 	pdata->pinctrl = devm_pinctrl_get(dev);
@@ -576,6 +657,10 @@ int fimc_is_sensor_module_parse_dt(struct platform_device *pdev,
 		goto p_err;
 	}
 
+	internal_vc_np = of_find_node_by_name(dnode, "internal_vc");
+	if (internal_vc_np)
+		parse_internal_vc_data(pdata, internal_vc_np);
+
 	dev->platform_data = pdata;
 
 	return ret;
@@ -585,7 +670,7 @@ p_err:
 	return ret;
 }
 
-/* New function for module parse dt. Use this instead of fimc_is_sensor_module_parse_dt */ 
+/* New function for module parse dt. Use this instead of fimc_is_sensor_module_parse_dt */
 int fimc_is_module_parse_dt(struct device *dev,
 	fimc_is_moudle_callback module_callback)
 {
@@ -596,6 +681,7 @@ int fimc_is_module_parse_dt(struct device *dev,
 	struct device_node *flash_np;
 	struct device_node *preprocessor_np;
 	struct device_node *ois_np;
+	struct device_node *internal_vc_np;
 
 	BUG_ON(!dev);
 	BUG_ON(!dev->of_node);
@@ -685,6 +771,10 @@ int fimc_is_module_parse_dt(struct device *dev,
 		goto p_err;
 	}
 
+	internal_vc_np = of_find_node_by_name(dnode, "internal_vc");
+	if (internal_vc_np)
+		parse_internal_vc_data(pdata, internal_vc_np);
+
 	dev->platform_data = pdata;
 
 	return ret;
@@ -693,379 +783,6 @@ p_err:
 	kfree(pdata);
 	return ret;
 }
-
-#ifdef CONFIG_CAMERA_USE_SOC_SENSOR
-static int exynos_fimc_is_module_soc_pin_control(struct i2c_client *client,
-	struct pinctrl *pinctrl, struct exynos_sensor_pin *pin_ctrls)
-{
-	char* name = pin_ctrls->name;
-	ulong pin = pin_ctrls->pin;
-	u32 delay = pin_ctrls->delay;
-	u32 value = pin_ctrls->value;
-	u32 voltage = pin_ctrls->voltage;
-	enum pin_act act = pin_ctrls->act;
-	int ret = 0;
-
-	switch (act) {
-	case PIN_NONE:
-		usleep_range(delay, delay);
-		break;
-	case PIN_OUTPUT:
-		if (gpio_is_valid(pin)) {
-			if (value)
-				gpio_request_one(pin, GPIOF_OUT_INIT_HIGH, "CAM_GPIO_OUTPUT_HIGH");
-			else
-				gpio_request_one(pin, GPIOF_OUT_INIT_LOW, "CAM_GPIO_OUTPUT_LOW");
-			usleep_range(delay, delay);
-			gpio_free(pin);
-		}
-		break;
-	case PIN_INPUT:
-		if (gpio_is_valid(pin)) {
-			gpio_request_one(pin, GPIOF_IN, "CAM_GPIO_INPUT");
-			usleep_range(delay, delay);
-			gpio_free(pin);
-		}
-		break;
-	case PIN_RESET:
-		if (gpio_is_valid(pin)) {
-			gpio_request_one(pin, GPIOF_OUT_INIT_HIGH, "CAM_GPIO_RESET");
-			usleep_range(1000, 1000);
-			__gpio_set_value(pin, 0);
-			usleep_range(1000, 1000);
-			__gpio_set_value(pin, 1);
-			usleep_range(1000, 1000);
-			gpio_free(pin);
-		}
-		break;
-	case PIN_FUNCTION:
-		{
-			struct pinctrl_state *s = (struct pinctrl_state *)pin;
-
-			ret = pinctrl_select_state(pinctrl, s);
-			if (ret < 0) {
-				pr_err("pinctrl_select_state(%s) is fail(%d)\n", name, ret);
-				return ret;
-			}
-			usleep_range(delay, delay);
-		}
-		break;
-	case PIN_REGULATOR:
-		{
-			struct regulator *regulator = NULL;
-
-			regulator = regulator_get(&client->dev, name);
-			if (IS_ERR_OR_NULL(regulator)) {
-				pr_err("%s : regulator_get(%s) fail\n", __func__, name);
-				return PTR_ERR(regulator);
-			}
-
-			if (value) {
-				if(voltage > 0) {
-					pr_info("%s : regulator_set_voltage(%d)\n",__func__, voltage);
-					ret = regulator_set_voltage(regulator, voltage, voltage);
-					if(ret) {
-						pr_err("%s : regulator_set_voltage(%d) fail\n", __func__, ret);
-					}
-				}
-
-				if (regulator_is_enabled(regulator)) {
-					pr_warning("%s regulator is already enabled\n", name);
-					regulator_put(regulator);
-					return 0;
-				}
-
-				ret = regulator_enable(regulator);
-				if (ret) {
-					pr_err("%s : regulator_enable(%s) fail\n", __func__, name);
-					regulator_put(regulator);
-					return ret;
-				}
-			} else {
-				if (!regulator_is_enabled(regulator)) {
-					pr_warning("%s regulator is already disabled\n", name);
-					regulator_put(regulator);
-					return 0;
-				}
-
-				ret = regulator_disable(regulator);
-				if (ret) {
-					pr_err("%s : regulator_disable(%s) fail\n", __func__, name);
-					regulator_put(regulator);
-					return ret;
-				}
-			}
-
-			usleep_range(delay, delay);
-			regulator_put(regulator);
-		}
-		break;
-	default:
-		pr_err("unknown act for pin\n");
-		break;
-	}
-
-	return ret;
-}
-
-int exynos_fimc_is_module_soc_pins_cfg(struct i2c_client *client,
-	u32 scenario,
-	u32 enable)
-{
-	int ret = 0;
-	u32 idx_max, idx;
-	struct pinctrl *pinctrl;
-	struct exynos_sensor_pin (*pin_ctrls)[GPIO_SCENARIO_MAX][GPIO_CTRL_MAX];
-	struct exynos_platform_fimc_is_module *pdata;
-	struct fimc_is_module_enum *module;
-	struct v4l2_subdev *subdev_module;
-
-	BUG_ON(!client);
-	subdev_module = (struct v4l2_subdev *)i2c_get_clientdata(client);
-
-	BUG_ON(!subdev_module);
-	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev_module);
-
-	BUG_ON(!module);
-	BUG_ON(!module->pdata);
-
-	pdata = module->pdata;
-
-	BUG_ON(enable > 1);
-	BUG_ON(scenario > SENSOR_SCENARIO_MAX);
-
-	pinctrl = pdata->pinctrl;
-	pin_ctrls = pdata->pin_ctrls;
-	idx_max = pdata->pinctrl_index[scenario][enable];
-
-	/* print configs */
-	for (idx = 0; idx < idx_max; ++idx) {
-		printk(KERN_DEBUG "[@] pin_ctrl(act(%d), pin(%ld), val(%d), nm(%s)\n",
-			pin_ctrls[scenario][enable][idx].act,
-			(pin_ctrls[scenario][enable][idx].act == PIN_FUNCTION) ? 0 : pin_ctrls[scenario][enable][idx].pin,
-			pin_ctrls[scenario][enable][idx].value,
-			pin_ctrls[scenario][enable][idx].name);
-	}
-
-	/* do configs */
-	for (idx = 0; idx < idx_max; ++idx) {
-		ret = exynos_fimc_is_module_soc_pin_control(client, pinctrl, &pin_ctrls[scenario][enable][idx]);
-		if (ret) {
-			pr_err("[@] exynos_fimc_is_sensor_gpio(%d) is fail(%d)", idx, ret);
-			goto p_err;
-		}
-	}
-
-p_err:
-	return ret;
-}
-
-static int exynos_fimc_is_module_soc_pin_debug(struct i2c_client *client,
-	struct pinctrl *pinctrl, struct exynos_sensor_pin *pin_ctrls)
-{
-	int ret = 0;
-	ulong pin = pin_ctrls->pin;
-	char* name = pin_ctrls->name;
-	enum pin_act act = pin_ctrls->act;
-
-	switch (act) {
-	case PIN_NONE:
-		break;
-	case PIN_OUTPUT:
-	case PIN_INPUT:
-	case PIN_RESET:
-		if (gpio_is_valid(pin))
-			pr_info("[@] pin %s : %d\n", name, gpio_get_value(pin));
-		break;
-	case PIN_FUNCTION:
-#if 0 // TEMP_CARMEN2
-		{
-			/* there is no way to get pin by name after probe */
-			ulong base, pin;
-			u32 index;
-
-			base = (ulong)ioremap_nocache(0x13470000, 0x10000);
-
-			index = 0x60; /* GPC2 */
-			pin = base + index;
-			pr_info("[@] CON[0x%X] : 0x%X\n", index, readl((void *)pin));
-			pr_info("[@] DAT[0x%X] : 0x%X\n", index, readl((void *)(pin + 4)));
-
-			index = 0x160; /* GPD7 */
-			pin = base + index;
-			pr_info("[@] CON[0x%X] : 0x%X\n", index, readl((void *)pin));
-			pr_info("[@] DAT[0x%X] : 0x%X\n", index, readl((void *)(pin + 4)));
-
-			iounmap((void *)base);
-		}
-#endif
-		break;
-	case PIN_REGULATOR:
-		{
-			struct regulator *regulator;
-			int voltage;
-
-			regulator = regulator_get(&client->dev, name);
-			if (IS_ERR(regulator)) {
-				pr_err("%s : regulator_get(%s) fail\n", __func__, name);
-				return PTR_ERR(regulator);
-			}
-
-			if (regulator_is_enabled(regulator))
-				voltage = regulator_get_voltage(regulator);
-			else
-				voltage = 0;
-
-			regulator_put(regulator);
-
-			pr_info("[@] %s LDO : %d\n", name, voltage);
-		}
-		break;
-	default:
-		pr_err("unknown act for pin\n");
-		break;
-	}
-
-	return ret;
-}
-
-int exynos_fimc_is_module_soc_pins_dbg(struct i2c_client *client,
-	u32 scenario,
-	u32 enable)
-{
-	int ret = 0;
-	u32 idx_max, idx;
-	struct pinctrl *pinctrl;
-	struct exynos_sensor_pin (*pin_ctrls)[GPIO_SCENARIO_MAX][GPIO_CTRL_MAX];
-	struct exynos_platform_fimc_is_module *pdata;
-	struct fimc_is_module_enum *module;
-	struct v4l2_subdev *subdev_module;
-
-	BUG_ON(!client);
-	subdev_module = (struct v4l2_subdev *)i2c_get_clientdata(client);
-
-	BUG_ON(!subdev_module);
-	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev_module);
-	BUG_ON(!module);
-	BUG_ON(!module->pdata);
-
-	pdata = module->pdata;
-
-	pinctrl = pdata->pinctrl;
-	pin_ctrls = pdata->pin_ctrls;
-	idx_max = pdata->pinctrl_index[scenario][enable];
-
-	/* print configs */
-	for (idx = 0; idx < idx_max; ++idx) {
-		printk(KERN_DEBUG "[@] pin_ctrl(act(%d), pin(%ld), val(%d), nm(%s)\n",
-			pin_ctrls[scenario][enable][idx].act,
-			(pin_ctrls[scenario][enable][idx].act == PIN_FUNCTION) ? 0 : pin_ctrls[scenario][enable][idx].pin,
-			pin_ctrls[scenario][enable][idx].value,
-			pin_ctrls[scenario][enable][idx].name);
-	}
-
-	/* do configs */
-	for (idx = 0; idx < idx_max; ++idx) {
-		ret = exynos_fimc_is_module_soc_pin_debug(client, pinctrl, &pin_ctrls[scenario][enable][idx]);
-		if (ret) {
-			pr_err("[@] exynos_fimc_is_sensor_gpio(%d) is fail(%d)", idx, ret);
-			goto p_err;
-		}
-	}
-
-p_err:
-	return ret;
-}
-
-int fimc_is_sensor_module_soc_parse_dt(struct i2c_client *client,
-	struct exynos_platform_fimc_is_module *pdata,
-	fimc_is_moudle_soc_dt_callback module_callback)
-{
-	int ret = 0;
-	struct device_node *dnode;
-	struct device_node *af_np;
-	struct device_node *flash_np;
-
-	BUG_ON(!client);
-	BUG_ON(!client->dev.of_node);
-	BUG_ON(!module_callback);
-
-	dnode = client->dev.of_node;
-
-	pdata->gpio_cfg = NULL;
-	pdata->gpio_dbg = NULL;
-	pdata->gpio_soc_cfg = exynos_fimc_is_module_soc_pins_cfg;
-	pdata->gpio_soc_dbg = exynos_fimc_is_module_soc_pins_dbg;
-
-	ret = of_property_read_u32(dnode, "id", &pdata->id);
-	if (ret) {
-		err("id read is fail(%d)", ret);
-		goto p_err;
-	}
-
-	ret = of_property_read_u32(dnode, "mclk_ch", &pdata->mclk_ch);
-	if (ret) {
-		err("mclk_ch read is fail(%d)", ret);
-		goto p_err;
-	}
-
-	ret = of_property_read_u32(dnode, "sensor_i2c_ch", &pdata->sensor_i2c_ch);
-	if (ret) {
-		err("i2c_ch read is fail(%d)", ret);
-		goto p_err;
-	}
-
-	ret = of_property_read_u32(dnode, "sensor_i2c_addr", &pdata->sensor_i2c_addr);
-	if (ret) {
-		err("i2c_addr read is fail(%d)", ret);
-		goto p_err;
-	}
-
-	ret = of_property_read_u32(dnode, "position", &pdata->position);
-	if (ret) {
-		err("id read is fail(%d)", ret);
-		goto p_err;
-	}
-
-	af_np = of_find_node_by_name(dnode, "af");
-	if (!af_np) {
-		pdata->af_product_name = ACTUATOR_NAME_NOTHING;
-	} else {
-		parse_af_data(pdata, af_np);
-	}
-
-	flash_np = of_find_node_by_name(dnode, "flash");
-	if (!flash_np) {
-		pdata->flash_product_name = FLADRV_NAME_NOTHING;
-	} else {
-		parse_flash_data(pdata, flash_np);
-	}
-
-	ret = module_callback(client, pdata);
-	if (ret) {
-		err("sensor dt callback is fail(%d)", ret);
-		goto p_err;
-	}
-
-	pdata->pinctrl = devm_pinctrl_get(&client->dev);
-	if (IS_ERR(pdata->pinctrl)) {
-		err("devm_pinctrl_get is fail");
-		goto p_err;
-	}
-
-	ret = get_pin_lookup_state(pdata->pinctrl, pdata->pin_ctrls);
-	if (ret) {
-		err("get_pin_lookup_state is fail(%d)", ret);
-		goto p_err;
-	}
-
-	return ret;
-
-p_err:
-	kfree(pdata);
-	return ret;
-}
-#endif /*CONFIG_CAMERA_USE_SOC_SENSOR*/
 
 int fimc_is_spi_parse_dt(struct fimc_is_spi *spi)
 {

@@ -257,7 +257,6 @@ int decon_reg_wait_linecnt_is_zero_timeout(u32 id, int dsi_idx,
 
 	if (!cnt) {
 		decon_err("wait timeout linecount is zero(%u)\n", linecnt);
-		DISP_SS_DUMP(DISP_DUMP_LINECNT_ZERO);
 		return -EBUSY;
 	}
 
@@ -436,21 +435,19 @@ int decon_reg_stop(u32 id, enum decon_dsi_mode dsi_mode,
 			(psr->trig_mode == DECON_HW_TRIG)) {
 		decon_reg_set_trigger(id, dsi_mode, psr->trig_mode,
 				DECON_TRIG_DISABLE);
-
-		ret = decon_reg_wait_linecnt_is_zero_timeout(id, 0, 50 * 1000);
-		if (ret)
-			goto err;
 	}
 
 	if (decon_reg_get_stop_status(id) == 1) {
 		/* timeout : 50ms */
 		/* TODO: dual DSI scenario */
+		ret = decon_reg_wait_linecnt_is_zero_timeout(id, 0, 50 * 1000);
+		if (ret)
+			goto err;
+
 		if (psr->psr_mode == DECON_MIPI_COMMAND_MODE)
 			decon_reg_direct_on_off(id, 0);
-		else {
+		else
 			decon_reg_per_frame_off(id);
-			decon_reg_update_standalone(id);
-		}
 
 		/* timeout : 20ms */
 		ret = decon_reg_wait_stop_status_timeout(id, 20 * 1000);
@@ -513,8 +510,7 @@ void decon_reg_set_int(u32 id, struct decon_psr_info *psr,
 		if (psr->psr_mode == DECON_MIPI_COMMAND_MODE) {
 			decon_write_mask(id, VIDINTCON1, ~0,
 						VIDINTCON1_INT_I80);
-			val |= VIDINTCON0_INT_FIFO | VIDINTCON0_INT_I80_EN | VIDINTCON0_INT_FRAME
-				| VIDINTCON0_FRAMESEL0_VSYNC;
+			val |= VIDINTCON0_INT_FIFO | VIDINTCON0_INT_I80_EN;
 		} else {
 			val |= VIDINTCON0_INT_FIFO | VIDINTCON0_INT_FRAME
 				| VIDINTCON0_FRAMESEL0_VSYNC;
@@ -552,21 +548,16 @@ int decon_reg_wait_for_update_timeout(u32 id, unsigned long timeout)
 {
 	unsigned long delay_time = 100;
 	unsigned long cnt = timeout / delay_time;
-	struct decon_device *decon = get_decon_drvdata(id);
 
-	while ((decon_read(id, DECON_UPDATE) & DECON_UPDATE_STANDALONE_F) && --cnt) {
-		if (decon->pdata->psr_mode == DECON_MIPI_COMMAND_MODE && decon->ignore_vsync)
-			goto wait_exit;
-
+	while ((decon_read(id, DECON_UPDATE) & DECON_UPDATE_STANDALONE_F) &&
+				--cnt)
 		udelay(delay_time);
-	}
 
 	if (!cnt) {
 		decon_err("timeout of updating decon registers\n");
 		return -EBUSY;
 	}
 
-wait_exit:
 	return 0;
 }
 

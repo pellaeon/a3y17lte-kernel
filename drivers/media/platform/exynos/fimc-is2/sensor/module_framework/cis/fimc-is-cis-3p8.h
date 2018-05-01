@@ -27,7 +27,5 @@
 
 #define USE_GROUP_PARAM_HOLD	(0)
 
-#define NUMBER_OF_PIPELINE		(4)
-
 #endif
 

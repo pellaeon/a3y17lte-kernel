@@ -354,7 +354,7 @@ static void eax_adma_buffdone(void *data)
 	dma_addr_t src, dst, pos;
 	int buf_idx;
 
-	if (!di.running || !di.params->ch)
+	if (!di.running || !di.params->ch || !di.params_init)
 		return;
 
 	di.params->ops->getposition(di.params->ch, &src, &dst);
@@ -436,14 +436,13 @@ static void eax_adma_hw_free(struct snd_pcm_substream *substream)
 			di.params->ops->flush(di.params->ch);
 			di.params->ops->release(di.params->ch, di.params->client);
 		}
-	}
 
-	while (!waitqueue_active(&mixer_run_wq)) {
+		while (!waitqueue_active(&mixer_run_wq)) {
 			if (mi.running)
 				break;
 			usleep_range(50, 100);
+		}
 	}
-
 	di.params_done = false;
 	di.prepare_done = false;
 out:
@@ -501,20 +500,29 @@ out:
 
 static void eax_adma_trigger(bool on)
 {
-	spin_lock(&di.lock);
+	unsigned long flags;
+
+	spin_lock_irqsave(&di.lock, flags);
 
 	if (on) {
 		di.running = on;
 		lpass_dma_enable(true);
-		di.params->ops->trigger(di.params->ch);
+		inc_dram_usage_count();
+		/* eax always uses dram */
+		lpass_update_lpclock(LPCLK_CTRLID_LEGACY, true);
+		if (di.params->ch)
+			di.params->ops->trigger(di.params->ch);
 	} else {
-		di.params->ops->stop(di.params->ch);
+		if (di.params->ch)
+			di.params->ops->stop(di.params->ch);
 		lpass_dma_enable(false);
+		dec_dram_usage_count();
 		di.prepare_done = false;
 		di.running = on;
+		lpass_update_lpclock(LPCLK_CTRLID_LEGACY, false);
 	}
 
-	spin_unlock(&di.lock);
+	spin_unlock_irqrestore(&di.lock, flags);
 }
 
 static inline void eax_dma_xfer(struct runtime_data *prtd,
@@ -1023,7 +1031,7 @@ static void eax_mixer_write(void)
 	int ret;
 
 	spin_lock(&mi.lock);
-	if (!eax_mixer_any_buf_running() || !mi.running) {
+	if (!eax_mixer_any_buf_running()) {
 		spin_unlock(&mi.lock);
 		return;
 	}

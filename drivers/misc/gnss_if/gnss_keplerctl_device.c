@@ -18,7 +18,7 @@
 #include <linux/gpio.h>
 #include <linux/delay.h>
 #include <linux/platform_device.h>
-#include <linux/regulator/consumer.h>
+#include <linux/clk-private.h>
 #include <linux/mcu_ipc.h>
 
 #include <asm/cacheflush.h>
@@ -189,6 +189,12 @@ static int kepler_hold_reset(struct gnss_ctl *gc)
 	}
 
 	gc->iod->gnss_state_changed(gc->iod, STATE_HOLD_RESET);
+
+	if (gc->ccore_qch_lh_gnss) {
+		clk_disable_unprepare(gc->ccore_qch_lh_gnss);
+		gif_err("Disabled GNSS Qch\n");
+	}
+
 	gc->pmu_ops.hold_reset(gc);
 	mbox_sw_reset(MCU_GNSS);
 
@@ -197,20 +203,38 @@ static int kepler_hold_reset(struct gnss_ctl *gc)
 
 static int kepler_release_reset(struct gnss_ctl *gc)
 {
+	int ret;
 	gif_err("%s\n", __func__);
 
 	gc->iod->gnss_state_changed(gc->iod, STATE_ONLINE);
 	gc->pmu_ops.release_reset(gc);
+
+	if (gc->ccore_qch_lh_gnss) {
+		ret = clk_prepare_enable(gc->ccore_qch_lh_gnss);
+		if (!ret)
+			gif_err("GNSS Qch enabled\n");
+		else
+			gif_err("Could not enable Qch (%d)\n", ret);
+	}
 
 	return 0;
 }
 
 static int kepler_power_on(struct gnss_ctl *gc)
 {
+	int ret;
 	gif_err("%s\n", __func__);
 
 	gc->iod->gnss_state_changed(gc->iod, STATE_ONLINE);
 	gc->pmu_ops.power_on(gc, GNSS_POWER_ON);
+
+	if (gc->ccore_qch_lh_gnss) {
+		ret = clk_prepare_enable(gc->ccore_qch_lh_gnss);
+		if (!ret)
+			gif_err("GNSS Qch enabled\n");
+		else
+			gif_err("Could not enable Qch (%d)\n", ret);
+	}
 
 	return 0;
 }
@@ -274,27 +298,6 @@ static int kepler_change_gpio(struct gnss_ctl *gc)
 	return status;
 }
 
-static int kepler_set_sensor_power(struct gnss_ctl *gc, unsigned long arg)
-{
-	int ret;
-	int reg_en = *((enum sensor_power*)arg);
-
-	if (reg_en == 0) {
-		ret = regulator_disable(gc->vdd_sensor_reg);
-		if (ret != 0)
-			gif_err("Failed : Disable sensor power.\n");
-		else
-			gif_err("Success : Disable sensor power.\n");
-	} else {
-		ret = regulator_enable(gc->vdd_sensor_reg);
-		if (ret != 0)
-			gif_err("Failed : Enable sensor power.\n");
-		else
-			gif_err("Success : Enable sensor power.\n");
-	}
-	return ret;
-}
-
 static void gnss_get_ops(struct gnss_ctl *gc)
 {
 	gc->ops.gnss_hold_reset = kepler_hold_reset;
@@ -304,7 +307,6 @@ static void gnss_get_ops(struct gnss_ctl *gc)
 	gc->ops.suspend_gnss_ctrl = kepler_suspend;
 	gc->ops.resume_gnss_ctrl = kepler_resume;
 	gc->ops.change_sensor_gpio = kepler_change_gpio;
-	gc->ops.set_sensor_power = kepler_set_sensor_power;
 }
 
 static void gnss_get_pmu_ops(struct gnss_ctl *gc)
@@ -395,12 +397,6 @@ int init_gnssctl_device(struct gnss_ctl *gc, struct gnss_data *pdata)
 		gc->gnss_sensor_gpio = pinctrl_lookup_state(gc->gnss_gpio,
 				"gnss_sensor");
 	}
-
-	gc->vdd_sensor_reg = devm_regulator_get(gc->dev, "vdd_sensor_2p85");
-	if (IS_ERR(gc->vdd_sensor_reg)) {
-		gif_err("Cannot get the regulator \"vdd_sensor_2p85\"\n");
-	}
-
 	gif_err("---\n");
 
 	return ret;

@@ -307,7 +307,6 @@ void sec_battery_cisd_init(struct sec_battery_info *battery)
 		battery->cisd.data[CISD_DATA_CHG_TEMP_MIN],
 		battery->cisd.data[CISD_DATA_WPC_TEMP_MAX],
 		battery->cisd.data[CISD_DATA_WPC_TEMP_MIN]);
-
 	battery->cisd.capacity_now = capfull_val.intval;
 	battery->cisd.overflow_cap_thr = capfull_val.intval > 3850 ? capfull_val.intval : 3850;
 

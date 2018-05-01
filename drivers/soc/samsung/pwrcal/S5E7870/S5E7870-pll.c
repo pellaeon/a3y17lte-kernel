@@ -69,9 +69,9 @@ static int _clk_pll141xx_find_pms(struct pll_spec *pll_spec,
 
 		for (s = pll_spec->sdiv_min; s <= pll_spec->sdiv_max; s++) {
 			tmprate = rate;
-			do_div(tmprate, KHZ);
+			do_div(tmprate, MHZ);
 			tmprate = tmprate * p * (1 << s);
-			do_div(tmprate, (FIN_HZ_26M / KHZ));
+			do_div(tmprate, (FIN_HZ_26M / MHZ));
 			m = (unsigned int)tmprate;
 
 			if ((m < pll_spec->mdiv_min)
@@ -239,7 +239,7 @@ static int _clk_pll141xx_set_rate(struct pwrcal_clk *clk,
 
 		rate_table = &tmp_rate_table;
 
-		pr_warn_once("not exist in rate table, p(%d), m(%d), s(%d), fout(%lldHz) %s",
+		pr_warn("not exist in rate table, p(%d), m(%d), s(%d), fout(%lldHz) %s",
 				rate_table->pdiv,
 				rate_table->mdiv,
 				rate_table->sdiv,
@@ -298,9 +298,9 @@ static int _clk_pll1431x_find_pms(struct pll_spec *pll_spec,
 
 		for (s = pll_spec->sdiv_min; s <= pll_spec->sdiv_max; s++) {
 			tmprate = rate;
-			do_div(tmprate, KHZ);
+			do_div(tmprate, MHZ);
 			tmprate = tmprate * p * (1 << s);
-			do_div(tmprate, (FIN_HZ_26M / KHZ));
+			do_div(tmprate, (FIN_HZ_26M / MHZ));
 			m = (unsigned int)tmprate;
 
 			if ((m < pll_spec->mdiv_min)
@@ -308,9 +308,9 @@ static int _clk_pll1431x_find_pms(struct pll_spec *pll_spec,
 				continue;
 
 			tmprate = rate;
-			do_div(tmprate, KHZ);
+			do_div(tmprate, MHZ);
 			tmprate = tmprate * p * (1 << s);
-			do_div(tmprate, (FIN_HZ_26M / KHZ));
+			do_div(tmprate, (FIN_HZ_26M / MHZ));
 			tmprate = (tmprate - m) * 65536;
 			k = (unsigned int)tmprate;
 			if ((k < pll_spec->kdiv_min)

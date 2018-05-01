@@ -168,12 +168,14 @@ int dfs_trans_pll(int lv_from, int lv_to, struct dfs_table *table, int opt)
 					trans = 1;
 				if (to == 0)
 					trans = 0;
+				if (from == 0)
+					trans = 0;
 				break;
 			case TRANS_LOW:
 				if (from > to)
 					trans = 1;
 				if (from == 0)
-					trans = 0;
+					trans = 1;
 				break;
 			case TRANS_DIFF:
 				if (from != to)
@@ -476,8 +478,8 @@ int dfs_get_target_rate_table(struct dfs_table *dfs,
 {
 	int m, d, i;
 	int num_of_parent;
-	struct pwrcal_clk *parents[32] = {NULL, };
-	unsigned int parents_rate[32] = {0, };
+	struct pwrcal_clk *parents[32];
+	unsigned int parents_rate[32];
 	unsigned long long rate;
 	unsigned int src, ratio;
 

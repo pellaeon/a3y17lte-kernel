@@ -16,6 +16,7 @@
 #include "decon.h"
 #include "dsim.h"
 #include "decon_helper.h"
+#include "./panels/lcd_ctrl.h"
 #include <video/mipi_display.h>
 
 inline int decon_is_no_bootloader_fb(struct decon_device *decon)
@@ -270,7 +271,6 @@ void DISP_SS_EVENT_LOG(disp_ss_event_t type, struct v4l2_subdev *sd, ktime_t tim
 	case DISP_EVT_DECON_RESUME:
 	case DISP_EVT_LINECNT_ZERO:
 	case DISP_EVT_TRIG_MASK:
-	case DISP_EVT_TRIG_UNMASK:
 	case DISP_EVT_DECON_FRAMEDONE:
 	case DISP_EVT_DECON_FRAMEDONE_WAIT:
 	case DISP_EVT_ACT_VSYNC:
@@ -279,8 +279,7 @@ void DISP_SS_EVENT_LOG(disp_ss_event_t type, struct v4l2_subdev *sd, ktime_t tim
 	case DISP_EVT_ACT_PROT:
 	case DISP_EVT_DEACT_PROT:
 	case DISP_EVT_UPDATE_TIMEOUT:
-	case DISP_EVT_VSYNC_TIMEOUT:
-	case DISP_EVT_VSTATUS_TIMEOUT:
+	case DISP_EVT_LINECNT_TIMEOUT:
 		disp_ss_event_log_decon(type, sd, time);
 		break;
 	case DISP_EVT_ENTER_ULPS:
@@ -304,42 +303,29 @@ void DISP_SS_EVENT_LOG_WINCON(struct v4l2_subdev *sd, struct decon_reg_data *reg
 	struct decon_device *decon = container_of(sd, struct decon_device, sd);
 	int idx = atomic_inc_return(&decon->disp_ss_log_idx) % DISP_EVENT_LOG_MAX;
 	struct disp_ss_log *log = &decon->disp_ss_log[idx];
-	int win = 0;
-	bool window_updated = false;
+
+	if (!(decon->disp_ss_log_unmask & DISP_EVT_UPDATE_HANDLER))
+		return;
 
 	log->time = ktime_get();
 	log->type = DISP_EVT_UPDATE_HANDLER;
-
-	for (win = 0; win < 3; win++) {
-		if (regs->wincon[win] & WINCON_ENWIN) {
-			log->data.reg.wincon[win] = regs->wincon[win];
-			log->data.reg.offset_x[win] = regs->offset_x[win];
-			log->data.reg.offset_y[win] = regs->offset_y[win];
-			log->data.reg.whole_w[win] = regs->whole_w[win];
-			log->data.reg.whole_h[win] = regs->whole_h[win];
-			log->data.reg.vidosd_a[win] = regs->vidosd_a[win];
-			log->data.reg.vidosd_b[win] = regs->vidosd_b[win];
-			memcpy(&log->data.reg.win_config[win], &regs->win_config[win],
-					sizeof(struct decon_win_config));
-		} else {
-			log->data.reg.win_config[win].state = DECON_WIN_STATE_DISABLED;
-		}
-	}
+	log->data.reg.overlap_cnt = regs->win_overlap_cnt;
+	log->data.reg.bandwidth = regs->cur_bw;
 
 #ifdef CONFIG_FB_WINDOW_UPDATE
 	if ((regs->need_update) ||
 		(decon->need_update && regs->update_win.w)) {
-		window_updated = true;
 		memcpy(&log->data.reg.win, &regs->update_win,
 				sizeof(struct decon_rect));
-	}
-#endif
-	if (!window_updated) {
+	} else {
 		log->data.reg.win.x = 0;
 		log->data.reg.win.y = 0;
 		log->data.reg.win.w = decon->lcd_info->xres;
 		log->data.reg.win.h = decon->lcd_info->yres;
 	}
+#else
+	memset(&log->data.reg.win, 0, sizeof(struct decon_rect));
+#endif
 }
 
 void DISP_SS_EVENT_LOG_UPDATE_PARAMS(struct v4l2_subdev *sd,
@@ -427,7 +413,6 @@ void DISP_SS_EVENT_LOG_CMD(struct v4l2_subdev *sd, u32 cmd_id, unsigned long dat
 
 	log->time = ktime_get();
 	log->type = DISP_EVT_DSIM_COMMAND;
-	log->data.cmd_buf.id = cmd_id;
 	if (cmd_id == MIPI_DSI_DCS_LONG_WRITE)
 		log->data.cmd_buf.buf = *(u8 *)(data);
 	else
@@ -541,9 +526,6 @@ void DISP_SS_EVENT_SHOW(struct seq_file *s, struct decon_device *decon,
 		case DISP_EVT_TRIG_MASK:
 			seq_printf(s, "%20s  %20s", "TRIG_MASK", "-\n");
 			break;
-		case DISP_EVT_TRIG_UNMASK:
-			seq_printf(s, "%20s  %20s", "TRIG_UNMASK", "-\n");
-			break;
 		case DISP_EVT_DECON_FRAMEDONE_WAIT:
 			seq_printf(s, "%20s  %20s", "FRAMEDONE_WAIT", "-\n");
 			break;
@@ -556,8 +538,8 @@ void DISP_SS_EVENT_SHOW(struct seq_file *s, struct decon_device *decon,
 		case DISP_EVT_UPDATE_TIMEOUT:
 			seq_printf(s, "%20s  %20s", "UPDATE_TIMEOUT", "-\n");
 			break;
-		case DISP_EVT_LINECNT_ZERO:
-			seq_printf(s, "%20s  %20s", "LINECNT_ZERO", "-\n");
+		case DISP_EVT_LINECNT_TIMEOUT:
+			seq_printf(s, "%20s  %20s", "LINECNT_TIMEOUT", "-\n");
 			break;
 		case DISP_EVT_UPDATE_HANDLER:
 			seq_printf(s, "%20s  ", "UPDATE_HANDLER");
@@ -646,25 +628,4 @@ void DISP_SS_EVENT_SHOW(struct seq_file *s, struct decon_device *decon,
 	return;
 }
 
-#if defined(CONFIG_DEBUG_LIST)
-void DISP_SS_DUMP(u32 type)
-{
-	struct decon_device *decon = get_decon_drvdata(0);
-
-	if (!decon || decon->disp_dump & BIT(type))
-		return;
-
-	switch (type) {
-	case DISP_DUMP_DECON_UNDERRUN:
-	case DISP_DUMP_LINECNT_ZERO:
-	case DISP_DUMP_VSYNC_TIMEOUT:
-	case DISP_DUMP_VSTATUS_TIMEOUT:
-	case DISP_DUMP_COMMAND_WR_TIMEOUT:
-	case DISP_DUMP_COMMAND_RD_ERROR:
-		decon_dump(decon);
-		BUG();
-		break;
-	}
-}
-#endif
 #endif

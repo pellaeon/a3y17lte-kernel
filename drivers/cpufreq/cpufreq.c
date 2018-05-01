@@ -761,6 +761,32 @@ static struct attribute *default_attrs[] = {
 #define to_policy(k) container_of(k, struct cpufreq_policy, kobj)
 #define to_attr(a) container_of(a, struct freq_attr, attr)
 
+#ifdef CONFIG_SEC_BSP
+void get_cpuinfo_cur_freq(int *freq, int *online)
+{
+
+	int cpu;
+	int count = 0;
+	get_online_cpus();
+	*online = cpumask_bits(cpu_online_mask)[0];
+	for_each_online_cpu(cpu) {
+		struct cpufreq_policy *policy = per_cpu(cpufreq_cpu_data, cpu);
+		if(policy == 0)
+			break;
+		if(count == 2)
+			break;
+		if(count == 0 && cpu >=4)
+			count++;
+		if(count == 1 && cpu < 4)
+			continue;
+		freq[count] = policy->cur;
+		count++;
+
+	}
+	put_online_cpus();
+}
+#endif
+
 static ssize_t show(struct kobject *kobj, struct attribute *attr, char *buf)
 {
 	struct cpufreq_policy *policy = to_policy(kobj);
@@ -2233,6 +2259,7 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 
 	policy->min = new_policy->min;
 	policy->max = new_policy->max;
+	trace_cpu_frequency_limits(policy->max, policy->min, policy->cpu);
 
 	pr_debug("new min and max freqs are %u - %u kHz\n",
 		 policy->min, policy->max);

@@ -65,7 +65,6 @@ enum bts_index {
 	BTS_IDX_MODAPIF_GNSS,
 	BTS_IDX_CPU,
 	BTS_IDX_APL,
-	BTS_IDX_G3D,
 	BTS_MAX,
 };
 
@@ -85,7 +84,6 @@ enum bts_id {
 	BTS_MODAPIF_GNSS = (1 << BTS_IDX_MODAPIF_GNSS),
 	BTS_CPU = (1 << BTS_IDX_CPU),
 	BTS_APL = (1 << BTS_IDX_APL),
-	BTS_G3D = (1 << BTS_IDX_G3D),
 };
 
 enum exynos_bts_scenario {
@@ -146,9 +144,7 @@ struct clk_info {
 static struct pm_qos_request exynos7_mif_bts_qos;
 static struct pm_qos_request exynos7_int_bts_qos;
 static struct srcu_notifier_head exynos_media_notifier;
-static struct clk_info clk_table[] = {
-	{"gate_g3d_bts_alias", NULL, BTS_IDX_G3D},
-};
+static struct clk_info clk_table[0];
 
 static DEFINE_MUTEX(media_mutex);
 static unsigned int decon_bw, cam_bw, total_bw;
@@ -175,7 +171,7 @@ static struct bts_info exynos7_bts[] = {
 		.id = BTS_ISP0,
 		.name = "isp0",
 		.pa_base = EXYNOS7870_PA_SYSREG_ISP,
-		.pd_name = "pd-cam0",
+		.pd_name = "pd-isp",
 		.table[BS_DEFAULT].fn = BF_SETQOS,
 		.table[BS_DEFAULT].priority[0] = 0xC,
 		.table[BS_DEFAULT].priority[1] = 0xC,
@@ -193,7 +189,7 @@ static struct bts_info exynos7_bts[] = {
 		.id = BTS_ISP1,
 		.name = "isp1",
 		.pa_base = EXYNOS7870_PA_SYSREG_ISP,
-		.pd_name = "pd-cam0",
+		.pd_name = "pd-isp",
 		.table[BS_DEFAULT].fn = BF_SETQOS,
 		.table[BS_DEFAULT].priority[0] = 0xC,
 		.table[BS_DEFAULT].priority[1] = 0xC,
@@ -308,19 +304,6 @@ static struct bts_info exynos7_bts[] = {
 		.on = false,
 		.enable = true,
 	},
-	[BTS_IDX_G3D] = {
-		.id = BTS_G3D,
-		.name = "g3d",
-		.pa_base = EXYNOS7870_PA_BTS_G3D,
-		.pd_name = "pd-g3d",
-		.table[BS_DEFAULT].fn = BF_SETQOS_MO,
-		.table[BS_DEFAULT].priority[0] = 0x44444444,
-		.table[BS_DEFAULT].mo = 0x3f,
-		.table[BS_DISABLE].fn = BF_DISABLE,
-		.cur_scen = BS_DISABLE,
-		.on = false,
-		.enable = false,
-	},
 };
 
 static struct bts_scenario bts_scen[] = {
@@ -347,6 +330,24 @@ static struct bts_scenario bts_scen[] = {
 
 static DEFINE_SPINLOCK(bts_lock);
 static LIST_HEAD(bts_list);
+
+static void is_bts_clk_enabled(struct bts_info *bts)
+{
+	struct clk_info *ptr;
+	enum bts_index btstable_index;
+
+	ptr = bts->ct_ptr;
+	if (ptr) {
+		btstable_index = ptr->index;
+		do {
+			if (!__clk_is_enabled(ptr->clk))
+				pr_err("[BTS] CLK is not enabled : %s in %s\n",
+						ptr->clk_name,
+						bts->name);
+		} while (++ptr < clk_table + ARRAY_SIZE(clk_table)
+				&& ptr->index == btstable_index);
+	}
+}
 
 static void bts_clk_on(struct bts_info *bts)
 {
@@ -432,6 +433,7 @@ static void bts_set_ip_table(enum exynos_bts_scenario scen,
 	enum exynos_bts_function fn = bts->table[scen].fn;
 	bool on;
 
+	is_bts_clk_enabled(bts);
 	BTS_DBG("[BTS] %s on:%d bts scen: [%s]->[%s]\n", bts->name, bts->on,
 			bts_scen[bts->cur_scen].name, bts_scen[scen].name);
 
@@ -452,12 +454,8 @@ static void bts_set_ip_table(enum exynos_bts_scenario scen,
 	case BF_SETQOS_BW:
 		break;
 	case BF_SETQOS_MO:
-		if (bts->id & BTS_SYSREG_DOMAIN)
-			bts_setmo_ip_sysreg(bts->id, bts->va_base, \
-						bts->table[scen].mo, \
-						bts->table[scen].mo);
-		else if (bts->id == BTS_G3D)
-			bts_setqos_mo(bts->va_base, bts->table[scen].priority[0], \
+		bts_setmo_ip_sysreg(bts->id, bts->va_base, \
+					bts->table[scen].mo, \
 					bts->table[scen].mo);
 		break;
 	case BF_DISABLE:
@@ -1081,16 +1079,6 @@ void exynos7_init_bts_ioremap(void)
 	base_bts_pmu_alive = ioremap(EXYNOS7870_PA_PMU_ALIVE, SZ_4K);
 }
 
-int wincnt;
-int exynos_update_overlay_wincnt(int cnt)
-{
-	BTS_DBG("[BTS CNT] overlay window count: %d\n", cnt);
-
-	wincnt = cnt;
-
-	return 0;
-}
-
 void exynos_update_media_scenario(enum bts_media_type media_type,
 		unsigned int bw, int bw_type)
 {
@@ -1114,16 +1102,14 @@ void exynos_update_media_scenario(enum bts_media_type media_type,
 	/* MIF minimum frequency calculation as per BTS guide */
 	if (cam_bw && decon_bw) {
 		if (decon_bw <= (2 * FHD_BW))
-			mif_freq = 676000;
+			mif_freq = 667000;
 		else
 			mif_freq = 728000;
 	} else {
 		if (decon_bw <= (2 * FHD_BW))
-			mif_freq = 451000;
+			mif_freq = 416000;
 		else
-			mif_freq = 676000;
-		if (wincnt == 3 && decon_bw <= (2 *FHD_BW))
-			mif_freq = 676000;
+			mif_freq = 559000;
 	}
 
 	exynos7_bts_notify(mif_freq);
@@ -1140,36 +1126,8 @@ void exynos_update_media_scenario(enum bts_media_type media_type,
 static int __init exynos7_bts_init(void)
 {
 	int i;
-	int ret;
-	enum bts_index btstable_index = BTS_MAX;
 
 	BTS_DBG("[BTS][%s] bts init\n", __func__);
-
-	for (i = 0; i < ARRAY_SIZE(clk_table); i++) {
-
-		if (btstable_index != clk_table[i].index) {
-			btstable_index = clk_table[i].index;
-			exynos7_bts[btstable_index].ct_ptr = clk_table + i;
-		}
-		clk_table[i].clk = clk_get(NULL, clk_table[i].clk_name);
-
-		if (IS_ERR(clk_table[i].clk)){
-			BTS_DBG("failed to get bts clk %s\n",
-					clk_table[i].clk_name);
-			if (btstable_index != BTS_MAX)
-				exynos7_bts[btstable_index].ct_ptr = NULL;
-		}
-		else {
-			ret = clk_prepare(clk_table[i].clk);
-			if (ret) {
-				pr_err("[BTS] failed to prepare bts clk %s\n",
-						clk_table[i].clk_name);
-				for (; i >= 0; i--)
-					clk_put(clk_table[i].clk);
-				return ret;
-			}
-		}
-	}
 
 	for (i = 0; i < ARRAY_SIZE(exynos7_bts); i++) {
 		exynos7_bts[i].va_base = ioremap(exynos7_bts[i].pa_base, SZ_8K);

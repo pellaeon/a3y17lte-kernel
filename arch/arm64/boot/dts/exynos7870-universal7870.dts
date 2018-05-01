@@ -12,16 +12,11 @@
 /dts-v1/;
 #include "exynos7870.dtsi"
 #include "modem-ss315ap-pdata.dtsi"
-#include "exynos7870-rmem-2000MB.dtsi"
+#include "exynos7870-rmem.dtsi"
 
 / {
 	model = "Exynos7870 universal board";
 	compatible = "samsung,exynos7870", "samsung,exynos4210";
-
-	ect {
-		parameter_address = <0x90000000>;
-		parameter_size = <0x14000>;	/* u-boot always overwrites this value. */
-	};
 
 	memory@40000000 {
 		device_type = "memory";
@@ -29,7 +24,7 @@
 	};
 
 	chosen {
-		bootargs = "console=ram ess_setup=0x46000000 androidboot.hardware=samsungexynos7870 androidboot.selinux=disabled firmware_class.path=/vendor/firmware androidboot.debug_level=0x4948 reserve-fimc=0";
+		bootargs = "console=ttySAC2,115200 ess_setup=0x46000000 androidboot.hardware=samsungexynos7870 androidboot.selinux=disabled firmware_class.path=/vendor/firmware androidboot.debug_level=0x4948 reserve-fimc=0";
 		linux,initrd-start = <0x42000000>;
 		linux,initrd-end = <0x420FFFFF>;
 	};
@@ -60,11 +55,11 @@
 		};
 	};
 
-	serial_0: uart@13810000 {
+	serial_0: uart@13800000 {
 		status = "okay";
 	};
 
-	serial_1: uart@13800000 {
+	serial_1: uart@13810000 {
 		status = "okay";
 	};
 
@@ -175,56 +170,35 @@
 		status = "okay";
 		num-slots = <1>;
 		broken-cd;
-		use-smu;
+		bypass-smu;
 		fixed_voltage;
+		cap-mmc-highspeed;
 		clock-gate;
-		supports-highspeed;
-		mmc-ddr-1_8v;
 		mmc-hs200-1_8v;
 		mmc-hs400-1_8v;
-		supports-8bit;
-		supports-cmd23;
-		supports-erase;
-		enable-ulp-mode;
 		supports-hs400-enhanced-strobe;
 		use-fine-tuning;
 		bypass-for-allpass;
 		card-init-hwacg-ctrl;
 		fifo-depth = <0x40>;
 		non-removable;
-		desc-size = <4>;
 		card-detect-delay = <200>;
-		data-timeout = <200>;
 		clock-frequency = <800000000>;
 		samsung,dw-mshc-ciu-div = <3>;
-		samsung,dw-mshc-txdt-crc-timer-fastlimit = <0x34>;
-		samsung,dw-mshc-txdt-crc-timer-initval = <0x38>;
+		samsung,dw-mshc-txdt-crc-timer-fastlimit = <0x12>;
+		samsung,dw-mshc-txdt-crc-timer-initval = <0x14>;
 		samsung,dw-mshc-ddr200-delay-line = <0x50>;
 		samsung,dw-mshc-sdr-timing = <3 0 4 0>;
 		samsung,dw-mshc-ddr-timing = <3 0 4 2>;
 		samsung,dw-mshc-hs200-timing = <3 0 3 0>;
 		samsung,dw-mshc-ddr200-timing = <1 0 4 0>;
 		samsung,dw-mshc-ddr200-ulp-timing = <3 0 4 0>;
-
+		clk_pin = "gpr0-0";
+		clk_addr = "13750000.pinctrl";
 		num-ref-clks = <10>;
+		pinctrl-names = "default";
 		ciu_clkin = <25 50 50 100 200 100 50 200 200 200>;
-
-		/* Swapping clock drive strength */
-		clk-drive-number = <6>;
-		pinctrl-names = "default",
-			"fast-slew-rate-1x",
-			"fast-slew-rate-2x",
-			"fast-slew-rate-3x",
-			"fast-slew-rate-4x",
-			"fast-slew-rate-5x",
-			"fast-slew-rate-6x";
 		pinctrl-0 = <&sd0_clk &sd0_cmd &sd0_rdqs &sd0_bus1 &sd0_bus4 &sd0_bus8>;
-		pinctrl-1 = <&sd0_clk_fast_slew_rate_1x>;
-		pinctrl-2 = <&sd0_clk_fast_slew_rate_2x>;
-		pinctrl-3 = <&sd0_clk_fast_slew_rate_3x>;
-		pinctrl-4 = <&sd0_clk_fast_slew_rate_4x>;
-		pinctrl-5 = <&sd0_clk_fast_slew_rate_5x>;
-		pinctrl-6 = <&sd0_clk_fast_slew_rate_6x>;
 		slot@0 {
 			reg = <0>;
 			bus-width = <8>;
@@ -235,38 +209,24 @@
 		status = "okay";
 		num-slots = <1>;
 		clock-gate;
-		supports-highspeed;
-		supports-4bit;
-		supports-cmd23;
-		supports-erase;
-		sd-uhs-sdr104;
+		cap-sd-highspeed;
+		supports-sdr104-mode;
 		bypass-smu;
 		bypass-for-allpass;
+		caps-control;
 		use-fine-tuning;
 		card-init-hwacg-ctrl;
 		fifo-depth = <0x40>;
-		desc-size = <8>;
 		card-detect-delay = <200>;
 		samsung,dw-mshc-ciu-div = <3>;
 		samsung,dw-mshc-sdr-timing = <3 0 2 0>;
 		samsung,dw-mshc-ddr-timing = <3 0 2 1>;
-
+		clk_pin = "gpr4-0";
+		clk_addr = "13750000.pinctrl";
 		num-ref-clks = <8>;
 		ciu_clkin = <25 50 50 100 200 100 200 400>;
-
-		/* Swapping clock drive strength */
-		clk-drive-number = <4>;
-		pinctrl-names = "default",
-			"fast-slew-rate-1x",
-			"fast-slew-rate-2x",
-			"fast-slew-rate-3x",
-			"fast-slew-rate-4x";
+		pinctrl-names = "default";
 		pinctrl-0 = <&sd2_clk &sd2_cmd &sd2_bus1 &sd2_bus4 &dwmmc2_cd_ext_irq>;
-		pinctrl-1 = <&sd2_clk_fast_slew_rate_1x>;
-		pinctrl-2 = <&sd2_clk_fast_slew_rate_2x>;
-		pinctrl-3 = <&sd2_clk_fast_slew_rate_3x>;
-		pinctrl-4 = <&sd2_clk_fast_slew_rate_4x>;
-
 		cd-gpio = <&gpa0 1 0xf>;
 		slot@0 {
 			reg = <0>;
@@ -430,14 +390,14 @@
 			wtsr_timer_val = <3>;   /* 1000ms */
 			smpl_timer_val = <4>;   /* 500ms */
 			check_jigon = <0>; /* do not check jigon */
-			/* RTC: If it's first boot, reset rtc to 1/1/2015 12:00:00(Thu) */
+			/* RTC: If it's first boot, reset rtc to 1/1/2014 12:00:00(Wed) */
 			init_time,sec = <0>;
 			init_time,min = <0>;
 			init_time,hour = <12>;
 			init_time,mday = <1>;
 			init_time,mon = <0>;
-			init_time,year = <115>;
-			init_time,wday = <4>;
+			init_time,year = <114>;
+			init_time,wday = <3>;
 
 			regulators {
 				buck1_reg: BUCK1 {
@@ -447,8 +407,7 @@
 					regulator-always-on;
 					regulator-boot-on;
 					regulator-ramp-delay = <12000>;
-					regulator-initial-mode = <1>;
-					regulator-expected-consumer = <2>;
+					regulator-initial-mode = <2>;
 				};
 
 				buck2_reg: BUCK2 {
@@ -529,7 +488,7 @@
 					regulator-boot-on;
 					regulator-always-on;
 					regulator-ramp-delay = <12000>;
-					regulator-initial-mode = <1>;
+					regulator-initial-mode = <2>;
 				};
 
 				ldo5_reg: LDO5 {
@@ -549,7 +508,7 @@
 					regulator-boot-on;
 					regulator-always-on;
 					regulator-ramp-delay = <12000>;
-					regulator-initial-mode = <1>;
+					regulator-initial-mode = <2>;
 				};
 
 				ldo7_reg: LDO7 {
@@ -594,6 +553,8 @@
 					regulator-name = "vdd_ldo25";
 					regulator-min-microvolt = <800000>;
 					regulator-max-microvolt = <2375000>;
+					regulator-always-on;
+					regulator-boot-on;
 					regulator-ramp-delay = <12000>;
 					regulator-initial-mode = <1>;
 				};
@@ -664,7 +625,7 @@
 				};
 
 				ldo33_reg: LDO33 {
-					regulator-name = "vdd_sensor_2p85";
+					regulator-name = "vdd_ldo33";
 					regulator-min-microvolt = <1800000>;
 					regulator-max-microvolt = <3375000>;
 					regulator-ramp-delay = <12000>;
@@ -766,23 +727,15 @@
 			&audio_bt_dummy
 			&audio_fm_dummy
 			&i2s1			/*AMP for AP */
-			&audio_cp_dummy		/*AMP for CP */
-			&eax
-			&eax
-			&eax
-			&eax>;
+			&audio_cp_dummy>;	/*AMP for CP */
 		samsung,audio-codec = <&audio_codec_cod3026x
 			&audio_codec_cod3026x
 			&audio_codec_cod3026x
 			&audio_codec_dummy
 			&audio_codec_cod3026x
 			&audio_codec_dummy
-			&audio_codec_dummy
-			&audio_codec_cod3026x
-			&audio_codec_cod3026x
-			&audio_codec_cod3026x
-			&audio_codec_cod3026x>;
-		mic-bias-mode = <1 1 2 0>;
+			&audio_codec_dummy>;
+
 		samsung,auxdev = <&s1402x>;
 		status = "okay";
 	};
@@ -866,7 +819,7 @@
 		size = <70 121>;
 		timing,refresh = <60>;
 		timing,h-porch = <1 1 1>;
-		timing,v-porch = <10 3 1>;
+		timing,v-porch = <12 1 1>;
 		timing,dsi-hs-clk = <1100>;
 		timing,pms = <3 127 0>;
 		timing,dsi-escape-clk = <20>;
@@ -910,8 +863,8 @@
 		freq_tab_count = <5>;
 
 		freq_clip_max_0 = <1586000>;
-		freq_clip_max_1 = <1248000>;
-		freq_clip_max_2 = <1248000>;
+		freq_clip_max_1 = <1274000>;
+		freq_clip_max_2 = <1274000>;
 		freq_clip_max_3 = <546000>;
 		freq_clip_max_4 = <546000>;
 
@@ -960,8 +913,8 @@
 		freq_tab_count = <5>;
 
 		freq_clip_max_0 = <1586000>;
-		freq_clip_max_1 = <1248000>;
-		freq_clip_max_2 = <1248000>;
+		freq_clip_max_1 = <1274000>;
+		freq_clip_max_2 = <1274000>;
 		freq_clip_max_3 = <546000>;
 		freq_clip_max_4 = <546000>;
 
@@ -970,10 +923,6 @@
 		cooling_level_2 = <86>;
 		cooling_level_3 = <91>;
 		cooling_level_4 = <96>;
-
-		hotplug_enable = <1>;
-		hotplug_in_threshold = <91>;
-		hotplug_out_threshold = <96>;
 	};
 
 	tmuctrl_2: tmuctrl_G3D@10130000 {
@@ -1014,11 +963,11 @@
 		freq_tab_count = <6>;
 
 		freq_clip_max_0 = <1246000>;
-		freq_clip_max_1 = <1146000>;
-		freq_clip_max_2 = <1001000>;
+		freq_clip_max_1 = <1100000>;
+		freq_clip_max_2 = <962000>;
 		freq_clip_max_3 = <728000>;
-		freq_clip_max_4 = <343000>;
-		freq_clip_max_5 = <343000>;
+		freq_clip_max_4 = <350000>;
+		freq_clip_max_5 = <350000>;
 
 		cooling_level_0 = <76>;
 		cooling_level_1 = <81>;
@@ -1030,11 +979,11 @@
 		/* gpu cooling related table */
 		gpu_idx_num = <6>;
 		/* flags, driver_data(index), frequency */
-		gpu_cooling_table = < 0 0 1001000
-				      0 1 845000
-				      0 2 728000
-				      0 3 676000
-				      0 4 343000
+		gpu_cooling_table = < 0 0 1246000
+				      0 1 1100000
+				      0 2 962000
+				      0 3 728000
+				      0 4 350000
 				      0 5 TABLE_END>;
 	};
 
@@ -1048,36 +997,28 @@
 			/* khz */
 			1586000
 			1482000
-			1352000
-			1248000
+			1378000
+			1274000
 			1144000
-			1014000
-			902000
-			839000
+			1040000
+			962000
+			829000
 			757000
 			676000
 			546000
 			449000
-			343000
+			345000
 			>;
 
 		mif,mif_clk_table = <
 			/* khz */
-			902000
+			933000
 			825000
 			728000
-			676000
-			546000
-			451000
-			275000
-			>;
-
-		mif,int_clk_table = <
-			/* khz */
-			400000
-			334000
-			200000
-			134000
+			667000
+			559000
+			416000
+			273000
 			>;
 	};
 
@@ -1087,21 +1028,47 @@
 		use_module_check;
 		skip_cal_loading;
 		fimc_is_dvfs {
-			#define DVFS_INT_L0 400000
-			#define DVFS_INT_L1 334000
-			#define DVFS_INT_L2 200000
-			#define DVFS_INT_L3 134000
+			#define DVFS_INT_L0 690000
+			#define DVFS_INT_L1 680000
+			#define DVFS_INT_L2 670000
+			#define DVFS_INT_L3 660000
+			#define DVFS_INT_L4 650000
+			#define DVFS_INT_L5 640000
+			#define DVFS_INT_L6 630000
+			#define DVFS_INT_L7 620000
+			#define DVFS_INT_L8 610000
+			#define DVFS_INT_L9 600000
+			#define DVFS_INT_L10 468000
+			#define DVFS_INT_L11 400000
+			#define DVFS_INT_L12 336000
+			#define DVFS_INT_L13 255000
+			#define DVFS_INT_L14 200000
+			#define DVFS_INT_L15 168000
+			#define DVFS_INT_L16 127000
 
-			#define DVFS_CAM_L0 533000
-			#define DVFS_CAM_L1 334000
-			#define DVFS_CAM_L2 167000
+			#define DVFS_CAM_L0 690000
+			#define DVFS_CAM_L1 680000
+			#define DVFS_CAM_L2 670000
+			#define DVFS_CAM_L3 660000
+			#define DVFS_CAM_L4 650000
+			#define DVFS_CAM_L5 640000
+			#define DVFS_CAM_L6 630000
+			#define DVFS_CAM_L7 620000
+			#define DVFS_CAM_L8 610000
+			#define DVFS_CAM_L9 600000
 
-			#define DVFS_MIF_L0 902000
-			#define DVFS_MIF_L1 825000
-			#define DVFS_MIF_L2 728000
-			#define DVFS_MIF_L3 676000
-			#define DVFS_MIF_L4 546000
-			#define DVFS_MIF_L5 451000
+			#define DVFS_MIF_L0 1794000
+			#define DVFS_MIF_L1 1716000
+			#define DVFS_MIF_L2 1539000
+			#define DVFS_MIF_L3 1352000
+			#define DVFS_MIF_L4 1144000
+			#define DVFS_MIF_L5 1014000
+			#define DVFS_MIF_L6 845000
+			#define DVFS_MIF_L7 676000
+			#define DVFS_MIF_L8 546000
+			#define DVFS_MIF_L9 421000
+			#define DVFS_MIF_L10 286000
+			#define DVFS_MIF_L11 208000
 
 			table0 {
 				desc = "default Max version";
@@ -1111,19 +1078,19 @@
 				default_mif = <DVFS_MIF_L0>;
 				default_i2c = <0>;
 
-				front_preview_int = <DVFS_INT_L1>;
-				front_preview_cam = <DVFS_CAM_L1>;
-				front_preview_mif = <DVFS_MIF_L3>;
+				front_preview_int = <DVFS_INT_L0>;
+				front_preview_cam = <DVFS_CAM_L0>;
+				front_preview_mif = <DVFS_MIF_L0>;
 				front_preview_i2c = <0>;
 
-				front_capture_int = <DVFS_INT_L1>;
-				front_capture_cam = <DVFS_CAM_L1>;
-				front_capture_mif = <DVFS_MIF_L3>;
+				front_capture_int = <DVFS_INT_L0>;
+				front_capture_cam = <DVFS_CAM_L0>;
+				front_capture_mif = <DVFS_MIF_L0>;
 				front_capture_i2c = <0>;
 
-				front_video_int = <DVFS_INT_L1>;
-				front_video_cam = <DVFS_CAM_L1>;
-				front_video_mif = <DVFS_MIF_L3>;
+				front_video_int = <DVFS_INT_L0>;
+				front_video_cam = <DVFS_CAM_L0>;
+				front_video_mif = <DVFS_MIF_L0>;
 				front_video_i2c = <0>;
 
 				front_video_whd_int = <DVFS_INT_L0>;
@@ -1141,14 +1108,14 @@
 				front_video_whd_capture_mif = <DVFS_MIF_L0>;
 				front_video_whd_capture_i2c = <0>;
 
-				front_vt1_int = <DVFS_INT_L1>;
-				front_vt1_cam = <DVFS_CAM_L1>;
-				front_vt1_mif = <DVFS_MIF_L3>;
+				front_vt1_int = <DVFS_INT_L0>;
+				front_vt1_cam = <DVFS_CAM_L0>;
+				front_vt1_mif = <DVFS_MIF_L0>;
 				front_vt1_i2c = <0>;
 
-				front_vt2_int = <DVFS_INT_L1>;
-				front_vt2_cam = <DVFS_CAM_L1>;
-				front_vt2_mif = <DVFS_MIF_L3>;
+				front_vt2_int = <DVFS_INT_L0>;
+				front_vt2_cam = <DVFS_CAM_L0>;
+				front_vt2_mif = <DVFS_MIF_L0>;
 				front_vt2_i2c = <0>;
 
 				front_companion_preview_int = <DVFS_INT_L0>;
@@ -1203,7 +1170,7 @@
 
 				rear_video_fhd_int = <DVFS_INT_L0>;
 				rear_video_fhd_cam = <DVFS_CAM_L0>;
-				rear_video_fhd_mif = <DVFS_MIF_L1>;
+				rear_video_fhd_mif = <DVFS_MIF_L0>;
 				rear_video_fhd_i2c = <0>;
 
 				rear_video_uhd_int = <DVFS_INT_L0>;
@@ -1213,12 +1180,12 @@
 
 				rear_video_fhd_capture_int = <DVFS_INT_L0>;
 				rear_video_fhd_capture_cam = <DVFS_CAM_L0>;
-				rear_video_fhd_capture_mif = <DVFS_MIF_L1>;
+				rear_video_fhd_capture_mif = <DVFS_MIF_L0>;
 				rear_video_fhd_capture_i2c = <0>;
 
 				rear_video_uhd_capture_int = <DVFS_INT_L0>;
 				rear_video_uhd_capture_cam = <DVFS_CAM_L0>;
-				rear_video_uhd_capture_mif = <DVFS_MIF_L1>;
+				rear_video_uhd_capture_mif = <DVFS_MIF_L0>;
 				rear_video_uhd_capture_i2c = <0>;
 
 				dual_preview_int = <DVFS_INT_L0>;

@@ -35,6 +35,7 @@
 #ifdef CONFIG_EXYNOS_BUSMONITOR
 #include <linux/exynos-busmon.h>
 #endif
+#include <trace/events/exynos.h>
 extern struct kbase_device *pkbdev;
 
 #if defined (CONFIG_EXYNOS_THERMAL) && defined(CONFIG_GPU_THERMAL)
@@ -56,6 +57,7 @@ static int gpu_tmu_hot_check_and_work(struct kbase_device *kbdev,
 	case GPU_THROTTLING:
 		lock_clock = platform->tmu_lock_clk[index];
 		exynos_ss_thermal(NULL, 0, cooling_device_name, lock_clock);
+		trace_exynos_thermal(NULL, 0, "GPU", lock_clock);
 		GPU_LOG(DVFS_INFO, DUMMY, 0u, 0u, "THROTTLING[%lu]\n", index);
 		break;
 	case GPU_TRIPPING:
@@ -252,7 +254,6 @@ static int pm_callback_change_dvfs_level(struct kbase_device *kbdev)
 
 static int pm_callback_runtime_on(struct kbase_device *kbdev)
 {
-	unsigned long flags;
 	struct exynos_context *platform = (struct exynos_context *) kbdev->platform_context;
 	if (!platform)
 		return -ENODEV;
@@ -261,9 +262,7 @@ static int pm_callback_runtime_on(struct kbase_device *kbdev)
 
 	gpu_control_enable_clock(kbdev);
 	gpu_dvfs_start_env_data_gathering(kbdev);
-	spin_lock_irqsave(&platform->power_status_spinlock, flags);
 	platform->power_status = true;
-	spin_unlock_irqrestore(&platform->power_status_spinlock, flags);
 #ifdef CONFIG_MALI_DVFS
 	if (platform->dvfs_status && platform->wakeup_lock)
 		gpu_set_target_clk_vol(platform->gpu_dvfs_start_clock, false);
@@ -280,7 +279,6 @@ static int pm_callback_runtime_on(struct kbase_device *kbdev)
 extern void preload_balance_setup(struct kbase_device *kbdev);
 static void pm_callback_runtime_off(struct kbase_device *kbdev)
 {
-	unsigned long flags;
 	struct exynos_context *platform = (struct exynos_context *) kbdev->platform_context;
 	if (!platform)
 		return;
@@ -291,9 +289,7 @@ static void pm_callback_runtime_off(struct kbase_device *kbdev)
 	gpu_dvfs_notify_poweroff();
 #endif
 
-	spin_lock_irqsave(&platform->power_status_spinlock, flags);
 	platform->power_status = false;
-	spin_unlock_irqrestore(&platform->power_status_spinlock, flags);
 
 	mutex_lock(&platform->gpu_clock_lock);
 	gpu_disable_dvs(platform);
@@ -354,12 +350,11 @@ static struct notifier_block gpu_noc_nb = {
 
 int gpu_notifier_init(struct kbase_device *kbdev)
 {
-	unsigned long flags;
 	struct exynos_context *platform = (struct exynos_context *)kbdev->platform_context;
 	if (!platform)
 		return -ENODEV;
 
-	platform->voltage_margin = platform->gpu_default_vol_margin;
+	platform->voltage_margin = 0;
 #if defined (CONFIG_EXYNOS_THERMAL) && defined(CONFIG_GPU_THERMAL)
 	exynos_gpu_add_notifier(&gpu_tmu_nb);
 #endif /* CONFIG_EXYNOS_THERMAL */
@@ -374,9 +369,7 @@ int gpu_notifier_init(struct kbase_device *kbdev)
 #endif
 	pm_runtime_enable(kbdev->dev);
 
-	spin_lock_irqsave(&platform->power_status_spinlock, flags);
 	platform->power_status = true;
-	spin_unlock_irqrestore(&platform->power_status_spinlock, flags);
 
 	return 0;
 }

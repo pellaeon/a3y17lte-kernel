@@ -743,6 +743,7 @@ static void fimc_is_ssxvc3_buffer_finish(struct vb2_buffer *vb)
 
 const struct vb2_ops fimc_is_ssxvc3_qops = {
 	.queue_setup		= fimc_is_ssxvc3_queue_setup,
+	.buf_init		= fimc_is_buffer_init,
 	.buf_prepare		= fimc_is_ssxvc3_buffer_prepare,
 	.buf_queue		= fimc_is_ssxvc3_buffer_queue,
 	.buf_finish		= fimc_is_ssxvc3_buffer_finish,

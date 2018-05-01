@@ -37,6 +37,7 @@
 #endif
 
 #include "i2c-exynos5.h"
+#include <linux/exynos-ss.h>
 
 #if defined(CONFIG_CPU_IDLE) || \
 	defined(CONFIG_EXYNOS_APM)
@@ -571,12 +572,8 @@ static int exynos5_i2c_set_timing(struct exynos5_i2c *i2c, int mode)
 
 	if (mode == HSI2C_HIGH_SPD)
 		i2c_timing_s1 = t_start_su << 24 | t_start_hd << 16 | t_stop_su << 8 | t_sda_su;
-	else {
-		if (i2c->sda_trigger_timing)
-			i2c_timing_s1 = t_start_su << 24 | t_start_hd << 16 | t_stop_su << 8 | i2c->sda_trigger_timing;
-		else
-			i2c_timing_s1 = t_start_su << 24 | t_start_hd << 16 | t_stop_su << 8;
-	}
+	else
+		i2c_timing_s1 = t_start_su << 24 | t_start_hd << 16 | t_stop_su << 8;
 
 	i2c_timing_s2 = (0xF << 16) | t_data_su << 24 | t_scl_l << 8 | t_scl_h;
 	i2c_timing_s3 = (div << 16) | t_sr_release;
@@ -1297,6 +1294,10 @@ static int exynos5_i2c_xfer_batcher(struct exynos5_i2c *i2c,
 			readl(i2c->regs + HSI2C_BATCHER_FIFO_STATUS));
 			dev_warn(i2c->dev, "Batcher INT Status= %x\n",
 			readl(i2c->regs + HSI2C_BATCHER_INT_STATUS));
+			dev_warn(i2c->dev, "sema0state = %x\n",
+			readl(i2c->regs_mailbox + 0x48));
+			dev_warn(i2c->dev, "sema1state = %x\n",
+			readl(i2c->regs_mailbox + 0x68));
 
 			ret = i2c->trans_done;
 			return ret;
@@ -1326,6 +1327,10 @@ static int exynos5_i2c_xfer_batcher(struct exynos5_i2c *i2c,
 				readl(i2c->regs + HSI2C_BATCHER_FIFO_STATUS));
 				dev_warn(i2c->dev, "Batcher INT Status= %x\n",
 				readl(i2c->regs + HSI2C_BATCHER_INT_STATUS));
+				dev_warn(i2c->dev, "sema0state = %x\n",
+				readl(i2c->regs_mailbox + 0x48));
+				dev_warn(i2c->dev, "sema1state = %x\n",
+				readl(i2c->regs_mailbox + 0x68));
 
 				/* Batcher recovery */
 				recover_batcher(i2c, i2c_batcher_state);
@@ -1351,6 +1356,10 @@ static int exynos5_i2c_xfer_batcher(struct exynos5_i2c *i2c,
 			readl(i2c->regs + HSI2C_BATCHER_FIFO_STATUS));
 			dev_warn(i2c->dev, "Batcher INT Status= %x\n",
 			readl(i2c->regs + HSI2C_BATCHER_INT_STATUS));
+			dev_warn(i2c->dev, "sema0state = %x\n",
+			readl(i2c->regs_mailbox + 0x48));
+			dev_warn(i2c->dev, "sema1state = %x\n",
+			readl(i2c->regs_mailbox + 0x68));
 
 			ret = i2c->trans_done;
 			return ret;
@@ -1374,6 +1383,11 @@ static int exynos5_i2c_xfer_batcher(struct exynos5_i2c *i2c,
 				readl(i2c->regs + HSI2C_BATCHER_FIFO_STATUS));
 				dev_warn(i2c->dev, "Batcher INT Status= %x\n",
 				readl(i2c->regs + HSI2C_BATCHER_INT_STATUS));
+
+				dev_warn(i2c->dev, "sema0state = %x\n",
+				readl(i2c->regs_mailbox + 0x48));
+				dev_warn(i2c->dev, "sema1state = %x\n",
+				readl(i2c->regs_mailbox + 0x68));
 
 				/* Batcher recovery */
 				recover_batcher(i2c, i2c_batcher_state);
@@ -1442,9 +1456,11 @@ static int exynos5_i2c_xfer(struct i2c_adapter *adap,
 			if (i2c->transfer_delay)
 				udelay(i2c->transfer_delay);
 
-			if (i2c->support_hsi2c_batcher)
+			if (i2c->support_hsi2c_batcher) {
 				ret = exynos5_i2c_xfer_batcher(i2c, msgs_ptr, stop);
-			else
+				exynos_ss_printkl(0, readl(i2c->regs_mailbox + 0x48));
+				exynos_ss_printkl(1, readl(i2c->regs_mailbox + 0x68));
+			} else
 				ret = exynos5_i2c_xfer_msg(i2c, msgs_ptr, stop);
 
 			msgs_ptr++;
@@ -1593,10 +1609,6 @@ static int exynos5_i2c_probe(struct platform_device *pdev)
 		i2c->reset_before_trans = 1;
 	else
 		i2c->reset_before_trans = 0;
-
-	ret = of_property_read_u32(np, "samsung.tsda-su-fs", &i2c->sda_trigger_timing);
-	if (ret)
-		dev_warn(&pdev->dev, "SDA trigger timing not needed.\n");
 
 	i2c->idle_ip_index = exynos_get_idle_ip_index(dev_name(&pdev->dev));
 
@@ -1796,6 +1808,11 @@ static int exynos5_i2c_suspend_noirq(struct device *dev)
 	i2c->suspended = 1;
 	i2c_unlock_adapter(&i2c->adap);
 
+	if (i2c->support_hsi2c_batcher) {
+		exynos_ss_printkl(2, readl(i2c->regs_mailbox + 0x48));
+		exynos_ss_printkl(3, readl(i2c->regs_mailbox + 0x68));
+	}
+
 	return 0;
 }
 
@@ -1815,6 +1832,11 @@ static int exynos5_i2c_resume_noirq(struct device *dev)
 	}
 	i2c->suspended = 0;
 	i2c_unlock_adapter(&i2c->adap);
+
+	if (i2c->support_hsi2c_batcher) {
+		exynos_ss_printkl(4, readl(i2c->regs_mailbox + 0x48));
+		exynos_ss_printkl(5, readl(i2c->regs_mailbox + 0x68));
+	}
 
 	return 0;
 }
@@ -1870,6 +1892,7 @@ static struct platform_driver exynos5_i2c_driver = {
 		.name	= "exynos5-hsi2c",
 		.pm	= &exynos5_i2c_pm,
 		.of_match_table = exynos5_i2c_match,
+		.suppress_bind_attrs = true,
 	},
 };
 

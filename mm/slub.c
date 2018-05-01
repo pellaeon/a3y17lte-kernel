@@ -540,7 +540,7 @@ static void print_track(const char *s, struct track *t)
 		return;
 
 	pr_auto(ASL7, "INFO: %s in %pS age=%lu cpu=%u pid=%d\n",
-	       s, (void *)t->addr, jiffies - t->when, t->cpu, t->pid);
+		   s, (void *)t->addr, jiffies - t->when, t->cpu, t->pid);
 
 #ifdef CONFIG_STACKTRACE
 	{
@@ -581,7 +581,7 @@ static void slab_bug(struct kmem_cache *s, char *fmt, ...)
 
 	pr_auto(ASL7, "=============================================================================\n");
 	pr_auto(ASL7, "BUG %s (%s): %pV\n", s->name, print_tainted(), &vaf);
-	pr_auto(ASL7, "-----------------------------------------------------------------------------\n\n");
+	pr_auto(ASL7, "-----------------------------------------------------------------------------\n");
 
 	add_taint(TAINT_BAD_PAGE, LOCKDEP_NOW_UNRELIABLE);
 	va_end(args);
@@ -608,8 +608,8 @@ static void print_trailer(struct kmem_cache *s, struct page *page, u8 *p)
 
 	print_page_info(page);
 
-	pr_auto(ASL7, "INFO: Object 0x%p @offset=%tu fp=0x%p\n",
-	       p, p - addr, get_freepointer(s, p));
+	pr_auto(ASL7, "INFO: Object 0x%p @offset=%tu fp=0x%p\n\n",
+		   p, p - addr, get_freepointer(s, p));
 
 	if (p > addr + 16)
 		print_section("Bytes b4 ", p - 16, 16);
@@ -719,7 +719,7 @@ static int check_bytes_and_report(struct kmem_cache *s, struct page *page,
 	slab_bug(s, "%s overwritten", what);
 
 	pr_auto(ASL7, "INFO: 0x%p-0x%p. First byte 0x%x instead of 0x%x\n",
-					fault, end - 1, fault[0], value);
+				fault, end - 1, fault[0], value);
 
 	print_trailer(s, page, object);
 	pr_auto_disable(7);

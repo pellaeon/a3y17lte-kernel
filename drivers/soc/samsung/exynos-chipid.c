@@ -19,17 +19,15 @@
 #include <linux/sys_soc.h>
 #include <linux/soc/samsung/exynos-soc.h>
 
-#define EXYNOS_SUBREV_MASK	(0xF << 4)
-#define EXYNOS_MAINREV_MASK	(0xF << 0)
-#define EXYNOS_REV_MASK		(EXYNOS_SUBREV_MASK | EXYNOS_MAINREV_MASK)
+#define EXYNOS_MAINREV_MASK	(0xF << 4)
+#define EXYNOS_SUBREV_MASK	(0xF << 0)
+#define EXYNOS_REV_MASK		(EXYNOS_MAINREV_MASK | EXYNOS_SUBREV_MASK)
 
 static void __iomem *exynos_chipid_base;
 
 struct exynos_chipid_info exynos_soc_info;
 EXPORT_SYMBOL(exynos_soc_info);
 
-static const char *soc_ap_id;
-	
 static const char * __init product_id_to_name(unsigned int product_id)
 {
 	const char *soc_name;
@@ -68,6 +66,9 @@ static const char * __init product_id_to_name(unsigned int product_id)
 		break;
 	case EXYNOS7870_SOC_ID:
 		soc_name = "EXYNOS7870";
+		break;
+	case EXYNOS7880_SOC_ID:
+		soc_name = "EXYNOS7880";
 		break;
 	case EXYNOS8890_SOC_ID:
 		soc_name = "EXYNOS8890";
@@ -116,6 +117,10 @@ void __init exynos_chipid_early_init(struct device *dev)
 	exynos_soc_info.unique_id  = __raw_readl(exynos_chipid_base + UNIQUE_ID1);
 	exynos_soc_info.unique_id  |= (u64)__raw_readl(exynos_chipid_base + UNIQUE_ID2) << 32;
 	exynos_soc_info.revision = exynos_soc_info.product_id & EXYNOS_REV_MASK;
+
+	// exceptional case for 7880
+	if ((exynos_soc_info.product_id & EXYNOS_SOC_MASK) == EXYNOS7880_SOC_ID)
+		exynos_soc_info.revision -= 1;
 }
 
 static int __init exynos_chipid_probe(struct platform_device *pdev)
@@ -145,7 +150,7 @@ static int __init exynos_chipid_probe(struct platform_device *pdev)
 		goto free_soc;
 
 	soc_dev_attr->soc_id = product_id_to_name(exynos_soc_info.product_id);
-	soc_ap_id = product_id_to_name(exynos_soc_info.product_id);
+
 	soc_dev = soc_device_register(soc_dev_attr);
 	if (IS_ERR(soc_dev))
 		goto free_rev;
@@ -193,13 +198,6 @@ static ssize_t chipid_product_id_show(struct kobject *kobj,
 	return snprintf(buf, 10, "%08X\n", exynos_soc_info.product_id);
 }
 
-/* [BigData] For display of HRM Apk */
-static ssize_t chipid_ap_id_show(struct kobject *kobj,
-			         struct kobj_attribute *attr, char *buf)
-{
-	return snprintf(buf, 30, "%s EVT%d.%d\n", soc_ap_id, exynos_soc_info.revision>>4, exynos_soc_info.revision%16);
-}
-
 static ssize_t chipid_lot_id_show(struct kobject *kobj,
 			         struct kobj_attribute *attr, char *buf)
 {
@@ -213,16 +211,18 @@ static ssize_t chipid_revision_show(struct kobject *kobj,
 }
 
 static ssize_t chipid_evt_ver_show(struct kobject *kobj,
-                                   struct kobj_attribute *attr, char *buf)
+			         struct kobj_attribute *attr, char *buf)
 {
-         return snprintf(buf, 14, "EVT%d.%d\n", exynos_soc_info.revision>>4, exynos_soc_info.revision%16);
+	if (exynos_soc_info.revision == 0)
+		return snprintf(buf, 14, "EVT0\n");
+	else
+		return snprintf(buf, 14, "EVT%1X.%1X\n",
+				(exynos_soc_info.revision & EXYNOS_MAINREV_MASK) >> 4,
+				(exynos_soc_info.revision & EXYNOS_SUBREV_MASK));
 }
 
 static struct kobj_attribute chipid_product_id_attr =
         __ATTR(product_id, 0644, chipid_product_id_show, NULL);
-
-static struct kobj_attribute chipid_ap_id_attr =
-        __ATTR(ap_id, 0644, chipid_ap_id_show, NULL);
 
 static struct kobj_attribute chipid_lot_id_attr =
         __ATTR(lot_id, 0644, chipid_lot_id_show, NULL);
@@ -235,7 +235,6 @@ static struct kobj_attribute chipid_evt_ver_attr =
 
 static struct attribute *chipid_sysfs_attrs[] = {
 	&chipid_product_id_attr.attr,
-	&chipid_ap_id_attr.attr,
 	&chipid_lot_id_attr.attr,
 	&chipid_revision_attr.attr,
 	&chipid_evt_ver_attr.attr,

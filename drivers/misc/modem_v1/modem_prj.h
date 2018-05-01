@@ -233,15 +233,6 @@ static inline bool sipc_ps_ch(u8 ch)
 #define sipc5_is_not_reserved_channel(ch) \
 	((ch) != 0 && (ch) != 5 && (ch) != 6 && (ch) != 27 && (ch) != 255)
 
-#ifdef CONFIG_MODEM_IF_QOS
-#define MAX_NDEV_TX_Q 2
-#else
-#define MAX_NDEV_TX_Q 1
-#endif
-#define MAX_NDEV_RX_Q 1
-/* mark value for high priority packet, hex QOSH */
-#define RAW_HPRIO	0x514F5348
-
 struct vnet {
 	struct io_device *iod;
 	struct link_device *ld;
@@ -427,10 +418,14 @@ struct link_device {
 	struct modem_data *mdm_data;
 
 	/* TX queue of socket buffers */
-	struct sk_buff_head skb_txq[MAX_SIPC_MAP];
+	struct sk_buff_head sk_fmt_tx_q;
+	struct sk_buff_head sk_raw_tx_q;
+	struct sk_buff_head *skb_txq[MAX_SIPC_DEVICES];
 
 	/* RX queue of socket buffers */
-	struct sk_buff_head skb_rxq[MAX_SIPC_MAP];
+	struct sk_buff_head sk_fmt_rx_q;
+	struct sk_buff_head sk_raw_rx_q;
+	struct sk_buff_head *skb_rxq[MAX_SIPC_DEVICES];
 
 	/* Stop/resume control for network ifaces */
 	spinlock_t netif_lock;
@@ -636,6 +631,7 @@ struct modem_ctl {
 	unsigned int mbx_cp_wakeup;
 	unsigned int mbx_cp_status;
 	unsigned int mbx_perf_req;
+	unsigned int mbx_evs_mode;
 
 	/* for checking aliveness of CP */
 	struct modem_irq irq_cp_wdt;		/* watchdog timer */
@@ -661,6 +657,8 @@ struct modem_ctl {
 	void (*gpio_revers_bias_clear)(void);
 	void (*gpio_revers_bias_restore)(void);
 	void (*modem_complete)(struct modem_ctl *mc);
+
+	struct clk *qch_cp;
 };
 
 static inline bool cp_offline(struct modem_ctl *mc)

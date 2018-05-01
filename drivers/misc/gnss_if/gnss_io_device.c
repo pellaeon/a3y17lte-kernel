@@ -550,13 +550,6 @@ static long misc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		gif_err("%s: GNSS_IOCTL_CHANGE_TCXO_MODE\n", iod->name);
 		return change_tcxo_mode(gc, arg);
 
-	case GNSS_IOCTL_SET_SENSOR_POWER:
-		if (gc->ops.set_sensor_power) {
-			gif_err("%s: GNSS_IOCTL_SENSOR_POWER\n", iod->name);
-			return  gc->ops.set_sensor_power(gc, arg);
-		}
-		return -EFAULT;
-
 	default:
 
 		gif_err("%s: ERR! undefined cmd 0x%X\n", iod->name, cmd);

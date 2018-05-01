@@ -78,16 +78,6 @@ int hw_breakpoint_slots(int type)
 	}
 }
 
-#ifdef CONFIG_SKIP_HW_BREAKPOINT
-static int skip_hw_breakpoint;
-static int __init skip_hw_breakpoint_func(char *str)
-{
-        get_option(&str, &skip_hw_breakpoint);
-        return 0;
-}
-early_param("hw_breakpoint", skip_hw_breakpoint_func);
-#endif
-
 #define READ_WB_REG_CASE(OFF, N, REG, VAL)	\
 	case (OFF + N):				\
 		AARCH64_DBG_READ(N, REG, VAL);	\
@@ -895,7 +885,7 @@ static int hw_breakpoint_reset_notify(struct notifier_block *self,
 						void *hcpu)
 {
 	int cpu = (long)hcpu;
-	if (action == CPU_ONLINE)
+	if ((action & ~CPU_TASKS_FROZEN) == CPU_ONLINE)
 		smp_call_function_single(cpu, hw_breakpoint_reset, NULL, 1);
 	return NOTIFY_OK;
 }
@@ -917,13 +907,6 @@ static inline void cpu_suspend_set_dbg_restorer(void (*hw_bp_restore)(void *))
  */
 static int __init arch_hw_breakpoint_init(void)
 {
-#if defined(CONFIG_SKIP_HW_BREAKPOINT)
-	if (skip_hw_breakpoint) {
-		pr_info("skip arch_hw_breakpoint init\n");
-		return 0;
-	}
-#endif
-
 	core_num_brps = get_num_brps();
 	core_num_wrps = get_num_wrps();
 

@@ -78,14 +78,20 @@ static void isa1000_enable(struct timed_output_dev *dev, int value)
 		= container_of(dev, struct isa1000_ddata, dev);
 	struct hrtimer *timer = &ddata->timer;
 	unsigned long flags;
+
 	cancel_work_sync(&ddata->work);
 	hrtimer_cancel(timer);
 	schedule_work(&ddata->work);
 
 	if (value > ddata->pdata->max_timeout)
 		value = ddata->pdata->max_timeout;
+
 	spin_lock_irqsave(&ddata->lock, flags);
 	ddata->timeout = value;
+	if (value > 0 ) {
+		hrtimer_start(timer, ns_to_ktime((u64)value * NSEC_PER_MSEC),
+			HRTIMER_MODE_REL);
+	}
 	spin_unlock_irqrestore(&ddata->lock, flags);
 }
 
@@ -126,7 +132,7 @@ static void isa1000_regulator_en(struct isa1000_ddata *ddata, bool en)
 	}
 	else if (!en && regulator_is_enabled(ddata->regulator)) {
 		ret = regulator_disable(ddata->regulator);
-		pr_info("[VIB] regulator_disable returns %d\n", ret);
+		pr_info("[VIB] regulator_enable returns %d\n", ret);
 	}
 }
 
@@ -144,21 +150,23 @@ static void isa1000_work_func(struct work_struct *work)
 {
 	struct isa1000_ddata *ddata =
 		container_of(work, struct isa1000_ddata, work);
-	struct hrtimer *timer = &ddata->timer;
 
 	if (ddata->timeout) {
+		if (ddata->running)
+			return;
 		ddata->running = true;
 		isa1000_en(ddata, true);
-		isa1000_pwm_config(ddata, ddata->duty);
+		isa1000_pwm_config(ddata, ddata->pdata->duty);
 		isa1000_pwm_en(ddata, true);
 		isa1000_regulator_en(ddata, true);
-		hrtimer_start(timer, ns_to_ktime((u64)ddata->timeout * NSEC_PER_MSEC), HRTIMER_MODE_REL);
 	} else {
+		if (!ddata->running)
+			return;
 		ddata->running = false;
+		isa1000_pwm_config(ddata, ddata->pdata->period >> 1);
 		isa1000_pwm_en(ddata, false);
 		isa1000_en(ddata, false);
 		isa1000_regulator_en(ddata, false);
-		hrtimer_cancel(timer);
 	}
 	return;
 }
@@ -171,7 +179,7 @@ static ssize_t intensity_store(struct device *dev,
 		= container_of(tdev, struct isa1000_ddata, dev);
 	int duty = drvdata->pdata->period >> 1;
 	int intensity = 0, ret = 0;
-	
+
 	ret = kstrtoint(buf, 0, &intensity);
 
 	if (intensity < 0 || MAX_INTENSITY < intensity) {
@@ -190,6 +198,9 @@ static ssize_t intensity_store(struct device *dev,
 
 	drvdata->intensity = intensity;
 	drvdata->duty = duty;
+
+	pwm_config(drvdata->pwm, duty, drvdata->pdata->period);
+
 	return count;
 }
 
@@ -208,7 +219,7 @@ static DEVICE_ATTR(intensity, 0660, intensity_show, intensity_store);
 static struct isa1000_pdata *
 	isa1000_get_devtree_pdata(struct device *dev)
 {
-	struct device_node *node, *child_node=NULL;
+	struct device_node *node, *child_node;
 	struct isa1000_pdata *pdata;
 	int ret = 0;
 
@@ -236,7 +247,6 @@ static struct isa1000_pdata *
 	of_property_read_u32(child_node, "isa1000,duty", &pdata->duty);
 	of_property_read_u32(child_node, "isa1000,period", &pdata->period);
 	of_property_read_u32(child_node, "isa1000,pwm_id", &pdata->pwm_id);
-	of_property_read_u32(child_node, "isa1000,pwm_use", &pdata->pwm_use);
 
 	of_property_read_string(child_node, "isa1000,regulator_name", &pdata->regulator_name);
 
@@ -250,7 +260,6 @@ static struct isa1000_pdata *
 	printk("[VIB] period = %d\n", pdata->period);
 	printk("[VIB] pwm_id = %d\n", pdata->pwm_id);
 	printk("[VIB] gpio_en = %d\n", pdata->gpio_en);
-	printk("[VIB] pwm_use = %d\n", pdata->pwm_use);
 
 	return pdata;
 
@@ -315,13 +324,11 @@ static int isa1000_probe(struct platform_device *pdev)
 		goto err_dev_reg;
 	}
 
-	if(ddata->pdata->pwm_use)
-	{
-		ret = sysfs_create_file(&ddata->dev.dev->kobj, &dev_attr_intensity.attr);
-		if (ret < 0) {
-			pr_err("Failed to register sysfs : %d\n", ret);
-			goto err_dev_reg;
-		}
+	ret = sysfs_create_file(&ddata->dev.dev->kobj,
+				&dev_attr_intensity.attr);
+	if (ret < 0) {
+		pr_err("Failed to register sysfs : %d\n", ret);
+		goto err_dev_reg;
 	}
 
 	platform_set_drvdata(pdev, ddata);

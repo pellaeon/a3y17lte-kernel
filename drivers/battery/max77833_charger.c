@@ -38,7 +38,7 @@ static enum power_supply_property max77833_charger_props[] = {
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
 	POWER_SUPPLY_PROP_CHARGE_OTG_CONTROL,
 	POWER_SUPPLY_PROP_USB_HC,
-#if defined(CONFIG_BATTERY_SWELLING) || defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING)
+#if defined(CONFIG_BATTERY_SWELLING)
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,
 #endif
 #if defined(CONFIG_AFC_CHARGER_MODE)
@@ -857,7 +857,7 @@ static void max77833_charger_initialize(struct max77833_charger_data *charger)
 	max77833_test_read(charger);
 }
 
-#if defined(CONFIG_BATTERY_SWELLING) || defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING)
+#if defined(CONFIG_BATTERY_SWELLING)
 static void max77833_set_float_voltage(struct max77833_charger_data *charger, int float_voltage)
 {
 	u8 reg_data = 0;
@@ -1014,7 +1014,7 @@ static int max77833_chg_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
 		break;
-#if defined(CONFIG_BATTERY_SWELLING) || defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING)
+#if defined(CONFIG_BATTERY_SWELLING)
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		val->intval = max77833_get_float_voltage(charger);
 		break;
@@ -1119,7 +1119,7 @@ static int max77833_chg_set_property(struct power_supply *psy,
 	//	max77833_hv_muic_charger_init();
 		break;
 #endif
-#if defined(CONFIG_BATTERY_SWELLING) || defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING)
+#if defined(CONFIG_BATTERY_SWELLING)
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		pr_info("%s: float voltage(%d)\n", __func__, val->intval);
 		max77833_set_float_voltage(charger, val->intval);

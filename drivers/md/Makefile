@@ -1,13 +1,9 @@
 #
 # Makefile for the kernel software RAID and LVM drivers.
 #
+
 ifeq ($(SEC_BUILD_CONF_QUICK_DMVERITY),true)
 EXTRA_CFLAGS += -DVERIFY_META_ONLY=true
-endif
-
-ifeq ($(SEC_BUILD_CONF_DMV_ALTA),true)
-EXTRA_CFLAGS += -DDMV_ALTA=true
-EXTRA_CFLAGS += -DDMV_ALTA_PROF=true
 endif
 
 dm-mod-y	+= dm.o dm-table.o dm-target.o dm-linear.o dm-stripe.o \
@@ -23,6 +19,7 @@ dm-cache-y	+= dm-cache-target.o dm-cache-metadata.o dm-cache-policy.o
 dm-cache-mq-y   += dm-cache-policy-mq.o
 dm-cache-cleaner-y += dm-cache-policy-cleaner.o
 dm-era-y	+= dm-era-target.o
+dm-verity-y	+= dm-verity-target.o
 md-mod-y	+= md.o bitmap.o
 raid456-y	+= raid5.o
 
@@ -67,4 +64,12 @@ obj-$(CONFIG_DM_ERA)		+= dm-era.o
 
 ifeq ($(CONFIG_DM_UEVENT),y)
 dm-mod-objs			+= dm-uevent.o
+endif
+
+ifeq ($(CONFIG_DM_VERITY_FEC),y)
+dm-verity-objs			+= dm-verity-fec.o
+endif
+
+ifeq ($(CONFIG_DM_ANDROID_VERITY),y)
+dm-verity-objs			+= dm-android-verity.o
 endif

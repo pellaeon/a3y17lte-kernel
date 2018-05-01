@@ -77,6 +77,9 @@ struct fimc_is_sysfs_debug sysfs_debug;
 #ifndef ENABLE_IS_CORE
 /* sysfs global variable for set position to actuator */
 struct fimc_is_sysfs_actuator sysfs_actuator;
+#ifdef FIXED_SENSOR_DEBUG
+struct fimc_is_sysfs_sensor sysfs_sensor;
+#endif
 #endif
 
 #ifdef CONFIG_CPU_THERMAL_IPA
@@ -139,6 +142,7 @@ static void __fimc_is_fault_handler(struct device *dev)
 	struct fimc_is_subdev *subdev;
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_resourcemgr *resourcemgr;
+	struct camera2_shot *shot;
 
 	core = dev_get_drvdata(dev);
 	if (core) {
@@ -239,6 +243,11 @@ static void __fimc_is_fault_handler(struct device *dev)
 							pr_err("[%d][3XS] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
 								framemgr->frames[j].dvaddr_buffer[k],
 								framemgr->frames[j].mem_state);
+
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][3XS] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.sourceAddress[k]);
 						}
 					}
 				}
@@ -251,6 +260,11 @@ static void __fimc_is_fault_handler(struct device *dev)
 							pr_err("[%d][3XC] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
 								framemgr->frames[j].dvaddr_buffer[k],
 								framemgr->frames[j].mem_state);
+
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][3XC] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.txcTargetAddress[k]);
 						}
 					}
 				}
@@ -263,6 +277,11 @@ static void __fimc_is_fault_handler(struct device *dev)
 							pr_err("[%d][3XP] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
 								framemgr->frames[j].dvaddr_buffer[k],
 								framemgr->frames[j].mem_state);
+
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][3XP] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.txpTargetAddress[k]);
 						}
 					}
 				}
@@ -287,6 +306,11 @@ static void __fimc_is_fault_handler(struct device *dev)
 							pr_err("[%d][IXC] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
 								framemgr->frames[j].dvaddr_buffer[k],
 								framemgr->frames[j].mem_state);
+
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][IXC] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.ixcTargetAddress[k]);
 						}
 					}
 				}
@@ -299,6 +323,11 @@ static void __fimc_is_fault_handler(struct device *dev)
 							pr_err("[%d][IXP] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
 								framemgr->frames[j].dvaddr_buffer[k],
 								framemgr->frames[j].mem_state);
+
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][IXP] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.ixpTargetAddress[k]);
 						}
 					}
 				}
@@ -323,6 +352,11 @@ static void __fimc_is_fault_handler(struct device *dev)
 							pr_err("[%d][SCC] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
 								framemgr->frames[j].dvaddr_buffer[k],
 								framemgr->frames[j].mem_state);
+
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][SCC] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.sccTargetAddress[k]);
 						}
 					}
 				}
@@ -335,6 +369,11 @@ static void __fimc_is_fault_handler(struct device *dev)
 							pr_err("[%d][SCP] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
 								framemgr->frames[j].dvaddr_buffer[k],
 								framemgr->frames[j].mem_state);
+
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][SCP] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.scpTargetAddress[k]);
 						}
 					}
 				}
@@ -347,6 +386,11 @@ static void __fimc_is_fault_handler(struct device *dev)
 							pr_err("[%d][MCS] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
 								framemgr->frames[j].dvaddr_buffer[k],
 								framemgr->frames[j].mem_state);
+
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][MCS] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.scpTargetAddress[k]);
 						}
 					}
 				}
@@ -359,6 +403,11 @@ static void __fimc_is_fault_handler(struct device *dev)
 							pr_err("[%d][M0P] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
 								framemgr->frames[j].dvaddr_buffer[k],
 								framemgr->frames[j].mem_state);
+
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][M0P] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.sc0TargetAddress[k]);
 						}
 					}
 				}
@@ -371,6 +420,11 @@ static void __fimc_is_fault_handler(struct device *dev)
 							pr_err("[%d][M1P] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
 								framemgr->frames[j].dvaddr_buffer[k],
 								framemgr->frames[j].mem_state);
+
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][M1P] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.sc1TargetAddress[k]);
 						}
 					}
 				}
@@ -383,6 +437,11 @@ static void __fimc_is_fault_handler(struct device *dev)
 							pr_err("[%d][M2P] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
 								framemgr->frames[j].dvaddr_buffer[k],
 								framemgr->frames[j].mem_state);
+
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][M2P] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.sc2TargetAddress[k]);
 						}
 					}
 				}
@@ -395,6 +454,11 @@ static void __fimc_is_fault_handler(struct device *dev)
 							pr_err("[%d][M3P] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
 								framemgr->frames[j].dvaddr_buffer[k],
 								framemgr->frames[j].mem_state);
+
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][M3P] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.sc3TargetAddress[k]);
 						}
 					}
 				}
@@ -407,6 +471,11 @@ static void __fimc_is_fault_handler(struct device *dev)
 							pr_err("[%d][M4P] BUF[%d][%d] = 0x%08X(0x%lX)\n", i, j, k,
 								framemgr->frames[j].dvaddr_buffer[k],
 								framemgr->frames[j].mem_state);
+
+							shot = framemgr->frames[j].shot;
+							if (shot)
+								pr_err("[%d][M4P] BUF[%d][%d] target = 0x%08X\n", i, j, k,
+									shot->uctl.scalerUd.sc4TargetAddress[k]);
 						}
 					}
 				}
@@ -621,6 +690,49 @@ static ssize_t store_en_dvfs(struct device *dev,
 	return count;
 }
 
+#ifdef ENABLE_DBG_STATE
+static ssize_t show_debug_state(struct device *dev, struct device_attribute *attr,
+				  char *buf)
+{
+	struct fimc_is_core *core =
+		(struct fimc_is_core *)platform_get_drvdata(to_platform_device(dev));
+	struct fimc_is_resourcemgr *resourcemgr;
+
+	BUG_ON(!core);
+
+	resourcemgr = &core->resourcemgr;
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", resourcemgr->hal_version);
+}
+
+static ssize_t store_debug_state(struct device *dev,
+				 struct device_attribute *attr,
+				 const char *buf, size_t count)
+{
+	struct fimc_is_core *core =
+		(struct fimc_is_core *)platform_get_drvdata(to_platform_device(dev));
+	struct fimc_is_resourcemgr *resourcemgr;
+
+	BUG_ON(!core);
+
+	resourcemgr = &core->resourcemgr;
+
+	switch (buf[0]) {
+	case '0':
+		break;
+	case '1':
+		break;
+	case '7':
+		break;
+	default:
+		pr_debug("%s: %c\n", __func__, buf[0]);
+		break;
+	}
+
+	return count;
+}
+#endif
+
 #ifndef ENABLE_IS_CORE
 static ssize_t store_actuator_init_step(struct device *dev,
 		struct device_attribute *attr,
@@ -718,24 +830,106 @@ static ssize_t show_actuator_init_delays(struct device *dev, struct device_attri
 							sysfs_actuator.init_delays[1], sysfs_actuator.init_delays[2],
 							sysfs_actuator.init_delays[3], sysfs_actuator.init_delays[4]);
 }
+#ifdef FIXED_SENSOR_DEBUG
+static ssize_t show_fixed_sensor_val(struct device *dev, struct device_attribute *attr,
+				  char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "fps(%d) ex(%d %d) a_gain(%d %d) d_gain(%d %d)\n",
+			sysfs_sensor.frame_duration,
+			sysfs_sensor.long_exposure_time,
+			sysfs_sensor.short_exposure_time,
+			sysfs_sensor.long_analog_gain,
+			sysfs_sensor.short_analog_gain,
+			sysfs_sensor.long_digital_gain,
+			sysfs_sensor.short_digital_gain);
+}
 
-static DEVICE_ATTR(init_step, 0644, show_actuator_init_step, store_actuator_init_step);
-static DEVICE_ATTR(init_positions, 0644, show_actuator_init_positions, store_actuator_init_positions);
-static DEVICE_ATTR(init_delays, 0644, show_actuator_init_delays, store_actuator_init_delays);
+static ssize_t store_fixed_sensor_val(struct device *dev,
+				 struct device_attribute *attr,
+				 const char *buf, size_t count)
+{
+	int ret_count;
+	int input_val[7];
+
+	ret_count = sscanf(buf, "%d %d %d %d %d %d %d", &input_val[0], &input_val[1],
+							&input_val[2], &input_val[3],
+							&input_val[4], &input_val[5], &input_val[6]);
+	if (ret_count != 7) {
+		probe_err("%s: count should be 7 but %d \n", __func__, ret_count);
+		return -EINVAL;
+	}
+
+	sysfs_sensor.frame_duration = input_val[0];
+	sysfs_sensor.long_exposure_time = input_val[1];
+	sysfs_sensor.short_exposure_time = input_val[2];
+	sysfs_sensor.long_analog_gain = input_val[3];
+	sysfs_sensor.short_analog_gain = input_val[4];
+	sysfs_sensor.long_digital_gain = input_val[5];
+	sysfs_sensor.short_digital_gain = input_val[6];
+
+	return count;
+
+
+
+}
+
+static ssize_t show_en_fixed_sensor(struct device *dev, struct device_attribute *attr,
+				  char *buf)
+{
+	if (sysfs_sensor.is_en)
+		return snprintf(buf, PAGE_SIZE, "%s\n", "enabled");
+	else
+		return snprintf(buf, PAGE_SIZE, "%s\n", "disabled");
+}
+
+static ssize_t store_en_fixed_sensor(struct device *dev,
+				 struct device_attribute *attr,
+				 const char *buf, size_t count)
+{
+	if (buf[0] == '1')
+		sysfs_sensor.is_en = true;
+	else
+		sysfs_sensor.is_en = false;
+
+	return count;
+}
+#endif
 #endif
 
 static DEVICE_ATTR(en_clk_gate, 0644, show_en_clk_gate, store_en_clk_gate);
 static DEVICE_ATTR(clk_gate_mode, 0644, show_clk_gate_mode, store_clk_gate_mode);
 static DEVICE_ATTR(en_dvfs, 0644, show_en_dvfs, store_en_dvfs);
 
+#ifdef ENABLE_DBG_STATE
+static DEVICE_ATTR(en_debug_state, 0644, show_debug_state, store_debug_state);
+#endif
+
+#ifndef ENABLE_IS_CORE
+static DEVICE_ATTR(init_step, 0644, show_actuator_init_step, store_actuator_init_step);
+static DEVICE_ATTR(init_positions, 0644, show_actuator_init_positions, store_actuator_init_positions);
+static DEVICE_ATTR(init_delays, 0644, show_actuator_init_delays, store_actuator_init_delays);
+
+#ifdef FIXED_SENSOR_DEBUG
+static DEVICE_ATTR(fixed_sensor_val, 0644, show_fixed_sensor_val, store_fixed_sensor_val);
+static DEVICE_ATTR(en_fixed_sensor, 0644, show_en_fixed_sensor, store_en_fixed_sensor);
+#endif
+#endif
+
 static struct attribute *fimc_is_debug_entries[] = {
 	&dev_attr_en_clk_gate.attr,
 	&dev_attr_clk_gate_mode.attr,
 	&dev_attr_en_dvfs.attr,
+#ifdef ENABLE_DBG_STATE
+	&dev_attr_en_debug_state.attr,
+#endif
 #ifndef ENABLE_IS_CORE
 	&dev_attr_init_step.attr,
 	&dev_attr_init_positions.attr,
 	&dev_attr_init_delays.attr,
+#ifdef FIXED_SENSOR_DEBUG
+	&dev_attr_fixed_sensor_val.attr,
+	&dev_attr_en_fixed_sensor.attr,
+#endif
 #endif
 	NULL,
 };
@@ -987,6 +1181,11 @@ static int fimc_is_probe(struct platform_device *pdev)
 	fimc_is_m4p_video_probe(core);
 #endif
 
+#ifdef SOC_VRA
+	/* video entity - vra */
+	fimc_is_vra_video_probe(core);
+#endif
+
 	platform_set_drvdata(pdev, core);
 
 #ifndef ENABLE_IS_CORE
@@ -1012,6 +1211,16 @@ static int fimc_is_probe(struct platform_device *pdev)
 		sysfs_actuator.init_positions[i] = -1;
 		sysfs_actuator.init_delays[i] = -1;
 	}
+#ifdef FIXED_SENSOR_DEBUG
+	sysfs_sensor.is_en = false;
+	sysfs_sensor.frame_duration = FIXED_FPS_VALUE;
+	sysfs_sensor.long_exposure_time = FIXED_EXPOSURE_VALUE;
+	sysfs_sensor.short_exposure_time = FIXED_EXPOSURE_VALUE;
+	sysfs_sensor.long_analog_gain = FIXED_AGAIN_VALUE;
+	sysfs_sensor.short_analog_gain = FIXED_AGAIN_VALUE;
+	sysfs_sensor.long_digital_gain = FIXED_DGAIN_VALUE;
+	sysfs_sensor.short_digital_gain = FIXED_DGAIN_VALUE;
+#endif
 #endif
 
 #if defined(CONFIG_SOC_EXYNOS5430) || defined(CONFIG_SOC_EXYNOS5433)

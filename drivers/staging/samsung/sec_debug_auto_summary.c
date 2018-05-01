@@ -177,7 +177,6 @@ static void sec_auto_summary_init_print_buf(unsigned long base)
 
 	register_set_auto_comm_buf(sec_debug_hook_auto_comm);
 	register_set_auto_comm_lastfreq(sec_debug_hook_auto_comm_lastfreq);
-	
 }
 
 static int __init sec_auto_summary_log_setup(char *str)

@@ -42,7 +42,6 @@
 #define SEC_BAT_CURRENT_EVENT_AFC					0x0001
 #define SEC_BAT_CURRENT_EVENT_LOW_TEMP_SWELLING		0x0010
 #define SEC_BAT_CURRENT_EVENT_HIGH_TEMP_SWELLING	0x0020
-#define SEC_BAT_CURRENT_EVENT_LOW_TEMP				0x0080
 
 #define SIOP_EVENT_NONE 	0x0000
 #define SIOP_EVENT_WPC_CALL 	0x0001
@@ -71,15 +70,6 @@
 #define SIOP_HV_CHARGING_LIMIT_CURRENT             1000
 
 #define BATT_MISC_EVENT_UNDEFINED_RANGE_TYPE	0x00000001
-
-#if defined(CONFIG_BATTERY_SWELLING)
-enum swelling_mode_state {
-	SWELLING_MODE_NONE = 0,
-	SWELLING_MODE_CHARGING,
-	SWELLING_MODE_FULL,
-	SWELLING_MODE_ADDITIONAL,
-};
-#endif
 
 struct adc_sample_info {
 	unsigned int cnt;
@@ -119,6 +109,8 @@ struct sec_battery_info {
 	int current_adc;
 
 	unsigned int capacity;			/* SOC (%) */
+
+	unsigned int power_supply_type_size;
 
 	struct mutex adclock;
 	struct adc_sample_info	adc_sample[ADC_CH_COUNT];
@@ -196,8 +188,6 @@ struct sec_battery_info {
 	/* charging */
 	unsigned int charging_mode;
 	bool is_recharging;
-	int wdt_kick_disable;
-
 	bool is_jig_on;
 	int cable_type;
 	int muic_cable_type;
@@ -272,21 +262,11 @@ struct sec_battery_info {
 	bool skip_chg_temp_check;
 	bool skip_wpc_temp_check;
 	bool wpc_temp_mode;
-#if defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING)
-	bool factory_self_discharging_mode_on;
-	bool force_discharging;
-	bool self_discharging;
-	bool discharging_ntc;
-	int discharging_ntc_adc;
-	int self_discharging_adc;
-#endif
-#if defined(CONFIG_SW_SELF_DISCHARGING)
-	bool sw_self_discharging;
-	struct wake_lock self_discharging_wake_lock;
-#endif
 	bool charging_block;
 #if defined(CONFIG_BATTERY_SWELLING)
-	unsigned int swelling_mode;
+	bool swelling_mode;
+	unsigned long swelling_block_start;
+	unsigned long swelling_block_passed;
 	int swelling_full_check_cnt;
 #endif
 #if defined(CONFIG_AFC_CHARGER_MODE)
@@ -310,10 +290,6 @@ struct sec_battery_info {
 	unsigned int prev_misc_event;
 	struct delayed_work misc_event_work;
 	struct wake_lock misc_event_wake_lock;
-#if defined(CONFIG_CONDITIONAL_SAFETY_TIMER)
-	unsigned long lcd_on_total_time;
-	unsigned long lcd_on_time;
-#endif
 };
 
 ssize_t sec_bat_show_attrs(struct device *dev,
@@ -419,16 +395,6 @@ enum {
 	BATT_STABILITY_TEST,
 	BATT_CAPACITY_MAX,
 	BATT_INBAT_VOLTAGE,
-#if defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING)
-	BATT_DISCHARGING_CHECK,
-	BATT_DISCHARGING_CHECK_ADC,
-	BATT_DISCHARGING_NTC,
-	BATT_DISCHARGING_NTC_ADC,
-	BATT_SELF_DISCHARGING_CONTROL,
-#endif
-#if defined(CONFIG_SW_SELF_DISCHARGING)
-	BATT_SW_SELF_DISCHARGING,
-#endif
 	BATT_INBAT_WIRELESS_CS100,
 	HMT_TA_CONNECTED,
 	HMT_TA_CHARGE,
@@ -437,10 +403,10 @@ enum {
 #endif
 #if defined(CONFIG_BATTERY_AGE_FORECAST)
 	FG_CYCLE,
+	FG_FULL_VOLTAGE,
 	FG_FULLCAPNOM,
 	BATTERY_CYCLE,
 #endif
-	FG_FULL_VOLTAGE,
 	BATT_WPC_TEMP,
 	BATT_WPC_TEMP_ADC,
 #if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
@@ -479,7 +445,6 @@ enum {
 	BATT_MISC_EVENT,
 	FACTORY_MODE_RELIEVE,
 	FACTORY_MODE_BYPASS,
-	BATT_WDT_CONTROL,
 };
 
 #ifdef CONFIG_OF

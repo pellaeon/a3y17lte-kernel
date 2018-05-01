@@ -33,12 +33,11 @@
 #include <linux/delay.h>
 #include <linux/wakelock.h>
 #include <linux/mfd/syscon.h>
+#include <linux/clk-private.h>
 #ifdef CONFIG_OF
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #endif
-
-#include <linux/firmware.h>
 
 #include "gnss_prj.h"
 
@@ -49,6 +48,7 @@ static struct gnss_ctl *create_gnssctl_device(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct gnss_data *pdata = pdev->dev.platform_data;
 	struct gnss_ctl *gnssctl;
+	struct clk *qch_clk;
 	int ret;
 
 	/* create GNSS control device */
@@ -64,8 +64,17 @@ static struct gnss_ctl *create_gnssctl_device(struct platform_device *pdev)
 	gnssctl->gnss_data = pdata;
 	gnssctl->name = pdata->name;
 
+	qch_clk = devm_clk_get(dev, "ccore_qch_lh_gnss");
+	if (!IS_ERR(qch_clk)) {
+		gif_err("Found Qch clk!\n");
+		gnssctl->ccore_qch_lh_gnss = qch_clk;
+	}
+	else {
+		gnssctl->ccore_qch_lh_gnss = NULL;
+	}
+
 #ifdef USE_IOREMAP_NOPMU
-	gnssctl->pmu_reg = devm_ioremap(dev, PMU_ADDR_7870, PMU_SIZE_7870);
+	gnssctl->pmu_reg = devm_ioremap(dev, PMU_ADDR, PMU_SIZE);
 	if (gnssctl->pmu_reg == NULL) {
 		gif_err("%s: pmu ioremap failed.\n", pdata->name);
 		return NULL;
@@ -202,13 +211,26 @@ static struct gnss_data *gnss_if_parse_dt_pdata(struct device *dev)
 		return ERR_PTR(-ENOMEM);
 	}
 
-	parse_dt_common_pdata(dev->of_node, pdata);
-	parse_dt_mbox_pdata(dev, dev->of_node, pdata);
+	if (parse_dt_common_pdata(dev->of_node, pdata)) {
+		gif_err("Parse common  DT failed.\n");
+		goto parse_err;
+	}
+	if (parse_dt_mbox_pdata(dev, dev->of_node, pdata)) {
+		gif_err("Parse Mbox DT failed.\n");
+		goto parse_err;
+	}
 
 	dev->platform_data = pdata;
 	gif_info("DT parse complete!\n");
 
 	return pdata;
+
+parse_err:
+	if (pdata) {
+		devm_kfree(dev, pdata);
+	}
+
+	return ERR_PTR(-EINVAL);
 }
 
 static const struct of_device_id sec_gnss_match[] = {
@@ -222,84 +244,6 @@ static struct gnss_data *gnss_if_parse_dt_pdata(struct device *dev)
 	return ERR_PTR(-ENODEV);
 }
 #endif /* CONFIG_OF */
-
-#ifdef CONFIG_GNSS_DISABLE
-/*
- * If GNSS is NOT used(ex, WIFI only), GNSS driver should remove
- * reserved memory after downloading temp(hibernation) image.
- */
-static void gnss_disable(struct gnss_data *pdata)
-{
-	struct page *page;
-	size_t  sh_addr = pdata->shmem_base;
-	int i;
-
-	gif_err("Remove reserved memory.\n");
-	/* Release reserved memory */
-	for (i = 0; i < (pdata->shmem_size >> PAGE_SHIFT); i++) {
-		page = phys_to_page(sh_addr);
-		sh_addr += PAGE_SIZE;
-
-		free_reserved_page(page);
-	}
-}
-#endif
-
-static int gnss_hiberimg_dl(struct gnss_data *pdata, struct link_device *ld)
-{
-	const struct firmware *fw_entry = NULL;
-	int err;
-	struct kepler_bcmd_args bcmd_args;
-
-	pr_err("GNSS Load Firmware.\n");
-	err = request_firmware(&fw_entry, "gnss_firmware.bin", NULL);
-	if (err) {
- 		pr_err("Can't get firmware structure!!!\n");
-		err = -EIO;
-		goto exit_img_dl;
-	}
-
-	memcpy(ld->mdm_data->gnss_base, fw_entry->data, fw_entry->size);
-	printk("0x%x,  0x%x\n", ((u32*)ld->mdm_data->gnss_base)[0],
-			((u32*)fw_entry->data)[0]);
-
-	release_firmware(fw_entry);
-
-	/* Send Load Firmware BCMD */
-	bcmd_args.flags = 0x0; /* Not used in this command */
-	bcmd_args.cmd_id = 0x1; /* Load firmware command */
-	bcmd_args.param1 = 0x50000000; /* Load address */
-	bcmd_args.param2 = 0x20000; /* Load size */
-
-	pr_err("Send load firmware BCMD.\n");
-	err = ld->req_bcmd(ld, bcmd_args.cmd_id, bcmd_args.flags,
-				bcmd_args.param1, bcmd_args.param2);
-
-	if (err == -EIO) {
-		pr_err("BCMD timeout cmd_id : %d\n", bcmd_args.cmd_id);
-		goto exit_img_dl;
-	}
-
-	/* Run GNSS BCMD */
-	bcmd_args.flags = 0x0; /* Not used in this command */
-	bcmd_args.cmd_id = 0x2; /* Run command */
-	bcmd_args.param1 = 0x2000C1; /* Start address */
-	bcmd_args.param2 = 0x0; /* Not used in this command */
-
-	pr_err("Send RUN BCMD.\n");
-	err = ld->req_bcmd(ld, bcmd_args.cmd_id, bcmd_args.flags,
-				bcmd_args.param1, bcmd_args.param2);
-
-	if (err == -EIO) {
-		pr_err("BCMD timeout cmd_id : %d\n", bcmd_args.cmd_id);
-	}
-#ifdef CONFIG_GNSS_DISABLE
-	gnss_disable(pdata);
-#endif
-
-exit_img_dl:
-	return err;
-}
 
 static int gnss_probe(struct platform_device *pdev)
 {
@@ -365,12 +309,6 @@ static int gnss_probe(struct platform_device *pdev)
 	set_current_link(iod, iod->ld);
 
 	platform_set_drvdata(pdev, gnssctl);
-
-	gif_err("Download hibernation image.\n");
-	if (gnss_hiberimg_dl(pdata, ld))
-		gif_err("WARNING!!!, Can't download hibernation image.\n");
-	else
-		gif_err("Success downloading hibernation image.\n");
 
 	gif_err("%s: ---\n", pdata->name);
 

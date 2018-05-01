@@ -22,12 +22,10 @@
 /* TODO: Check below values are valid */
 #define SENSOR_IMX219_FINE_INTEGRATION_TIME_MIN                0x1F4
 #define SENSOR_IMX219_FINE_INTEGRATION_TIME_MAX                0x1F4
-#define SENSOR_IMX219_COARSE_INTEGRATION_TIME_MIN              0x2
+#define SENSOR_IMX219_COARSE_INTEGRATION_TIME_MIN              0x1
 #define SENSOR_IMX219_COARSE_INTEGRATION_TIME_MAX_MARGIN       0x4
 
 #define USE_GROUP_PARAM_HOLD	(0)
-
-#define NUMBER_OF_PIPELINE		(2)
 
 #endif
 

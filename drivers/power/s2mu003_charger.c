@@ -1490,40 +1490,28 @@ static int s2mu003_charger_parse_dt(struct device *dev,
 					"battery,input_current_limit_new", i,
 					&pdata->charging_current_table[i].
 							input_current_limit);
-				if (ret)
-					pr_info("%s: input_current_limit is Empty\n", __func__);
 				ret = of_property_read_u32_index(np,
 					"battery,fast_charging_current_new", i,
 					&pdata->charging_current_table[i].
 							fast_charging_current);
-				if (ret)
-					pr_info("%s: fast_charging_current is Empty\n", __func__);
 			} else {
 				ret = of_property_read_u32_index(np,
 					"battery,input_current_limit", i,
 					&pdata->charging_current_table[i].
 							input_current_limit);
-				if (ret)
-					pr_info("%s: input_current_limit is Empty\n", __func__);
 				ret = of_property_read_u32_index(np,
 					"battery,fast_charging_current", i,
 					&pdata->charging_current_table[i].
 							fast_charging_current);
-				if (ret)
-					pr_info("%s: fast_charging_current is Empty\n", __func__);
 			}
 			ret = of_property_read_u32_index(np,
 					"battery,full_check_current_1st", i,
 					&pdata->charging_current_table[i].
 							full_check_current_1st);
-			if (ret)
-				pr_info("%s: full_check_current_1st is Empty\n", __func__);
 			ret = of_property_read_u32_index(np,
 					"battery,full_check_current_2nd", i,
 					&pdata->charging_current_table[i].
 							full_check_current_2nd);
-			if (ret)
-				pr_info("%s: full_check_current_2nd is Empty\n", __func__);
 		}
 	}
 

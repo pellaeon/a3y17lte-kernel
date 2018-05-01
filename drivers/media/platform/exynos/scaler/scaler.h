@@ -452,6 +452,7 @@ struct sc_dev {
 	struct notifier_block		busmon_nb;
 	char				*busmon_m;
 	u32				cfw;
+	u32				cp_nosysmmu;
 };
 
 enum SC_CONTEXT_TYPE {
@@ -558,14 +559,19 @@ bool sc_is_format_for_alphablend(u32 pixelformat);
 void sc_hwregs_dump(struct sc_dev *sc);
 
 #ifdef CONFIG_VIDEOBUF2_ION
-static inline int sc_get_dma_address(void *cookie, dma_addr_t *addr)
+static inline int sc_get_dma_address(struct sc_ctx *ctx, void *cookie, dma_addr_t *addr)
 {
-	return vb2_ion_dma_address(cookie, addr);
+	struct sc_dev *sc = ctx->sc_dev;
+
+	if (ctx->cp_enabled && sc->cp_nosysmmu)
+		return vb2_ion_phys_address(cookie, addr);
+	else
+		return vb2_ion_dma_address(cookie, addr);
 }
 
 #define sc_get_kernel_address vb2_ion_private_vaddr
 #else
-static inline int sc_get_dma_address(void *cookie, dma_addr_t *addr)
+static inline int sc_get_dma_address(struct sc_ctx *ctx, void *cookie, dma_addr_t *addr)
 {
 	return -ENOSYS;
 }

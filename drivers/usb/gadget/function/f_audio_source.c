@@ -1055,3 +1055,4 @@ static struct usb_function *audio_source_alloc(struct usb_function_instance *fi)
 DECLARE_USB_FUNCTION_INIT(audio_source, audio_source_alloc_inst,
 			audio_source_alloc);
 MODULE_LICENSE("GPL");
+

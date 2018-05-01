@@ -33,6 +33,7 @@
 #include <asm/unaligned.h>
 #include <linux/regulator/consumer.h>
 #include <linux/sec_sysfs.h>
+#include <linux/wakelock.h>
 
 #include <linux/pinctrl/consumer.h>
 
@@ -46,6 +47,12 @@
 
 #ifdef CONFIG_BATTERY_SAMSUNG
 #include <linux/sec_batt.h>
+#endif
+
+#ifdef CONFIG_VBUS_NOTIFIER
+#include <linux/muic/muic.h>
+#include <linux/muic/muic_notifier.h>
+#include <linux/vbus_notifier.h>
 #endif
 
 /* registers */
@@ -62,6 +69,7 @@
 #define ABOV_DIFFDATA		0x0A
 #define ABOV_RAWDATA		0x0E
 #define ABOV_VENDORID		0x12
+#define ABOV_TSPTA			0x13
 #define ABOV_GLOVE			0x13
 #define ABOV_KEYBOARD		0x13
 #define ABOV_MODEL_NUMBER	0x14		//Model No.
@@ -126,6 +134,7 @@ enum {
 
 extern unsigned int system_rev;
 extern struct class *sec_class;
+static bool g_ta_connected =0;
 static int touchkey_keycode[] = { 0,
 	KEY_RECENT, KEY_BACK
 #ifdef CONFIG_TOUCHKEY_GRIP
@@ -190,6 +199,9 @@ struct abov_tk_info {
 	struct delayed_work led_twinkle_work;
 	bool led_twinkle_check;
 #endif
+#ifdef CONFIG_VBUS_NOTIFIER
+	struct notifier_block vbus_nb;
+#endif
 #ifdef CONFIG_TOUCHKEY_LIGHT_EFS
 	struct delayed_work efs_open_work;
 	int light_version_efs;
@@ -213,6 +225,7 @@ static void abov_tk_input_close(struct input_dev *dev);
 
 static int abov_tk_i2c_read_checksum(struct abov_tk_info *info);
 static void abov_tk_reset(struct abov_tk_info *info);
+static void abov_set_ta_status(struct abov_tk_info *info);
 
 static int abov_touchkey_led_status;
 static int abov_touchled_cmd_reserved;
@@ -919,6 +932,9 @@ static void abov_tk_reset(struct abov_tk_info *info)
 	if(info->sar_sensing != 1)
 		touchkey_sar_sensing(info, 0);
 #else
+	if (info->pdata->ta_notifier && g_ta_connected) {
+		abov_set_ta_status(info);
+	}
 	if (info->flip_mode){
 		abov_mode_enable(client, ABOV_FLIP, CMD_FLIP_ON);
 	} else {
@@ -1171,20 +1187,15 @@ static ssize_t touchkey_threshold_show(struct device *dev,
 {
 	struct abov_tk_info *info = dev_get_drvdata(dev);
 	struct i2c_client *client = info->client;
-	u8 r_buf[2];
+	u8 r_buf;
 	int ret;
 
-	ret = abov_tk_i2c_read(client, ABOV_THRESHOLD, r_buf, 2);
+	ret = abov_tk_i2c_read(client, ABOV_THRESHOLD, &r_buf, 1);
 	if (ret < 0) {
 		input_err(true, &client->dev, "%s fail(%d)\n", __func__, ret);
-		r_buf[0] = 0;
-		r_buf[1] = 0;
+		r_buf = 0;
 	}
-
-	if(info->pdata->each_tkey_thd)
-		return sprintf(buf, "%d,%d\n", r_buf[0], r_buf[1]);
-	else 
-		return sprintf(buf, "%d\n", r_buf[0]);
+	return sprintf(buf, "%d\n", r_buf);
 }
 
 static void get_diff_data(struct abov_tk_info *info)
@@ -2773,11 +2784,11 @@ static DEVICE_ATTR(touchkey_grip_raw, S_IRUGO, touchkey_grip_raw_show, NULL);
 static DEVICE_ATTR(touchkey_grip_gain, S_IRUGO, touchkey_grip_gain_show, NULL);
 static DEVICE_ATTR(touchkey_grip_check, S_IRUGO, touchkey_grip_check_show, NULL);
 #ifndef CONFIG_SAMSUNG_PRODUCT_SHIP
-static DEVICE_ATTR(touchkey_sar_only_mode,  S_IRUGO | S_IWUSR | S_IWGRP,
+static DEVICE_ATTR(touchkey_sar_only_mode,  S_IRUGO | S_IWUSR | S_IWGRP ,
 						NULL, touchkey_mode_change);
-static DEVICE_ATTR(touchkey_sar_press_threshold,  S_IRUGO | S_IWUSR | S_IWGRP,
+static DEVICE_ATTR(touchkey_sar_press_threshold,  S_IRUGO | S_IWUSR | S_IWGRP ,
 						NULL, touchkey_sar_press_threshold_store);
-static DEVICE_ATTR(touchkey_sar_release_threshold,  S_IRUGO | S_IWUSR | S_IWGRP,
+static DEVICE_ATTR(touchkey_sar_release_threshold,  S_IRUGO | S_IWUSR | S_IWGRP ,
 						NULL, touchkey_sar_release_threshold_store);
 #endif
 #endif
@@ -2995,9 +3006,7 @@ static int abov_power(void *data, bool on)
 				return ret;
 			}
 		}
-		abov_led_power(info, on);
 	} else {
-		abov_led_power(info, on);
 		if (info->pdata->dvdd_vreg) {
 			ret = regulator_disable(info->pdata->dvdd_vreg);
 			if(ret){
@@ -3008,10 +3017,73 @@ static int abov_power(void *data, bool on)
 	}
 	regulator_put(info->pdata->dvdd_vreg);
 
+	abov_led_power(info, on);
+
 	input_info(true, &client->dev, "%s %s\n", __func__, on ? "on" : "off");
 
 	return ret;
 }
+
+static void abov_set_ta_status(struct abov_tk_info *info)
+{
+	u8 cmd_data = 0x10;
+	u8 cmd_ta;
+	int ret = 0;
+
+	input_info(true, &info->client->dev, "%s g_ta_connected %d\n", __func__, g_ta_connected);
+
+	if (info->enabled == false)
+	{
+		input_info(true, &info->client->dev, "%s status of ic is off\n", __func__);
+		return;
+	}
+
+	if (g_ta_connected) {
+		cmd_ta = 0x10;
+	}
+	else {
+		cmd_ta = 0x20;
+	}
+
+	ret = abov_tk_i2c_write(info->client, ABOV_TSPTA, &cmd_ta, 1);
+	if (ret < 0) {
+		input_err(true, &info->client->dev, "%s fail(%d)\n", __func__, ret);
+	}
+
+	ret = abov_tk_i2c_write(info->client, ABOV_SW_RESET, &cmd_data, 1);
+	if (ret < 0) {
+		dev_err(&info->client->dev, "%s sw reset fail(%d)\n", __func__, ret);
+	}
+}
+
+#ifdef CONFIG_VBUS_NOTIFIER
+int abov_touchkey_vbus_notification(struct notifier_block *nb,
+		unsigned long cmd, void *data)
+{
+	struct abov_tk_info *info = container_of(nb, struct abov_tk_info, vbus_nb);
+	vbus_status_t vbus_type = *(vbus_status_t *)data;
+
+	input_info(true, &info->client->dev, "%s cmd=%lu, vbus_type=%d\n", __func__, cmd, vbus_type);
+
+	switch (vbus_type) {
+	case STATUS_VBUS_HIGH:
+		input_info(true, &info->client->dev, "%s : attach\n",__func__);
+		g_ta_connected = true;
+		break;
+	case STATUS_VBUS_LOW:
+		input_info(true, &info->client->dev, "%s : detach\n",__func__);
+		g_ta_connected = false;
+
+		break;
+	default:
+		break;
+	}
+
+	abov_set_ta_status(info);
+
+	return 0;
+}
+#endif
 
 #if 1
 static int abov_pinctrl_configure(struct abov_tk_info *info,
@@ -3111,7 +3183,7 @@ static int abov_parse_dt(struct device *dev,
 
 	pdata->boot_on_ldo = of_property_read_bool(np, "abov,boot-on-ldo");
 	pdata->bringup = of_property_read_bool(np, "abov,bringup");
-	pdata->each_tkey_thd = of_property_read_bool(np, "abov,each_tkey_thd");
+	pdata->ta_notifier = of_property_read_bool(np, "abov,ta-notifier");
 
 	input_info(true, dev, "%s: gpio_int:%d, gpio_scl:%d, gpio_sda:%d\n",
 			__func__, pdata->gpio_int, pdata->gpio_scl,
@@ -3325,9 +3397,7 @@ static int abov_tk_probe(struct i2c_client *client,
 	set_bit(EV_KEY, input_dev->evbit);
 	set_bit(KEY_RECENT, input_dev->keybit);
 	set_bit(KEY_BACK, input_dev->keybit);
-#ifdef CONFIG_TOUCHKEY_GRIP
 	set_bit(KEY_CP_GRIP, input_dev->keybit);
-#endif
 	set_bit(EV_LED, input_dev->evbit);
 	set_bit(LED_MISC, input_dev->ledbit);
 	input_set_drvdata(input_dev, info);
@@ -3404,6 +3474,14 @@ static int abov_tk_probe(struct i2c_client *client,
 		abov_sar_olny_mode(info, 1);
 	}
 #endif
+
+#ifdef CONFIG_VBUS_NOTIFIER
+	if (info->pdata->ta_notifier) {
+		vbus_notifier_register(&info->vbus_nb, abov_touchkey_vbus_notification,
+					VBUS_NOTIFY_DEV_CHARGER);
+	}
+#endif
+
 #ifdef CONFIG_TOUCHKEY_LIGHT_EFS
 	INIT_DELAYED_WORK(&info->efs_open_work, touchkey_efs_open_work);
 
@@ -3544,9 +3622,6 @@ static int abov_tk_resume(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	struct abov_tk_info *info = i2c_get_clientdata(client);
 	u8 led_data;
-#ifdef CONFIG_TOUCHKEY_LIGHT_EFS
-	int ret = 0;
-#endif
 
 	if (info->enabled) {
 		input_info(true, &client->dev, "%s: already power on\n", __func__);
@@ -3563,19 +3638,6 @@ static int abov_tk_resume(struct device *dev)
 		get_tk_fw_version(info, true);
 
 	info->enabled = true;
-
-#ifdef CONFIG_TOUCHKEY_LIGHT_EFS
-	/*led dimming */
-	ret = abov_tk_i2c_write(info->client, ABOV_LED_BACK, &info->light_reg, 1);
-	if (ret < 0) {
-		input_err(true, &info->client->dev, "%s led dimming back key write fail(%d)\n", __func__, ret);
-	}
-
-	ret = abov_tk_i2c_write(info->client, ABOV_LED_RECENT, &info->light_reg, 1);
-	if (ret < 0) {
-		input_err(true, &info->client->dev, "%s led dimming recent key write fail(%d)\n", __func__, ret);
-	}
-#endif
 
 	if (abov_touchled_cmd_reserved && \
 		abov_touchkey_led_status == CMD_LED_ON) {
@@ -3639,6 +3701,9 @@ static int abov_tk_input_open(struct input_dev *dev)
 	if (info->pinctrl)
 		abov_pinctrl_configure(info, true);
 
+	if (info->pdata->ta_notifier && g_ta_connected) {
+		abov_set_ta_status(info);
+	}
 	if (info->flip_mode){
 		abov_mode_enable(info->client, ABOV_FLIP, CMD_FLIP_ON);
 	} else {
@@ -3718,8 +3783,6 @@ static struct i2c_driver abov_tk_driver = {
 
 static int __init touchkey_init(void)
 {
-	pr_err("%s: abov,mc96ft18xx\n", __func__);
-
 #if defined(CONFIG_BATTERY_SAMSUNG) && !defined(CONFIG_TOUCHKEY_GRIP)
 	if (lpcharge == 1) {
 			pr_notice("%s : Do not load driver due to : lpm %d\n",

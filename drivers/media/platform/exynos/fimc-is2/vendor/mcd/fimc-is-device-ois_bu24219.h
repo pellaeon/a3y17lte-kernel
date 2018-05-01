@@ -63,7 +63,6 @@
 
 #define OIS_IC_ROM_CHECKSUM_CONSTANT	0x0001ED98
 
-int fimc_is_ois_sine_mode_impl(struct fimc_is_core *core, int mode);
 void fimc_is_ois_offset_test_impl(struct fimc_is_core *core, long *raw_data_x, long *raw_data_y);
 int fimc_is_ois_self_test_impl(struct fimc_is_core *core);
 void fimc_is_ois_fw_update_impl(struct fimc_is_core *core);
@@ -82,3 +81,7 @@ bool fimc_is_ois_read_userdata(struct fimc_is_core *core);
 int fimc_is_ois_set_mode_impl(struct fimc_is_core *core, int mode);
 int fimc_is_ois_set_shift_compensation_impl(struct fimc_is_core *core, u32 value);
 int fimc_is_ois_init_impl(struct fimc_is_core *core);
+bool fimc_is_ois_ver_compare(struct fimc_is_ois_info *m_info, struct fimc_is_ois_info *p_info);
+bool fimc_is_ois_auto_test_impl(struct fimc_is_core *core,
+		            int threshold, bool *x_result, bool *y_result, int *sin_x, int *sin_y);
+int fimc_is_ois_read_status_impl(struct fimc_is_core *core);

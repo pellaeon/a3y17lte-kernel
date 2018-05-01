@@ -21,7 +21,6 @@
 #include <sound/pcm_params.h>
 #include <sound/initval.h>
 #include <sound/exynos-audmixer.h>
-#include <sound/cod3026x.h>
 
 #include "i2s.h"
 #include "i2s-regs.h"
@@ -43,39 +42,11 @@
 #endif
 
 static struct snd_soc_card universal7870_cod3025x_card;
+extern void set_ip_idle(bool value);
 
-enum {
-	MB_NONE,
-	MB_INT_BIAS1,
-	MB_INT_BIAS2,
-	MB_EXT_GPIO,
-	MB_EXT_LDO,
-	MB_MAX,
-};
-
-/* codec internal input */
-enum {
-	INT_MIC1,
-	INT_MIC2,
-	INT_MIC3,
-	INT_LINEIN,
-	INT_INPUT_MAX,
-};
-
-struct universal7870_mic_bias {
-	int mode[INT_INPUT_MAX];
-	int gpio[INT_INPUT_MAX];
-};
-
-struct universal7870_mic_bias_count {
-	atomic_t use_count[MB_MAX];
-};
-
-struct cod3026x_machine_priv {
+struct cod3025x_machine_priv {
 	struct snd_soc_codec *codec;
 	int aifrate;
-	struct universal7870_mic_bias mic_bias;
-	struct universal7870_mic_bias_count mic_bias_count;
 	bool use_external_jd;
 };
 
@@ -90,7 +61,7 @@ static int universal7870_aif1_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_card *card = rtd->card;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
-	struct cod3026x_machine_priv *priv = snd_soc_card_get_drvdata(card);
+	struct cod3025x_machine_priv *priv = snd_soc_card_get_drvdata(card);
 	int ret;
 	int rfs, bfs;
 
@@ -100,6 +71,11 @@ static int universal7870_aif1_hw_params(struct snd_pcm_substream *substream,
 
 	priv->aifrate = params_rate(params);
 
+	if ((substream->stream == SNDRV_PCM_STREAM_CAPTURE) &&
+			params_buffer_bytes(params) <= RX_SRAM_SIZE)
+		set_ip_idle(true);
+	else
+		set_ip_idle(false);
 	if (priv->aifrate == CODEC_SAMPLE_RATE_192KHZ) {
 		rfs = CODEC_RFS_192KHZ;
 		bfs = CODEC_BFS_192KHZ;
@@ -242,7 +218,7 @@ static int universal7870_aif5_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_card *card = rtd->card;
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
-	struct cod3026x_machine_priv *priv = snd_soc_card_get_drvdata(card);
+	struct cod3025x_machine_priv *priv = snd_soc_card_get_drvdata(card);
 	int ret;
 	int rfs, bfs;
 
@@ -504,176 +480,6 @@ static int universal7870_late_probe(struct snd_soc_card *card)
 	return 0;
 }
 
-
-static void universal7870_ext_gpio_bias_ev(struct snd_soc_card *card,
-				int event, int gpio)
-{
-	dev_dbg(card->dev, "%s Called: %d, ext mic bias gpio %s\n", __func__,
-			event, gpio_is_valid(gpio) ?
-			"valid" : "invalid");
-
-	switch (event) {
-	case SND_SOC_DAPM_PRE_PMU:
-		if (gpio_is_valid(gpio))
-			gpio_set_value(gpio, 1);
-		break;
-	case SND_SOC_DAPM_POST_PMD:
-		if (gpio_is_valid(gpio))
-			gpio_set_value(gpio, 0);
-		break;
-	}
-}
-
-static int universal7870_int_bias1_ev(struct snd_soc_card *card,
-				int event)
-{
-	struct cod3026x_machine_priv *priv = snd_soc_card_get_drvdata(card);
-
-	dev_dbg(card->dev, "%s called\n", __func__);
-	return cod3026x_mic_bias_ev(priv->codec, COD3026X_MICBIAS1, event);
-}
-
-static int universal7870_int_bias2_ev(struct snd_soc_card *card,
-				int event)
-{
-	struct cod3026x_machine_priv *priv = snd_soc_card_get_drvdata(card);
-
-	dev_dbg(card->dev, "%s called\n", __func__);
-	return cod3026x_mic_bias_ev(priv->codec, COD3026X_MICBIAS2, event);
-}
-
-static int universal7870_configure_mic_bias(struct snd_soc_card *card,
-		int index, int event)
-{
-	struct cod3026x_machine_priv *priv = snd_soc_card_get_drvdata(card);
-	int process_event = 0;
-	int mode_index = priv->mic_bias.mode[index];
-
-	/* validate the bias mode */
-	if ((mode_index < MB_INT_BIAS1) || (mode_index > MB_EXT_GPIO))
-		return 0;
-
-	/* decrement the bias mode index to match use count buffer
-	 * because use count buffer size is 0-2, and the mode is 1-3
-	 * so decrement, and this veriable should be used only for indexing
-	 * use_count.
-	 */
-	mode_index--;
-
-	switch (event) {
-	case SND_SOC_DAPM_PRE_PMU:
-		atomic_inc(&priv->mic_bias_count.use_count[mode_index]);
-		if (atomic_read(&priv->mic_bias_count.use_count[mode_index]) == 1)
-			process_event = 1;
-		break;
-
-	case SND_SOC_DAPM_POST_PMD:
-		atomic_dec(&priv->mic_bias_count.use_count[mode_index]);
-		if (atomic_read(&priv->mic_bias_count.use_count[mode_index]) == 0)
-			process_event = 1;
-		break;
-
-	default:
-		break;
-	}
-
-	if (!process_event)
-		return 0;
-
-	switch(priv->mic_bias.mode[index]) {
-	case MB_INT_BIAS1:
-		universal7870_int_bias1_ev(card, event);
-		break;
-	case MB_INT_BIAS2:
-		universal7870_int_bias2_ev(card, event);
-		break;
-	case MB_EXT_GPIO:
-		universal7870_ext_gpio_bias_ev(card, event,
-				priv->mic_bias.gpio[index]);
-		break;
-	default:
-		break;
-	};
-
-	return 0;
-}
-
-static int universal7870_mic1_bias(struct snd_soc_dapm_widget *w,
-				struct snd_kcontrol *kcontrol, int event)
-{
-	return universal7870_configure_mic_bias(w->dapm->card, INT_MIC1, event);
-}
-
-static int universal7870_mic2_bias(struct snd_soc_dapm_widget *w,
-				struct snd_kcontrol *kcontrol, int event)
-{
-	return universal7870_configure_mic_bias(w->dapm->card, INT_MIC2, event);
-}
-
-static int universal7870_mic3_bias(struct snd_soc_dapm_widget *w,
-				struct snd_kcontrol *kcontrol, int event)
-{
-	return universal7870_configure_mic_bias(w->dapm->card, INT_MIC3, event);
-}
-
-static int universal7870_linein_bias(struct snd_soc_dapm_widget *w,
-				struct snd_kcontrol *kcontrol, int event)
-{
-	return universal7870_configure_mic_bias(w->dapm->card, INT_LINEIN, event);
-}
-
-
-static int universal7870_request_ext_mic_bias_en_gpio(struct snd_soc_card *card)
-{
-	struct cod3026x_machine_priv *priv = snd_soc_card_get_drvdata(card);
-	struct device *dev = card->dev;
-	int ret;
-	int gpio;
-	int i;
-	char gpio_name[32];
-
-	dev_dbg(dev, "%s called\n", __func__);
-
-	for (i = 0; i < INT_INPUT_MAX; i++) {
-		gpio = priv->mic_bias.gpio[i];
-
-		/* This is optional GPIO, don't report if not present */
-		if (!gpio_is_valid(gpio))
-			continue;
-
-		sprintf(gpio_name, "ext_mic_bias-%d", i);
-
-		ret = devm_gpio_request_one(dev, gpio,
-				GPIOF_OUT_INIT_LOW, gpio_name);
-
-		if (ret < 0) {
-			dev_err(dev, "Ext-MIC bias GPIO request failed\n");
-			continue;
-		}
-		gpio_direction_output(gpio, 0);
-	}
-
-	return 0;
-}
-
-
-static int universal7870_init_soundcard(struct snd_soc_card *card)
-{
-	struct snd_soc_codec *codec = card->rtd[0].codec;
-	struct cod3026x_machine_priv *priv = snd_soc_card_get_drvdata(card);
-	int ret;
-
-	priv->codec = codec;
-
-	ret = universal7870_request_ext_mic_bias_en_gpio(card);
-	if (ret)
-		dev_warn(codec->dev, "Failed to get ext mic bias gpios :%d\n",
-								ret);
-
-
-	return 0;
-}
-
 static int audmixer_init(struct snd_soc_component *cmp)
 {
 	dev_dbg(cmp->dev, "%s called\n", __func__);
@@ -685,24 +491,9 @@ static const struct snd_kcontrol_new universal7870_controls[] = {
 };
 
 const struct snd_soc_dapm_widget universal7870_dapm_widgets[] = {
-	SND_SOC_DAPM_MIC("MIC1 Bias", universal7870_mic1_bias),
-	SND_SOC_DAPM_MIC("MIC2 Bias", universal7870_mic2_bias),
-	SND_SOC_DAPM_MIC("MIC3 Bias", universal7870_mic3_bias),
-	SND_SOC_DAPM_MIC("LINEIN Bias", universal7870_linein_bias),
 };
 
 const struct snd_soc_dapm_route universal7870_dapm_routes[] = {
-	{"MIC1_PGA", NULL, "MIC1 Bias"},
-	{"MIC1 Bias", NULL, "IN1L"},
-
-	{"MIC2_PGA", NULL, "MIC2 Bias"},
-	{"MIC2 Bias", NULL, "IN2L"},
-
-	{"MIC3_PGA", NULL, "MIC3 Bias"},
-	{"MIC3 Bias", NULL, "IN3L"},
-
-	{"LINEIN_PGA", NULL, "LINEIN Bias"},
-	{"LINEIN Bias", NULL, "IN4L" },
 };
 
 static struct snd_soc_ops universal7870_aif1_ops = {
@@ -869,50 +660,6 @@ static struct snd_soc_dai_link universal7870_cod3025x_dai[] = {
 		.ops = &universal7870_aif6_ops,
 		.ignore_suspend = 1,
 	},
-
-	/* SW MIXER1 Interface */
-	{
-		.name = "playback-eax0",
-		.stream_name = "eax0",
-		.cpu_dai_name = "samsung-eax.0",
-		.platform_name = "samsung-eax.0",
-		.codec_dai_name = "cod3026x-aif",
-		.ops = &universal7870_aif1_ops,
-		.ignore_suspend = 1,
-	},
-
-	/* SW MIXER2 Interface */
-	{
-		.name = "playback-eax1",
-		.stream_name = "eax1",
-		.cpu_dai_name = "samsung-eax.1",
-		.platform_name = "samsung-eax.1",
-		.codec_dai_name = "cod3026x-aif",
-		.ops = &universal7870_aif1_ops,
-		.ignore_suspend = 1,
-	},
-
-	/* SW MIXER3 Interface */
-	{
-		.name = "playback-eax2",
-		.stream_name = "eax2",
-		.cpu_dai_name = "samsung-eax.2",
-		.platform_name = "samsung-eax.2",
-		.codec_dai_name = "cod3026x-aif",
-		.ops = &universal7870_aif1_ops,
-		.ignore_suspend = 1,
-	},
-
-	/* SW MIXER4 Interface */
-	{
-		.name = "playback-eax3",
-		.stream_name = "eax3",
-		.cpu_dai_name = "samsung-eax.3",
-		.platform_name = "samsung-eax.3",
-		.codec_dai_name = "cod3026x-aif",
-		.ops = &universal7870_aif1_ops,
-		.ignore_suspend = 1,
-	},
 };
 
 static struct snd_soc_aux_dev audmixer_aux_dev[] = {
@@ -949,54 +696,13 @@ static struct snd_soc_card universal7870_cod3025x_card = {
 	.num_configs = ARRAY_SIZE(audmixer_codec_conf),
 };
 
-static void universal7870_mic_bias_parse_dt(struct platform_device *pdev)
-{
-	struct device_node *np = pdev->dev.of_node;
-	struct snd_soc_card *card = platform_get_drvdata(pdev);
-	struct cod3026x_machine_priv *priv = snd_soc_card_get_drvdata(card);
-	int ret;
-	int i;
-	int gpio, gpio_cnt;
-
-	for (i = 0; i < INT_INPUT_MAX; i++) {
-		priv->mic_bias.mode[i] = MB_NONE;
-		priv->mic_bias.gpio[i] = -EINVAL;
-	}
-
-	for ( i = 0; i < MB_MAX; i++)
-		atomic_set(&priv->mic_bias_count.use_count[i], 0);
-
-	ret = of_property_read_u32_array(np, "mic-bias-mode",
-			priv->mic_bias.mode, INT_INPUT_MAX);
-	if (ret) {
-		dev_err(&pdev->dev, "Could not read `mic-bias-mode`\n");
-		return;
-	}
-
-	for (i = 0, gpio_cnt = 0; i < INT_INPUT_MAX; i++) {
-		if (priv->mic_bias.mode[i] == MB_EXT_GPIO) {
-			gpio = of_get_named_gpio(np, "mic-bias-gpios",
-					gpio_cnt++);
-			if (gpio_is_valid(gpio))
-				priv->mic_bias.gpio[i] = gpio;
-			else
-				dev_err(&pdev->dev, "Invalid mic-bias gpio\n");
-		}
-	}
-
-	dev_dbg(&pdev->dev, "BIAS: MIC1(%d), MIC2(%d), MIC3(%d), LINEIN(%d)\n",
-			priv->mic_bias.mode[0], priv->mic_bias.mode[1],
-			priv->mic_bias.mode[2], priv->mic_bias.mode[3]);
-;
-}
-
 static int universal7870_audio_probe(struct platform_device *pdev)
 {
 	int n, ret;
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *cpu_np, *codec_np, *auxdev_np;
 	struct snd_soc_card *card = &universal7870_cod3025x_card;
-	struct cod3026x_machine_priv *priv;
+	struct cod3025x_machine_priv *priv;
 
 	if (!np) {
 		dev_err(&pdev->dev, "Failed to get device node\n");
@@ -1069,10 +775,6 @@ static int universal7870_audio_probe(struct platform_device *pdev)
 	ret = snd_soc_register_card(card);
 	if (ret)
 		dev_err(&pdev->dev, "Failed to register card:%d\n", ret);
-
-	universal7870_mic_bias_parse_dt(pdev);
-
-	universal7870_init_soundcard(card);
 
 	return ret;
 }

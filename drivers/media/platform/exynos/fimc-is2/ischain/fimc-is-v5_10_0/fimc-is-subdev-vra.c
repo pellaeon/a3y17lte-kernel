@@ -19,7 +19,7 @@
 #include "fimc-is-interface-fd.h"
 
 static int fimc_is_ischain_vra_cfg(struct fimc_is_subdev *leader,
-	struct fimc_is_device_ischain *device,
+	void *device_data,
 	struct fimc_is_frame *frame,
 	struct fimc_is_crop *incrop,
 	struct fimc_is_crop *otcrop,
@@ -33,7 +33,10 @@ static int fimc_is_ischain_vra_cfg(struct fimc_is_subdev *leader,
 #ifdef ENABLE_FD_SW
 	struct param_fd_config *fd_config;
 #endif
+	struct fimc_is_device_ischain *device;
 	u32 width, height;
+
+	device = (struct fimc_is_device_ischain *)device_data;
 
 	BUG_ON(!leader);
 	BUG_ON(!device);
@@ -85,7 +88,7 @@ static int fimc_is_ischain_vra_cfg(struct fimc_is_subdev *leader,
 }
 
 static int fimc_is_ischain_vra_tag(struct fimc_is_subdev *subdev,
-	struct fimc_is_device_ischain *device,
+	void *device_data,
 	struct fimc_is_frame *frame,
 	struct camera2_node *node)
 {
@@ -99,7 +102,10 @@ static int fimc_is_ischain_vra_tag(struct fimc_is_subdev *subdev,
 	struct camera2_uctl *uctl;
 #endif
 	struct fimc_is_subdev *leader;
+	struct fimc_is_device_ischain *device;
 	u32 lindex, hindex, indexes;
+
+	device = (struct fimc_is_device_ischain *)device_data;
 
 	BUG_ON(!subdev);
 	BUG_ON(!device);

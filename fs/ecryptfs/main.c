@@ -252,8 +252,8 @@ static const match_table_t tokens = {
 #ifdef CONFIG_SDP
 	{ecryptfs_opt_chamber_dirs, "chamber=%s"},
 	{ecryptfs_opt_userid, "userid=%s"},
-	{ecryptfs_opt_sdp, "sdp_enabled"},
-	{ecryptfs_opt_partition_id, "partition_id=%u"},
+    {ecryptfs_opt_sdp, "sdp_enabled"},
+    {ecryptfs_opt_partition_id, "partition_id=%u"},
 #endif
 #ifdef CONFIG_DLP
 	{ecryptfs_opt_dlp, "dlp_enabled"},

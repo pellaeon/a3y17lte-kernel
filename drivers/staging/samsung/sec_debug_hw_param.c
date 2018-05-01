@@ -22,6 +22,7 @@
 #include <linux/io.h>
 
 #define MAX_DDR_VENDOR 16
+#define LPDDR_BASE 0x106b09a8
 #define DATA_SIZE 1024
 #define LOT_STRING_LEN 5
 
@@ -69,8 +70,6 @@ static unsigned int chipid_fail_cnt;
 static unsigned int lpi_timeout_cnt;
 static unsigned int cache_err_cnt;
 static unsigned int codediff_cnt;
-static unsigned long pcb_offset;
-static unsigned long smd_offset;
 
 static int __init sec_hw_param_get_hw_rev(char *arg)
 {
@@ -112,22 +111,6 @@ static int __init sec_hw_param_code_diff(char *arg)
 
 early_param("sec_debug.codediff_cnt", sec_hw_param_code_diff);
 
-static int __init sec_hw_param_pcb_offset(char *arg)
-{
-	pcb_offset = simple_strtoul(arg, NULL, 10);
-	return 0;
-}
-
-early_param("sec_debug.pcb_offset", sec_hw_param_pcb_offset);
-
-static int __init sec_hw_param_smd_offset(char *arg)
-{
-	smd_offset = simple_strtoul(arg, NULL, 10);
-	return 0;
-}
-
-early_param("sec_debug.smd_offset", sec_hw_param_smd_offset);
-
 static u32 chipid_reverse_value(u32 value, u32 bitcnt)
 {
 	int tmp, ret = 0;
@@ -158,7 +141,22 @@ static void chipid_dec_to_36(u32 in, char *p)
 
 static char *get_dram_manufacturer(void)
 {
-	return lpddr4_manufacture_name[1];
+	void *lpddr_reg;
+	u64 val;
+	int mr5_vendor_id = 0;
+
+	lpddr_reg = ioremap(LPDDR_BASE, SZ_64);
+
+	if (!lpddr_reg) {
+		pr_err("failed to get i/o address lpddr_reg\n");
+		return lpddr4_manufacture_name[mr5_vendor_id];
+	}
+
+	val = readq((void __iomem *)lpddr_reg);
+
+	mr5_vendor_id = 0xf & (val >> 32);
+
+	return lpddr4_manufacture_name[mr5_vendor_id];
 }
 
 static ssize_t sec_hw_param_ap_info_show(struct kobject *kobj,
@@ -237,57 +235,19 @@ static ssize_t sec_hw_param_extra_info_show(struct kobject *kobj,
 	return info_size;
 }
 
-static ssize_t sec_hw_param_pcb_info_store(struct kobject *kobj,
-				struct kobj_attribute *attr, const char *buf, size_t count)
-{
-	unsigned char barcode[6] = {0,};
-	int ret = -1;
-
-	strncpy(barcode, buf, 5);
-
-	ret = sec_set_param_str(pcb_offset , barcode, 5);
-	if (ret < 0)
-		pr_err("%s : Set Param fail. offset (%lu), data (%s)", __func__, pcb_offset, barcode);
-	
-	return count;
-}
-
-static ssize_t sec_hw_param_smd_info_store(struct kobject *kobj,
-				struct kobj_attribute *attr, const char *buf, size_t count)
-{
-	unsigned char smd_date[9] = {0,};
-	int ret = -1;
-
-	strncpy(smd_date, buf, 8);
-
-	ret = sec_set_param_str(smd_offset , smd_date, 8);
-	if (ret < 0)
-		pr_err("%s : Set Param fail. offset (%lu), data (%s)", __func__, smd_offset, smd_date);
-	
-	return count;
-}
-
 static struct kobj_attribute sec_hw_param_ap_info_attr =
-        __ATTR(ap_info, 0440, sec_hw_param_ap_info_show, NULL);
+	__ATTR(ap_info, 0440, sec_hw_param_ap_info_show, NULL);
 
 static struct kobj_attribute sec_hw_param_ddr_info_attr =
-        __ATTR(ddr_info, 0440, sec_hw_param_ddr_info_show, NULL);
+	__ATTR(ddr_info, 0440, sec_hw_param_ddr_info_show, NULL);
 
 static struct kobj_attribute sec_hw_param_extra_info_attr =
 	__ATTR(extra_info, 0440, sec_hw_param_extra_info_show, NULL);
-
-static struct kobj_attribute sec_hw_param_pcb_info_attr =
-        __ATTR(pcb_info, 0660, NULL, sec_hw_param_pcb_info_store);
-
-static struct kobj_attribute sec_hw_param_smd_info_attr =
-	__ATTR(smd_info, 0660, NULL, sec_hw_param_smd_info_store);
 
 static struct attribute *sec_hw_param_attributes[] = {
 	&sec_hw_param_ap_info_attr.attr,
 	&sec_hw_param_ddr_info_attr.attr,
 	&sec_hw_param_extra_info_attr.attr,
-	&sec_hw_param_pcb_info_attr.attr,
-	&sec_hw_param_smd_info_attr.attr,
 	NULL,
 };
 

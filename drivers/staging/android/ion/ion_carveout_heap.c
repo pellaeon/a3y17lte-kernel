@@ -129,11 +129,8 @@ static int ion_carveout_heap_allocate(struct ion_heap *heap,
 	sg_set_page(table->sgl, pfn_to_page(PFN_DOWN(paddr)), size, 0);
 	buffer->priv_virt = table;
 
-	if (buffer->flags & ION_FLAG_PROTECTED) {
-		ret = ion_secure_protect(buffer);
-		if (ret)
-			goto err_free_table;
-	}
+	if (buffer->flags & ION_FLAG_PROTECTED)
+		ion_secure_protect(buffer);
 
 	return 0;
 

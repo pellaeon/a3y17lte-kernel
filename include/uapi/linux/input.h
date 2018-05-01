@@ -16,6 +16,77 @@
 #include <linux/types.h>
 #endif
 
+/*
+ * sec Log
+ */
+#define SECLOG			"[sec_input]"
+#define INPUT_LOG_BUF_SIZE	512
+
+#ifdef CONFIG_SEC_DEBUG_TSP_LOG
+#include <linux/sec_debug.h>
+
+#define input_dbg(mode, dev, fmt, ...)						\
+({										\
+	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_dbg(dev, input_log_buf, ## __VA_ARGS__);				\
+	if (mode) {								\
+		if (dev)							\
+			snprintf(input_log_buf, sizeof(input_log_buf), "%s %s",	\
+					dev_driver_string(dev), dev_name(dev));	\
+		else								\
+			snprintf(input_log_buf, sizeof(input_log_buf), "NULL");	\
+		sec_debug_tsp_log_msg(input_log_buf, fmt, ## __VA_ARGS__);	\
+	}									\
+})
+#define input_info(mode, dev, fmt, ...)						\
+({										\
+	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_info(dev, input_log_buf, ## __VA_ARGS__);				\
+	if (mode) {								\
+		if (dev)							\
+			snprintf(input_log_buf, sizeof(input_log_buf), "%s %s",	\
+					dev_driver_string(dev), dev_name(dev));	\
+		else								\
+			snprintf(input_log_buf, sizeof(input_log_buf), "NULL");	\
+		sec_debug_tsp_log_msg(input_log_buf, fmt, ## __VA_ARGS__);	\
+	}									\
+})
+#define input_err(mode, dev, fmt, ...)						\
+({										\
+	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_err(dev, input_log_buf, ## __VA_ARGS__);				\
+	if (mode) {								\
+		if (dev)							\
+			snprintf(input_log_buf, sizeof(input_log_buf), "%s %s",	\
+					dev_driver_string(dev), dev_name(dev));	\
+		else								\
+			snprintf(input_log_buf, sizeof(input_log_buf), "NULL");	\
+		sec_debug_tsp_log_msg(input_log_buf, fmt, ## __VA_ARGS__);	\
+	}									\
+})
+#else
+#define input_dbg(mode, dev, fmt, ...)						\
+({										\
+	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_dbg(dev, input_log_buf, ## __VA_ARGS__);				\
+})
+#define input_info(mode, dev, fmt, ...)						\
+({										\
+	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_info(dev, input_log_buf, ## __VA_ARGS__);				\
+})
+#define input_err(mode, dev, fmt, ...)						\
+({										\
+	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_err(dev, input_log_buf, ## __VA_ARGS__);				\
+})
+#endif
 
 /*
  * The event structure itself
@@ -480,15 +551,7 @@ struct input_keymap_entry {
 
 #define KEY_MICMUTE		248	/* Mute / unmute the microphone */
 
-/* Dummy touchkey code */
-#define KEY_DUMMY_HOME1		249
-#define KEY_DUMMY_HOME2		250
-#define KEY_DUMMY_MENU		251
-#define KEY_DUMMY_HOME		252
-#define KEY_DUMMY_BACK		253
-
-#define KEY_WAKEUP_UNLOCK	253	/* Wake-up to recent view, ex: AOP */
-#define KEY_RECENT		254
+#define KEY_RECENT   254
 
 /* Code 255 is reserved for special needs of AT keyboard driver */
 
@@ -671,11 +734,7 @@ struct input_keymap_entry {
 #define KEY_DEL_EOS		0x1c1
 #define KEY_INS_LINE		0x1c2
 #define KEY_DEL_LINE		0x1c3
-#define KEY_SIDE_GESTURE	0x1c6
 #define KEY_BLACK_UI_GESTURE	0x1c7
-
-#define KEY_SIDE_GESTURE_RIGHT	0x1ca
-#define KEY_SIDE_GESTURE_LEFT	0x1cb
 
 #define KEY_FN			0x1d0
 #define KEY_FN_ESC		0x1d1
@@ -809,10 +868,7 @@ struct input_keymap_entry {
 #define BTN_TRIGGER_HAPPY39		0x2e6
 #define BTN_TRIGGER_HAPPY40		0x2e7
 
-/* 0x2f1~2f8 is key event for specail event. */
 #define KEY_CP_GRIP	0x2f1	/* grip sensor for CP */
-#define KEY_TSP_NONE_KEY2	0x2f2	/* grip sensor for WIFI */
-
 #ifdef CONFIG_USB_HMT_SAMSUNG_INPUT
 #define KEY_START_NOTA_CMD		0x2fc
 #define KEY_START_TA_CMD		0x2fd
@@ -892,7 +948,6 @@ struct input_keymap_entry {
 #define ABS_MT_TOOL_Y		0x3d	/* Center Y tool position */
 
 #define ABS_MT_PALM		0x3e	/* palm touch */
-#define ABS_MT_CUSTOM		0x3e	/* custom event */
 #define ABS_MT_GRIP             0x3f    /* grip touch */
 
 #define ABS_MAX			0x3f
@@ -919,11 +974,11 @@ struct input_keymap_entry {
 #define SW_ROTATE_LOCK		0x0c  /* set = rotate locked/disabled */
 #define SW_LINEIN_INSERT	0x0d  /* set = inserted */
 #define SW_MUTE_DEVICE		0x0e  /* set = device disabled */
-#define SW_PEN_INSERT		0x13	/* set = pen out */
+#define SW_GLOVE		0x0f	/* set = glove mode */
+#define SW_FLIP			0x15	/* set = flip cover */
+#define SW_CERTIFYHALL          0x1b    /* set = certify_hall... */
 #define SW_MAX			0x20
 #define SW_CNT			(SW_MAX+1)
-#define SW_FLIP			0x15	/* set = flip cover */
-#define	SW_CERTIFYHALL	0x1b	/* set = certify_hall... */
 
 /*
  * Misc events

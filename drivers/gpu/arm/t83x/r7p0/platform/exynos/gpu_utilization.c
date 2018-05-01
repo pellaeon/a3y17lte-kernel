@@ -152,10 +152,12 @@ int gpu_dvfs_calculate_env_data(struct kbase_device *kbdev)
 		if (!gpu_control_is_power_on(kbdev))
 			return 0;
 		mutex_lock(&kbdev->hwcnt.mlock);
-		if (kbdev->vendor_callbacks->hwcnt_update) {
-			kbdev->vendor_callbacks->hwcnt_update(kbdev);
-			dvfs_hwcnt_get_resource(kbdev);
-			dvfs_hwcnt_utilization_equation(kbdev);
+		if (platform->cur_clock >= platform->gpu_max_clock_limit || platform->hwcnt_profile == true ) {
+			if (kbdev->vendor_callbacks->hwcnt_update) {
+				kbdev->vendor_callbacks->hwcnt_update(kbdev);
+				dvfs_hwcnt_get_resource(kbdev);
+				dvfs_hwcnt_utilization_equation(kbdev);
+			}
 		}
 		mutex_unlock(&kbdev->hwcnt.mlock);
 	}

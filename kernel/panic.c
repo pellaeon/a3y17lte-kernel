@@ -77,11 +77,13 @@ void panic(const char *fmt, ...)
 {
 	static DEFINE_SPINLOCK(panic_lock);
 	static char buf[1024];
+	struct pt_regs fixed_regs, pv_regs;
 	va_list args;
 	long i, i_next = 0;
 	int state = 0;
 
-	 exynos_trace_stop();
+	tracing_off();
+	exynos_trace_stop();
 
 	/*
 	 * Disable local interrupts. This will prevent panic_smp_self_stop
@@ -126,7 +128,10 @@ void panic(const char *fmt, ...)
 	if (!test_taint(TAINT_DIE) && oops_in_progress <= 1)
 		dump_stack();
 #endif
+#ifdef CONFIG_SCHED_DEBUG
 	sysrq_sched_debug_show();
+#endif
+#if 0
 	/*
 	 * If we have crashed and we have a crash kernel loaded let it handle
 	 * everything else.
@@ -135,6 +140,11 @@ void panic(const char *fmt, ...)
 	 */
 	if (!crash_kexec_post_notifiers)
 		crash_kexec(NULL);
+#endif
+	crash_setup_regs(&fixed_regs, NULL);
+	memcpy(&pv_regs, &fixed_regs, sizeof(struct pt_regs));
+	crash_save_vmcoreinfo();
+	machine_crash_shutdown(&fixed_regs);
 
 	/*
 	 * Note smp_send_stop is the usual smp shutdown function, which
@@ -152,8 +162,7 @@ void panic(const char *fmt, ...)
 	kmsg_dump(KMSG_DUMP_PANIC);
 
 	exynos_cs_show_pcval();
-
-	exynos_ss_post_panic();
+	exynos_ss_post_panic(&pv_regs);
 
 	/*
 	 * If you doubt kdump always works fine in any situation,
@@ -446,11 +455,10 @@ static void warn_slowpath_common(const char *file, int line, void *caller,
 				 unsigned taint, struct slowpath_args *args)
 {
 	disable_trace_on_warning();
-#if defined(CONFIG_SEC_BAT_AUT) && !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
-	printk(BAT_AUTOMAION_TEST_PREFIX_WARN "KERNEL WARN START\n");
-#endif
-	printk(KERN_WARNING "------------[ cut here ]------------\n");
-	printk(KERN_WARNING "WARNING: at %s:%d %pS()\n", file, line, caller);
+
+	pr_warn("------------[ cut here ]------------\n");
+	pr_warn("WARNING: CPU: %d PID: %d at %s:%d %pS()\n",
+		raw_smp_processor_id(), current->pid, file, line, caller);
 
 	if (args)
 		vprintk(args->fmt, args->args);
@@ -460,9 +468,6 @@ static void warn_slowpath_common(const char *file, int line, void *caller,
 	print_oops_end_marker();
 	/* Just a warning, don't kill lockdep. */
 	add_taint(taint, LOCKDEP_STILL_OK);
-#if defined(CONFIG_SEC_BAT_AUT) && !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
-	printk(BAT_AUTOMAION_TEST_PREFIX_WARN "KERNEL WARN END\n");
-#endif
 }
 
 void warn_slowpath_fmt(const char *file, int line, const char *fmt, ...)

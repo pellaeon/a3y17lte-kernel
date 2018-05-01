@@ -32,7 +32,7 @@
 #define GROUP_ID_VRA0		7
 #define GROUP_ID_MAX		8
 #define GROUP_ID_INVALID	0xFFFFFFFF
-#define GROUP_ID_PARM_MASK	(0x3F)
+#define GROUP_ID_PARM_MASK	(0xFF)
 #define GROUP_ID_SHIFT		(16)
 #define GROUP_ID_MASK		(0xFFFF)
 #define GROUP_ID(id)		(1 << (id))
@@ -110,11 +110,12 @@ struct fimc_is_group {
 	struct fimc_is_group		*gprev;
 	struct fimc_is_group		*parent;
 	struct fimc_is_group		*child;
+	struct fimc_is_group		*head;
 	struct fimc_is_group		*tail;
 
 	struct fimc_is_subdev		leader;
 	struct fimc_is_subdev		*junction;
-	struct fimc_is_subdev		*subdev[ENTRY_ISCHAIN_END];
+	struct fimc_is_subdev		*subdev[ENTRY_END];
 
 	/* for otf interface */
 	atomic_t			sensor_fcount;
@@ -147,6 +148,8 @@ struct fimc_is_group {
 	fimc_is_shot_callback		shot_callback;
 	fimc_is_pipe_shot_callback	pipe_shot_callback;
 	struct fimc_is_device_ischain	*device;
+	struct fimc_is_device_sensor	*sensor;
+	enum fimc_is_device_type	device_type;
 
 #ifdef DEBUG_AA
 #ifdef DEBUG_FLASH
@@ -161,9 +164,6 @@ struct fimc_is_group {
 #endif
 #endif
 	u32				aeflashMode; /* Flash Mode Control */
-#ifdef CONFIG_LEDS_SUPPORT_FRONT_FLASH_AUTO
-	u32				frontFlashMode; /* Auto Flash Mode Control */
-#endif
 };
 
 enum fimc_is_group_task_state {
@@ -181,6 +181,7 @@ struct fimc_is_group_task {
 
 #ifdef ENABLE_SYNC_REPROCESSING
 	atomic_t			rep_tick; /* Sync reprocessing tick */
+	struct list_head		sync_list;
 #endif
 };
 
@@ -201,6 +202,7 @@ int fimc_is_groupmgr_stop(struct fimc_is_groupmgr *groupmgr,
 
 int fimc_is_group_probe(struct fimc_is_groupmgr *groupmgr,
 	struct fimc_is_group *group,
+	struct fimc_is_device_sensor *sensor,
 	struct fimc_is_device_ischain *device,
 	fimc_is_shot_callback shot_callback,
 	u32 slot,
@@ -238,4 +240,19 @@ int fimc_is_group_done(struct fimc_is_groupmgr *groupmgr,
 int fimc_is_gframe_cancel(struct fimc_is_groupmgr *groupmgr,
 	struct fimc_is_group *group, u32 target_fcount);
 
+unsigned long fimc_is_group_lock(struct fimc_is_group *group,
+		enum fimc_is_device_type device_type,
+		bool leader_lock);
+void fimc_is_group_unlock(struct fimc_is_group *group, unsigned long flags,
+		enum fimc_is_device_type device_type,
+		bool leader_lock);
+void fimc_is_group_subdev_cancel(struct fimc_is_group *group,
+		struct fimc_is_frame *ldr_frame,
+		enum fimc_is_device_type device_type,
+		enum fimc_is_frame_state frame_state,
+		bool flush);
+
+/* get head group's framemgr */
+#define GET_HEAD_GROUP_FRAMEMGR(group) \
+	(((group) && ((group)->head) && ((group)->head->leader.vctx)) ? (&((group)->head->leader).vctx->queue.framemgr) : NULL)
 #endif

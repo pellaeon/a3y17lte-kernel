@@ -35,20 +35,14 @@
 #include "fimc-is-err.h"
 #include "fimc-is-video.h"
 #include "fimc-is-resourcemgr.h"
-
-#ifdef CONFIG_LEDS_IRIS_IRLED_SUPPORT
-#ifdef CONFIG_LEDS_IRIS_IRLED_KTD2692
-extern int ktd2692_set_current(uint32_t current_value);
-#endif
-#ifdef CONFIG_LEDS_IRIS_FPGA_ICE40XX
-extern int ice40_ir_led_pulse_width(uint32_t width);
-extern int ice40_ir_led_pulse_delay(uint32_t delay);
-#endif
-#endif
+#include "fimc-is-vender.h"
 
 const struct v4l2_file_operations fimc_is_ssx_video_fops;
 const struct v4l2_ioctl_ops fimc_is_ssx_video_ioctl_ops;
 const struct vb2_ops fimc_is_ssx_qops;
+
+#define SYSREG_ISP_MIPIPHY_CON	0x144F1040
+#define PMU_MIPI_PHY_M0S2_CONTROL	0x10480734
 
 int fimc_is_ssx_video_probe(void *data)
 {
@@ -321,7 +315,7 @@ static int fimc_is_ssx_video_qbuf(struct file *file, void *priv,
 	struct fimc_is_video_ctx *vctx = file->private_data;
 
 #ifdef DBG_STREAMING
-	/*dbg_sensor("%s\n", __func__);*/
+	mdbgv_sensor("%s\n", vctx, __func__);
 #endif
 
 	ret = CALL_VOPS(vctx, qbuf, buf);
@@ -455,6 +449,12 @@ static int fimc_is_ssx_video_s_ctrl(struct file *file, void *priv,
 		goto p_err;
 	}
 
+	ret = fimc_is_vender_ssx_video_s_ctrl(ctrl, device);
+	if (ret) {
+		merr("fimc_is_vender_ssx_video_s_ctrl is fail(%d)", device, ret);
+		goto p_err;
+	}
+
 	switch (ctrl->id) {
 	case V4L2_CID_IS_S_STREAM:
 		{
@@ -533,75 +533,22 @@ static int fimc_is_ssx_video_s_ctrl(struct file *file, void *priv,
 		break;
 	case V4L2_CID_SENSOR_SET_FRAME_RATE:
 		if (fimc_is_sensor_s_frame_duration(device, ctrl->value)) {
-			err("failed to set frame duration : %d - %d\n", ctrl->value, ret);
+			err("failed to set frame duration : %d\n - %d",
+					ctrl->value, ret);
 			ret = -EINVAL;
 		}
 		break;
 	case V4L2_CID_SENSOR_SET_AE_TARGET:
 		if (fimc_is_sensor_s_exposure_time(device, ctrl->value)) {
-			err("failed to set exposure time : %d - %d\n", ctrl->value, ret);
+			err("failed to set exposure time : %d\n - %d",
+					ctrl->value, ret);
 			ret = -EINVAL;
 		}
 		break;
-	case V4L2_CID_SENSOR_SET_GAIN:
-		if (fimc_is_sensor_s_again(device, ctrl->value)) {
-			err("failed to set gain : %d - %d\n", ctrl->value, ret);
-			ret = -EINVAL;
-		}
+	case VENDER_S_CTRL:
+		/* This s_ctrl is needed to skip, when the s_ctrl id was found. */
 		break;
-	case V4L2_CID_SENSOR_SET_SHUTTER:
-		if (fimc_is_sensor_s_shutterspeed(device, ctrl->value)) {
-			err("failed to set shutter speed : %d - %d\n", ctrl->value, ret);
-			ret = -EINVAL;
-		}
-		break;
-#ifdef CONFIG_LEDS_IRIS_IRLED_SUPPORT
-	case V4L2_CID_IRLED_SET_WIDTH:
-#ifdef CONFIG_LEDS_IRIS_FPGA_ICE40XX
-		ret = ice40_ir_led_pulse_width(ctrl->value);
-		if (ret < 0) {
-			err("failed to set irled pulse width : %d\n - %d",ctrl->value, ret);
-			ret = -EINVAL;
-		}
-#else
-		warn("Not Support V4L2_CID_IRLED_SET_WIDTH : %d\n",ctrl->value);
-#endif
-		break;
-	case V4L2_CID_IRLED_SET_DELAY:
-#ifdef CONFIG_LEDS_IRIS_FPGA_ICE40XX
-		ret = ice40_ir_led_pulse_delay(ctrl->value);
-		if (ret < 0) {
-			err("failed to set irled pulse delay : %d\n - %d",ctrl->value, ret);
-			ret = -EINVAL;
-		}
-#else
-		warn("Not Support V4L2_CID_IRLED_SET_DELAY : %d\n",ctrl->value);
-#endif
-		break;
-	case V4L2_CID_IRLED_SET_CURRENT:
-#ifdef CONFIG_LEDS_IRIS_IRLED_KTD2692
-		ret = ktd2692_set_current(ctrl->value);
-		if (ret < 0) {
-			err("failed to set irled current : %d\n - %d",ctrl->value, ret);
-			ret = -EINVAL;
-		}
-#else
-		warn("Not Support V4L2_CID_IRLED_SET_CURRENT : %d\n",ctrl->value);
-#endif
-		break;
-	case V4L2_CID_IRLED_SET_ONTIME:
-#ifdef CONFIG_LEDS_IRIS_FPGA_ICE40XX
-		ret = 0;  /* What To Do */
-		info("%s : V4L2_CID_IRLED_SET_ONTIME is calld\n", __func__);
-		if (ret < 0) {
-			err("failed to set irled max time : %d\n - %d",ctrl->value, ret);
-			ret = -EINVAL;
-		}
-#else
-		warn("Not Support V4L2_CID_IRLED_SET_ONTIME : %d\n",ctrl->value);
-#endif
-		break;
-#endif
+
 	default:
 		ret = fimc_is_sensor_s_ctrl(device, ctrl);
 		if (ret) {
@@ -633,6 +580,12 @@ static int fimc_is_ssx_video_g_ctrl(struct file *file, void *priv,
 		goto p_err;
 	}
 
+	ret = fimc_is_vender_ssx_video_g_ctrl(ctrl, device);
+	if (ret) {
+		merr("fimc_is_vender_ssx_video_g_ctrl is fail(%d)", device, ret);
+		goto p_err;
+	}
+
 	switch (ctrl->id) {
 	case V4L2_CID_IS_G_STREAM:
 		if (device->instant_ret)
@@ -657,6 +610,13 @@ static int fimc_is_ssx_video_g_ctrl(struct file *file, void *priv,
 		else
 			ctrl->value = 0;
 		break;
+	case V4L2_CID_IS_G_MIPI_ERR:
+		ctrl->value = fimc_is_sensor_g_csis_error(device);
+		break;
+	case VENDER_G_CTRL:
+		/* This s_ctrl is needed to skip, when the s_ctrl id was found. */
+		break;
+
 	default:
 		ret = fimc_is_sensor_g_ctrl(device, ctrl);
 		if (ret) {
@@ -889,7 +849,7 @@ static void fimc_is_ssx_buffer_finish(struct vb2_buffer *vb)
 
 const struct vb2_ops fimc_is_ssx_qops = {
 	.queue_setup		= fimc_is_ssx_queue_setup,
-	.buf_init			= fimc_is_buffer_init,
+	.buf_init		= fimc_is_buffer_init,
 	.buf_prepare		= fimc_is_ssx_buffer_prepare,
 	.buf_queue		= fimc_is_ssx_buffer_queue,
 	.buf_finish		= fimc_is_ssx_buffer_finish,

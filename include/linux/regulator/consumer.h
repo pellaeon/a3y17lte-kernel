@@ -455,6 +455,16 @@ static inline int regulator_is_supported_voltage(struct regulator *regulator,
 	return 0;
 }
 
+static inline int regulator_get_max_support_voltage(struct regulator *regulator)
+{
+	return -EINVAL;
+}
+
+static inline int regulator_get_min_support_voltage(struct regulator *regulator)
+{
+	return -EINVAL;
+}
+
 static inline int regulator_set_current_limit(struct regulator *regulator,
 					     int min_uA, int max_uA)
 {

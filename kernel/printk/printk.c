@@ -52,7 +52,6 @@
 #endif
 
 #include <asm/uaccess.h>
-#include <asm/cputype.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/printk.h>
@@ -584,7 +583,7 @@ static int log_store(int facility, int level,
 #ifdef CONFIG_SEC_DEBUG_AUTO_SUMMARY
 		if (msg->for_auto_summary && func_hook_auto_comm)
 			func_hook_auto_comm(msg->type_auto_summary, hook_text, hook_size);
-#endif		
+#endif
 	}
 #endif
 	/* insert message */
@@ -3251,22 +3250,12 @@ void __init dump_stack_set_arch_desc(const char *fmt, ...)
  */
 void dump_stack_print_info(const char *log_lvl)
 {
-#ifdef CONFIG_ARM64
-	printk("%sCPU: %d MPIDR: %llx PID: %d Comm: %.20s %s %s %.*s\n",
-	       log_lvl, raw_smp_processor_id(), read_cpuid_mpidr(),
-	       current->pid, current->comm,
-	       print_tainted(), init_utsname()->release,
-	       (int)strcspn(init_utsname()->version, " "),
-	       init_utsname()->version);
-
-#else
 	printk("%sCPU: %d PID: %d Comm: %.20s %s %s %.*s\n",
 	       log_lvl, raw_smp_processor_id(), current->pid, current->comm,
 	       print_tainted(), init_utsname()->release,
 	       (int)strcspn(init_utsname()->version, " "),
 	       init_utsname()->version);
 
-#endif
 	if (dump_stack_arch_desc_str[0] != '\0')
 		printk("%sHardware name: %s\n",
 		       log_lvl, dump_stack_arch_desc_str);

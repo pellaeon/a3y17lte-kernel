@@ -229,7 +229,7 @@ void sec_gaf_supply_rqinfo(unsigned short curr_offset, unsigned short rq_offset)
 {
 	unsigned short *checksum = &(GAFINFO.GAFINFOCheckSum);
 	unsigned char *memory = (unsigned char *)&GAFINFO;
-	unsigned char address;
+	size_t address;
 	/*
 	 *  Add GAForensic init for preventing symbol removal for optimization.
 	 */

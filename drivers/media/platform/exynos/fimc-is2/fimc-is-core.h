@@ -207,6 +207,19 @@ struct fimc_is_sysfs_actuator {
 };
 #endif
 
+#ifdef FIXED_SENSOR_DEBUG
+struct fimc_is_sysfs_sensor {
+	bool		is_en;
+	unsigned int	frame_duration;
+	unsigned int	long_exposure_time;
+	unsigned int	short_exposure_time;
+	unsigned int	long_analog_gain;
+	unsigned int	short_analog_gain;
+	unsigned int	long_digital_gain;
+	unsigned int	short_digital_gain;
+};
+#endif
+
 struct fimc_is_core {
 	struct platform_device			*pdev;
 	struct resource				*regs_res;
@@ -266,9 +279,6 @@ struct fimc_is_core {
 	struct i2c_client			*client2;
 
 	struct fimc_is_vender			vender;
-#ifdef CONFIG_OIS_USE
-	bool						ois_ver_read;
-#endif
 };
 
 #if defined(CONFIG_VIDEOBUF2_CMA_PHYS)
